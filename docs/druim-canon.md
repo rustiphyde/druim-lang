@@ -477,6 +477,11 @@ Rules:
 - **?=** appears exactly once, immediately after the target identifier
 - **:** is the only fallback separator
 - Every segment after `?=` is an expression
+- **?=** requires at least one branch expression
+- This syntax is invalid
+     ```druim
+     a ?=;
+     ```
 - Fallbacks are unbound in count
 - `emp` is the implicit terminal fallback of every guard
 - Evaluation proceeds left-to-right
