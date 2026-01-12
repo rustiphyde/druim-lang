@@ -40,9 +40,9 @@ pub enum TokenKind {
     Ge,            // >=
 
     // ===== Logical =====
-    And,           // &&
-    Or,            // ||
-    Not,           // !
+    And,           // &?
+    Or,            // |?
+    Not,           // !?
 
     // ===== Flow =====
     Pipe,          // |>
@@ -62,10 +62,13 @@ pub enum TokenKind {
     // ===== Blocks =====
     BlockStmtStart, // :{
     BlockStmtEnd,   // }:
+    BlockStmtChain, // }{
     BlockExprStart, // :[
     BlockExprEnd,   // ]:
+    BlockExprChain, // ][
     BlockFuncStart, // :(
     BlockFuncEnd,   // ):
+    BlockFuncChain, // )(
 
 
     // ===== Special =====
