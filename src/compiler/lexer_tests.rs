@@ -25,7 +25,7 @@ mod tests {
 
     #[test]
     fn keyword_vs_identifier() {
-        let ks = kinds("Num Numx Text Emp");
+        let ks = kinds("num numx text emp");
         assert_eq!(ks[0], KwNum);
         assert_eq!(ks[1], Ident);
         assert_eq!(ks[2], KwText);
@@ -56,6 +56,42 @@ mod tests {
         assert!(kinds.contains(&TokenKind::BlockExprEnd));
         assert!(kinds.contains(&TokenKind::BlockStmtStart));
         assert!(kinds.contains(&TokenKind::BlockStmtEnd));
+    }
+
+    #[test]
+    fn digit_leading_identifiers() {
+        let ks = kinds("1a 9lives 123abc 123_456 1_foo");
+        assert_eq!(ks[0], Ident);
+        assert_eq!(ks[1], Ident);
+        assert_eq!(ks[2], Ident);
+        assert_eq!(ks[3], Ident);
+        assert_eq!(ks[4], Ident);
+    }
+
+    #[test]
+    fn pure_digit_sequences_are_numbers() {
+        let ks = kinds("1 123 000");
+        assert_eq!(ks[0], NumLit);
+        assert_eq!(ks[1], NumLit);
+        assert_eq!(ks[2], NumLit);
+    }
+
+    #[test]
+    fn invalid_decimal_forms_error() {
+        let mut lx = Lexer::new(".5");
+        assert!(lx.tokenize().is_err());
+
+        let mut lx = Lexer::new("1.");
+        assert!(lx.tokenize().is_err());
+
+        let mut lx = Lexer::new("1..2");
+        assert!(lx.tokenize().is_err());
+    }
+
+    #[test]
+    fn guard_token() {
+        let ks = kinds("x ?= y;");
+        assert!(ks.contains(&Guard));
     }
 
 }

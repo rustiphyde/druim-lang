@@ -15,8 +15,7 @@ pub enum TokenKind {
     KwEmp,
 
     // ===== Assignment & binding =====
-    QAssign,       // ?=
-    Bind,          // :=
+
 
     // ===== Colon family =====
     Colon,         // :
@@ -53,6 +52,10 @@ pub enum TokenKind {
     Define,        // =
     DefineEmpty,   // =;
 
+    // ===== Bind & Guard =====
+    Bind,          // :=
+    Guard,         // ?=
+
     // ===== Punctuation =====
     LParen,        // (
     RParen,        // )
@@ -69,6 +72,9 @@ pub enum TokenKind {
     BlockFuncStart, // :(
     BlockFuncEnd,   // ):
     BlockFuncChain, // )(
+    BlockArrayStart, // :<
+    BlockArrayEnd,   // >:
+    BlockArrayChain, // ><
 
 
     // ===== Special =====

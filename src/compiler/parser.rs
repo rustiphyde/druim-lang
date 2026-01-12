@@ -31,47 +31,132 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_stmt(&mut self) -> Result<Stmt, Diagnostic> {
-
+        // Block statement
         if self.peek_kind() == TokenKind::BlockStmtStart {
             return self.parse_block_stmt();
         }
-        // DefineEmpty must start with identifier
-        if self.peek_kind() == TokenKind::DefineEmpty {
-            return Err(
-                Diagnostic::error("invalid define statement", self.current_span())
-                    .with_help("define statements must start with an identifier")
-            );
+
+        // HARD RULE (stmt-level):
+        // Define / DefineEmpty / Bind are ONLY valid if the statement starts with an identifier.
+        match self.peek_kind() {
+            TokenKind::Define | TokenKind::DefineEmpty => {
+                return Err(
+                    Diagnostic::error("invalid define statement", self.current_span())
+                        .with_help("define statements must start with an identifier"),
+                );
+            }
+            TokenKind::Bind => {
+                return Err(
+                    Diagnostic::error("invalid bind statement", self.current_span())
+                        .with_help("bind statements must start with an identifier"),
+                );
+            }
+            TokenKind::Guard => {
+                return Err(
+                    Diagnostic::error("invalid guard statement", self.current_span())
+                        .with_help("guard statements must start with an identifier"),
+                );
+            }
+            _ => {}
         }
 
-        // Special-case Define first
+        // ===== Identifier-led statements (define / bind) =====
         if self.peek_kind() == TokenKind::Ident {
             if let Some(next) = self.tokens.get(self.index + 1) {
-
                 // name =;
-                if let Some(next) = self.tokens.get(self.index + 1) {
-                    if next.kind == TokenKind::DefineEmpty {
-                        let name_tok = self.bump().unwrap(); // ident
-                        let name = name_tok.lexeme.clone();
-                        self.bump(); // consume =;
+                if next.kind == TokenKind::DefineEmpty {
+                    let name_tok = self.bump().unwrap(); // ident
+                    let name = name_tok.lexeme.clone();
+                    self.bump(); // consume =;
 
-                        // Disallow chaining: a =; = b;
-                        if self.peek_kind() == TokenKind::Define || self.peek_kind() == TokenKind::DefineEmpty {
-                            return Err(
-                                Diagnostic::error("invalid define statement", self.current_span())
-                                    .with_help("define statements cannot be chained")
-                            );
+                    // Disallow chaining: a =; = b;
+                    if self.peek_kind() == TokenKind::Define || self.peek_kind() == TokenKind::DefineEmpty {
+                        return Err(
+                            Diagnostic::error("invalid define statement", self.current_span())
+                                .with_help("define statements cannot be chained"),
+                        );
+                    }
+
+                    self.define_name(&name);
+                    return Ok(Stmt::DefineEmpty { name });
+                }
+
+                // name := ident;
+                if next.kind == TokenKind::Bind {
+                    let name_tok = self.bump().unwrap(); // ident
+                    let name = name_tok.lexeme.clone();
+                    self.bump(); // consume :=
+
+                    if self.peek_kind() != TokenKind::Ident {
+                        return Err(
+                            Diagnostic::error("invalid bind statement", self.current_span())
+                                .with_help("expected identifier after `:=`"),
+                        );
+                    }
+
+                    let target_tok = self.bump().unwrap();
+                    let target = target_tok.lexeme.clone();
+                    let target_span = Span {
+                        start: target_tok.pos,
+                        end: target_tok.pos + target_tok.lexeme.len(),
+                    };
+
+                    if !self.is_defined(&target) {
+                        return Err(
+                            Diagnostic::error("invalid bind statement", target_span)
+                                .with_help("cannot bind to an undefined identifier"),
+                        );
+                    }
+
+                    if self.peek_kind() == TokenKind::Bind {
+                        return Err(
+                            Diagnostic::error("invalid bind statement", self.current_span())
+                                .with_help("bind statements cannot be chained"),
+                        );
+                    }
+
+                    self.expect(TokenKind::Semicolon, "`;`")?;
+                    self.define_name(&name);
+                    return Ok(Stmt::Bind { name, target });
+                }
+
+                // name ?= expr ( : (?=)? expr )* ;
+                if next.kind == TokenKind::Guard {
+                    let name_tok = self.bump().unwrap(); // ident
+                    let name = name_tok.lexeme.clone();
+                    self.bump(); // consume ?=
+
+                    let mut branches = Vec::new();
+
+                    // first branch after ?=
+                    branches.push(self.parse_expr()?);
+
+                    // chained fallbacks: `: z` or `: ?= z` repeatedly
+                    while self.peek_kind() == TokenKind::Colon {
+                        self.bump(); // consume ':'
+
+                        // optional `?=` marker in chained branches
+                        if self.peek_kind() == TokenKind::Guard {
+                            self.bump(); // consume '?='
                         }
 
-                        return Ok(Stmt::DefineEmpty { name });
+                        branches.push(self.parse_expr()?);
                     }
+
+                    self.expect(TokenKind::Semicolon, "`;`")?;
+                    self.define_name(&name);
+
+                    return Ok(Stmt::Guard {
+                        target: name,
+                        branches,
+                    });
                 }
 
                 // name = expr;
                 if next.kind == TokenKind::Define {
                     let name_tok = self.bump().unwrap(); // ident
                     let name = name_tok.lexeme.clone();
-
-                    self.bump(); // consume '='
+                    self.bump(); // consume =
 
                     let value = self.parse_expr()?;
 
@@ -79,55 +164,61 @@ impl<'a> Parser<'a> {
                     if self.peek_kind() == TokenKind::Define {
                         return Err(
                             Diagnostic::error("invalid define statement", self.current_span())
-                                .with_help("define statements cannot be chained")
+                                .with_help("define statements cannot be chained"),
                         );
                     }
 
                     self.expect(TokenKind::Semicolon, "`;`")?;
-
+                    self.define_name(&name);
                     return Ok(Stmt::Define { name, value });
-
                 }
             }
         }
 
-        // Otherwise: expression-based flow statement
+        // ===== Expression-led statements =====
         let lhs = self.parse_expr()?;
-        
+
+        // Define/Bind tokens are not valid here unless the statement started with an identifier.
+        match self.peek_kind() {
+            TokenKind::Define | TokenKind::DefineEmpty => {
+                return Err(
+                    Diagnostic::error("invalid define statement", self.current_span())
+                        .with_help("define statements must start with an identifier"),
+                );
+            }
+            TokenKind::Bind => {
+                return Err(
+                    Diagnostic::error("invalid bind statement", self.current_span())
+                        .with_help("bind statements must start with an identifier"),
+                );
+            }
+            _ => {}
+        }
+
         let stmt = match self.peek_kind() {
-        TokenKind::ArrowL => {
-            self.bump();
-            let rhs = self.parse_expr()?;
-            Stmt::AssignFrom { target: lhs, source: rhs }
-        }
-
-        TokenKind::ArrowR => {
-            self.bump();
-            let rhs = self.parse_expr()?;
-            Stmt::SendTo { value: lhs, destination: rhs }
-        }
-
-        // `=` is not a general statement delimiter. It is ONLY valid as a Define or DefineEmpty,
-        // and Define and DefineEmpty statements must begin with an identifier.
-        TokenKind::Define | TokenKind::DefineEmpty => {
-            return Err(
-                Diagnostic::error("invalid define statement", self.current_span())
-                    .with_help("define statements must start with an identifier")
-            );
-        }
-
-    _ => {
-        return Err(
-            Diagnostic::error("unexpected token", self.current_span())
-                .with_help("expected `<-` or `->`")
-        );
-    }
-};
-
+            TokenKind::ArrowL => {
+                self.bump();
+                let rhs = self.parse_expr()?;
+                Stmt::AssignFrom { target: lhs, source: rhs }
+            }
+            TokenKind::ArrowR => {
+                self.bump();
+                let rhs = self.parse_expr()?;
+                Stmt::SendTo { value: lhs, destination: rhs }
+            }
+            _ => {
+                return Err(
+                    Diagnostic::error("unexpected token", self.current_span())
+                        .with_help("expected `<-` or `->`"),
+                );
+            }
+        };
 
         self.expect(TokenKind::Semicolon, "`;`")?;
         Ok(stmt)
     }
+
+
 
     fn parse_block_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         // consume :{
@@ -251,7 +342,7 @@ impl<'a> Parser<'a> {
 
             TokenKind::TextLit => Ok(Expr::Lit(Literal::Text(tok.lexeme.clone()))),
 
-            // Emp literal: keyword Emp
+            // Emp literal: keyword emp
             TokenKind::KwEmp => Ok(Expr::Lit(Literal::Emp)),
 
             // unary operators
@@ -409,10 +500,6 @@ enum Infix {
     And,
     Or,
 
-    // Assignment / binding (right associative) — expression forms (not stmt forms)
-    QAssign,
-    Bind,
-
     // Colon semantics
     Scope,
     Present,
@@ -458,10 +545,6 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
         // pipe
         TokenKind::Pipe => (20, 21, Pipe),
 
-        // assignment-like (expression forms): right associative
-        TokenKind::QAssign => (10, 9, QAssign),
-        TokenKind::Bind => (10, 9, Bind),
-
         _ => return None,
     })
 }
@@ -485,9 +568,6 @@ fn build_infix(kind: Infix, lhs: Expr, rhs: Expr) -> Expr {
 
         And => Expr::And(Box::new(lhs), Box::new(rhs)),
         Or => Expr::Or(Box::new(lhs), Box::new(rhs)),
-
-        QAssign => Expr::QAssign(Box::new(lhs), Box::new(rhs)),
-        Bind => Expr::Bind(Box::new(lhs), Box::new(rhs)),
 
         Scope => Expr::Scope(Box::new(lhs), Box::new(rhs)),
         Present => Expr::Present(Box::new(lhs), Box::new(rhs)),

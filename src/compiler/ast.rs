@@ -1,11 +1,24 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
+    /// Integer number.
     Num(i64),
+
+    /// Decimal number (kept as text to preserve precision).
     Dec(String),
+
+    /// Boolean value.
     Flag(bool),
+
+    /// Text value.
     Text(String),
+
+    /// Explicit absence of value.
+    ///
+    /// `emp` always evaluates to a false flag.
+    /// There is no `undefined` in Druim.
     Emp,
 }
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -35,11 +48,6 @@ pub enum Expr {
     // ===== Logical =====
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
-
-    // ===== Assignment & binding =====
-    Assign(Box<Expr>, Box<Expr>),    // =
-    QAssign(Box<Expr>, Box<Expr>),   // ?=
-    Bind(Box<Expr>, Box<Expr>),      // :=
 
     // ===== Colon semantics =====
     Scope(Box<Expr>, Box<Expr>),     // ::
@@ -144,6 +152,24 @@ pub enum Stmt {
         name: String,
         target: String,
     },
+     /// Guarded assignment.
+    ///
+    /// Evaluates `condition`.
+    /// If truthy, assigns `target = value`.
+    /// Otherwise continues to the next guard or resolves to `emp`.
+    ///
+    /// Syntax:
+    ///     x ?= y;
+    ///     x ?= y : z;
+    ///     x ?= y : z : v;
+    ///
+    /// If no fallback branch succeeds, `target` is assigned `emp`.
+    Guard {
+        target: String,
+        branches: Vec<Expr>,
+    }
+
+
 
 }
 

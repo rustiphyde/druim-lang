@@ -29,52 +29,91 @@ impl<'a> Lexer<'a> {
             let start = self.pos;
             let ch = self.peek_char();
 
-            // Identifier or keyword (may start with digit, but not all digits)
-            if ch.is_ascii_alphanumeric() || ch == '_' {
+            // ===== Digit-starting: NumLit, DecLit, or digit-leading Ident =====
+            //
+            // Rules:
+            // - If it starts with digits and continues with letters/_ -> Ident (e.g., 1a, 9lives, 123_456)
+            // - If it's only digits -> NumLit
+            // - Decimals are strictly digits '.' digits (e.g., 3.14)
+            // - Invalid decimals error: "1.", "1..2"
+            if ch.is_ascii_digit() {
                 let start = self.pos;
-                let text = self.read_while(|c| c.is_ascii_alphanumeric() || c == '_');
 
-                let is_all_digits = text.chars().all(|c| c.is_ascii_digit());
+                // First consume the leading digit run.
+                self.read_while(|c| c.is_ascii_digit());
 
-                if is_all_digits {
-                    // treat as number literal
-                    let kind = TokenKind::NumLit;
-                    tokens.push(Token { kind, lexeme: text, pos: start });
-                } else {
-                    let kind = match text.as_str() {
-                        "Num" => TokenKind::KwNum,
-                        "Dec" => TokenKind::KwDec,
-                        "Flag" => TokenKind::KwFlag,
-                        "Text" => TokenKind::KwText,
-                        "Emp" => TokenKind::KwEmp,
-                        _ => TokenKind::Ident,
-                    };
+                // Decimal form: digits '.' digits
+                if !self.eof() && self.peek_char() == '.' {
+                    self.bump_char(); // consume '.'
 
-                    tokens.push(Token { kind, lexeme: text, pos: start });
+                    // Require at least one digit after the decimal point.
+                    if self.eof() || !self.peek_char().is_ascii_digit() {
+                        return Err(LexError::UnexpectedChar {
+                            ch: '.',
+                            pos: self.pos - 1, // position of '.'
+                        });
+                    }
+
+                    self.read_while(|c| c.is_ascii_digit());
+
+                    tokens.push(Token {
+                        kind: TokenKind::DecLit,
+                        lexeme: self.src[start..self.pos].to_string(),
+                        pos: start,
+                    });
+
+                    continue;
                 }
+
+                // If the next char is identifier-continue, this is a digit-leading identifier.
+                if !self.eof() {
+                    let next = self.peek_char();
+                    if next.is_ascii_alphabetic() || next == '_' {
+                        self.read_while(|c| c.is_ascii_alphanumeric() || c == '_');
+
+                        tokens.push(Token {
+                            kind: TokenKind::Ident,
+                            lexeme: self.src[start..self.pos].to_string(),
+                            pos: start,
+                        });
+
+                        continue;
+                    }
+                }
+
+                // Otherwise it is pure digits.
+                tokens.push(Token {
+                    kind: TokenKind::NumLit,
+                    lexeme: self.src[start..self.pos].to_string(),
+                    pos: start,
+                });
 
                 continue;
             }
 
-            // Decimal literal (must start with digit)
-            if ch.is_ascii_digit() {
-                let number = self.read_number();
-                let kind = if number.contains('.') {
-                    TokenKind::DecLit
-                } else {
-                    TokenKind::NumLit
+            // ===== Identifier or keyword (non-digit start) =====
+            if ch.is_ascii_alphabetic() || ch == '_' {
+                let text = self.read_while(|c| c.is_ascii_alphanumeric() || c == '_');
+
+                let kind = match text.as_str() {
+                    "num" => TokenKind::KwNum,
+                    "dec" => TokenKind::KwDec,
+                    "flag" => TokenKind::KwFlag,
+                    "text" => TokenKind::KwText,
+                    "emp" => TokenKind::KwEmp,
+                    _ => TokenKind::Ident,
                 };
 
                 tokens.push(Token {
                     kind,
-                    lexeme: number,
+                    lexeme: text,
                     pos: start,
                 });
+
                 continue;
             }
 
-
-            // Text literal
+            // ===== Text literal =====
             if ch == '"' {
                 let text = self.read_text(start)?;
                 tokens.push(Token {
@@ -85,7 +124,9 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
-            // Block delimiters (must be before single ':')
+            // ===== Multi-char operators (longest first) =====
+
+            // ===== Block delimiters (must be before single ':') =====
             if self.match_str(":[") {
                 tokens.push(tok(TokenKind::BlockExprStart, ":[", start));
                 continue;
@@ -98,6 +139,7 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockExprChain, "][", start));
                 continue;
             }
+
             if self.match_str(":{") {
                 tokens.push(tok(TokenKind::BlockStmtStart, ":{", start));
                 continue;
@@ -110,6 +152,7 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockStmtChain, "}{", start));
                 continue;
             }
+
             if self.match_str(":(") {
                 tokens.push(tok(TokenKind::BlockFuncStart, ":(", start));
                 continue;
@@ -122,6 +165,7 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockFuncChain, ")(", start));
                 continue;
             }
+
             if self.match_str(":<") {
                 tokens.push(tok(TokenKind::BlockArrayStart, ":<", start));
                 continue;
@@ -134,8 +178,10 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockArrayChain, "><", start));
                 continue;
             }
+
+            // ===== Other multi-char operators =====
             if self.match_str("?=") {
-                tokens.push(tok(TokenKind::QAssign, "?=", start));
+                tokens.push(tok(TokenKind::Guard, "?=", start));
                 continue;
             }
             if self.match_str("=;") {
@@ -146,6 +192,7 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::Pipe, "|>", start));
                 continue;
             }
+
             if self.match_str("==") {
                 tokens.push(tok(TokenKind::Eq, "==", start));
                 continue;
@@ -162,6 +209,7 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::Ge, ">=", start));
                 continue;
             }
+
             if self.match_str("&?") {
                 tokens.push(tok(TokenKind::And, "&?", start));
                 continue;
@@ -174,18 +222,17 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::Not, "!?", start));
                 continue;
             }
+
             if self.match_str("->") {
                 tokens.push(tok(TokenKind::ArrowR, "->", start));
                 continue;
             }
-
             if self.match_str("<-") {
                 tokens.push(tok(TokenKind::ArrowL, "<-", start));
                 continue;
             }
 
-
-            // Colon-family operators (longest first)
+            // ===== Colon-family operators (longest first) =====
             if self.match_str("::") {
                 tokens.push(tok(TokenKind::Scope, "::", start));
                 continue;
@@ -207,7 +254,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
-            // Other operators / punctuation
+            // ===== Single-char operators / punctuation =====
             let kind = match ch {
                 '=' => TokenKind::Define,
                 '+' => TokenKind::Add,
@@ -265,15 +312,6 @@ impl<'a> Lexer<'a> {
         self.src[start..self.pos].to_string()
     }
 
-    fn read_number(&mut self) -> String {
-        let start = self.pos;
-        self.read_while(|c| c.is_ascii_digit());
-        if !self.eof() && self.peek_char() == '.' {
-            self.bump_char();
-            self.read_while(|c| c.is_ascii_digit());
-        }
-        self.src[start..self.pos].to_string()
-    }
 
     fn read_text(&mut self, start_pos: usize) -> Result<String, LexError> {
         // consume opening quote
@@ -331,12 +369,4 @@ fn tok(kind: TokenKind, lex: &str, pos: usize) -> Token {
         lexeme: lex.to_string(),
         pos,
     }
-}
-
-fn is_ident_start(c: char) -> bool {
-    c.is_ascii_alphabetic() || c == '_'
-}
-
-fn is_ident_continue(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
 }

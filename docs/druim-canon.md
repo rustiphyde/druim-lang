@@ -112,11 +112,10 @@ All tokens described here are **lexically atomic**: the lexer will never emit pa
 
 The following identifiers are lexed as keywords when matched exactly:
 
-- `Num` → `KwNum`
-- `Dec` → `KwDec`
-- `Flag` → `KwFlag`
-- `Text` → `KwText`
-- `Emp` → `KwEmp`
+- `num` → `KwNum`
+- `dec` → `KwDec`
+- `text` → `KwText`
+- `emp` → `KwEmp`
 
 All other identifier strings are emitted as `Ident`.
 
@@ -135,7 +134,7 @@ A sequence consisting entirely of digits is **not** an identifier and is treated
 
 ### Valid Identifiers
 
-```
+```druim
 a
 abc
 a1
@@ -149,7 +148,7 @@ _foo
 
 ### Invalid Identifiers
 
-```
+```druim
 1
 123
 000
@@ -185,7 +184,7 @@ Numeric literals are unquoted.
 
 An integer literal is a contiguous sequence of one or more ASCII digits (`0–9`).
 
-```
+```druim
 0
 1
 42
@@ -204,7 +203,7 @@ A decimal literal consists of:
 - followed by a single dot (`.`)  
 - followed by one or more ASCII digits
 
-```
+```druim
 0.1
 1.0
 12.34
@@ -219,7 +218,7 @@ Decimal literals must contain digits on **both sides** of the dot.
 
 The following forms are not valid numeric literals:
 
-```
+```druim
 .
 1.
 .5
@@ -235,7 +234,7 @@ A numeric literal consists **only** of digits, or digits with a single decimal p
 
 Any alphanumeric sequence that contains at least one non-digit character (such as a letter or underscore) is **not** a numeric literal and is lexed as an identifier.
 
-```
+```druim
 123 // numeric literal
 123.456 // decimal literal
 123abc // identifier
@@ -256,8 +255,45 @@ This distinction is purely lexical and does not imply validity in all syntactic 
 - Explicitly defines the left-hand side as an empty value
 - This is a complete define statement
 
-### Conditional Assign
-- **`?=`** → `QAssign`
+## Truth Evaluation (Flags)
+
+Druim does **not** have implicit truthiness in the C/JS sense.  
+All conditional evaluation is **explicit, deterministic, and total**.
+
+### Flag Type
+- `flag` is the boolean type in Druim.
+- A `flag` may only ever be `true` or `false`.
+
+### Truth Coercion Rules
+When a value is *explicitly evaluated* as a `flag`, the following rules apply:
+
+- `flag(true)` → `true`
+- `flag(false)` → `false`
+- `0` → `false`
+- `0.0` → `false`
+- Any non-zero `num` → `true`
+- Any non-zero `dec` → `true`
+- Any `text` value → `true`
+- `emp` → `false`
+
+No other values are permitted to participate in truth evaluation.
+
+### Undefined Values
+- **Undefined does not exist in Druim.**
+- Any attempt to reference an undeclared or uninitialized identifier **must raise a diagnostic**.
+- There is no silent fallback, null propagation, or implicit defaulting.
+
+### Empty Definition
+- `x =;` is valid syntax and is equivalent to `x = emp;`
+- `emp` represents the absence of a value and always evaluates to `false` when coerced to `flag`.
+
+### Design Guarantee
+Every truth evaluation in Druim:
+- Is explicitly defined
+- Produces a valid `flag`
+- Or fails with a diagnostic
+
+There is no third state.
 
 ---
 
@@ -372,6 +408,106 @@ Example:
 a = 10;
 b := a;
 ```
+
+---
+
+## Guard (`?=` / `:`)
+
+The Guard operator provides conditional assignment without introducing statements, blocks, or control-flow keywords.
+
+It evaluates expressions using explicit boolean (`flag`) semantics and always resolves to a defined value.
+
+---
+
+### Basic Form
+
+```druim  
+x ?= y;  
+```
+
+Semantics:
+
+- `y` is evaluated and converted to a `flag`
+- If `flag(y)` is `true` → `x = y;`
+- If `flag(y)` is `false` → `x = emp;`
+
+This form implicitly falls back to `emp`.
+
+Equivalent to:
+
+```druim  
+x ?= y : emp;  
+```
+
+---
+
+### Guard With Fallback
+
+```druim  
+x ?= y : z;  
+```
+
+Semantics:
+
+- If `flag(y)` is `true` → `x = y;`
+- Otherwise → `x = z;`
+
+Both branches are expressions.  
+The result is always a defined value.
+
+---
+
+### Guard Chaining
+
+Guards may be chained to express ordered conditional resolution.
+
+```druim  
+x ?= y : z : v;  
+```
+
+Semantics:
+
+- If `flag(y)` is `true` → `x = y;`
+- Else if `flag(z)` is `true` → `x = z;`
+- Else → `x = v;`
+- Else → `x = emp;`
+
+Rules:
+
+- **?=** appears exactly once, immediately after the target identifier
+- **:** is the only fallback separator
+- Every segment after `?=` is an expression
+- Fallbacks are unbound in count
+- `emp` is the implicit terminal fallback of every guard
+- Evaluation proceeds left-to-right
+- The first truthy branch wins
+- If all guard and fallback expressions evaluate to false target is assigned **emp**
+- **emp** always evaluates to a false **flag**
+
+---
+
+### Truth Evaluation
+
+Guard conditions use **explicit truth evaluation**, not implicit truthiness.
+
+| Type  | Truth Rule |
+|------|------------|
+| `flag` | `true` / `false` |
+| `num`  | `0` → false, non-zero → true |
+| `dec`  | `0.0` → false, non-zero → true |
+| `text` | empty → false, non-empty → true |
+| `emp`  | always false |
+
+There is no `undefined` value in Druim.
+
+---
+
+### Guarantees
+
+- Guard never produces `undefined`
+- All assignments resolve deterministically
+- `emp` represents intentional absence, not missing state
+- Guard is an expression-level construct, not a statement or block
 
 ---
 

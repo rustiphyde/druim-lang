@@ -409,6 +409,135 @@ fn nested_expression_block_respects_precedence() {
     }
 }
 
+#[test]
+fn bind_requires_identifier_lhs() {
+    let src = ":= a;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser.parse_stmt().expect_err("expected invalid bind statement");
+
+    let source = Source::new(src.to_string());
+    let msg = render(&err, &source);
+
+    assert!(
+        msg.contains("invalid bind statement"),
+        "expected invalid statement error, got:\n{msg}"
+    );
+
+    assert!(
+        msg.contains("identifier"),
+        "expected identifier-related help text, got:\n{msg}"
+    );
+}
+
+#[test]
+fn guard_basic_statement() {
+    let src = "x ?= y;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser.parse_program().unwrap();
+    assert_eq!(program.stmts.len(), 1);
+
+    match &program.stmts[0] {
+        Stmt::Guard { target, branches } => {
+            assert_eq!(target, "x");
+            assert_eq!(branches.len(), 1);
+        }
+        _ => panic!("expected Guard statement"),
+    }
+}
+
+#[test]
+fn guard_single_fallback_statement() {
+
+
+    let src = "x ?= y : z;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser.parse_program().unwrap();
+    assert_eq!(program.stmts.len(), 1);
+
+    match &program.stmts[0] {
+        Stmt::Guard { target, branches } => {
+            assert_eq!(target, "x");
+            assert_eq!(branches.len(), 2);
+
+            assert!(matches!(branches[0], Expr::Ident(ref s) if s == "y"));
+            assert!(matches!(branches[1], Expr::Ident(ref s) if s == "z"));
+        }
+        other => panic!("expected Guard statement, got {:?}", other),
+    }
+}
+
+#[test]
+fn guard_chained_statement() {
+    let src = "x ?= y : z : v : w;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+    let program = parser.parse_program().unwrap();
+
+    assert_eq!(program.stmts.len(), 1);
+
+    match &program.stmts[0] {
+        Stmt::Guard { target, branches } => {
+            assert_eq!(target, "x");
+            assert_eq!(branches.len(), 4);
+        }
+        _ => panic!("expected Guard statement"),
+    }
+}
+
+#[test]
+fn guard_requires_identifier_lhs() {
+    let src = "?= a;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser.parse_stmt().expect_err("expected invalid guard statement");
+
+    let source = Source::new(src.to_string());
+    let msg = render(&err, &source);
+
+    assert!(
+        msg.contains("invalid guard statement"),
+        "expected invalid statement error, got:\n{msg}"
+    );
+
+    assert!(
+        msg.contains("identifier"),
+        "expected identifier-related help text, got:\n{msg}"
+    );
+}
+
+#[test]
+fn guard_allows_emp_condition() {
+    let src = "x ?= emp;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let stmt = parser.parse_stmt().expect("expected guard statement to parse");
+
+    match stmt {
+        Stmt::Guard { target, branches } => {
+            assert_eq!(target, "x");
+            assert_eq!(branches.len(), 1);
+
+            match &branches[0] {
+                Expr::Lit(Literal::Emp) => {}
+                other => panic!("expected emp literal, got {:?}", other),
+            }
+        }
+        other => panic!("expected Guard statement, got {:?}", other),
+    }
+}
+
+
+
+
+
 
 
 
