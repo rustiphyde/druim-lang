@@ -133,6 +133,18 @@ pub enum Stmt {
     DefineEmpty {
         name: String,
     },
+        /// Declarative binding to an existing identifier.
+    ///
+    /// Binds `name` to an already-defined identifier `target`.
+    /// Does not create or compute a new value.
+    ///
+    /// Syntax:
+    ///     name := target;
+    Bind {
+        name: String,
+        target: String,
+    },
+
 }
 
 #[derive(Debug, Clone, PartialEq)]

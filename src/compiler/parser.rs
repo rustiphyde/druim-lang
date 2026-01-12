@@ -1,15 +1,22 @@
 use crate::compiler::ast::{Expr, Literal, Program, Stmt};
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
+use std::collections::HashSet;
+
 
 pub struct Parser<'a> {
     tokens: &'a [Token],
     index: usize,
+    scopes: Vec<HashSet<String>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
-        Self { tokens, index: 0 }
+        Self {
+            tokens,
+            index: 0,
+            scopes: vec![HashSet::new()],
+        }
     }
 
     pub fn parse_program(&mut self) -> Result<Program, Diagnostic> {
@@ -127,6 +134,8 @@ impl<'a> Parser<'a> {
         let start_span = self.current_span();
         self.bump(); // BlockStmtStart
 
+        self.scopes.push(HashSet::new());
+
         let mut stmts = Vec::new();
 
         // parse statements until we hit }:
@@ -146,6 +155,8 @@ impl<'a> Parser<'a> {
 
         // consume }:
         self.bump();
+
+        self.scopes.pop();
 
         Ok(Stmt::Block { stmts })
     }
@@ -331,6 +342,15 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn define_name(&mut self, name: &str) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string());
+        }
+    }
+
+    fn is_defined(&self, name: &str) -> bool {
+        self.scopes.iter().rev().any(|s| s.contains(name))
+    }
 
     fn bump(&mut self) -> Option<&Token> {
         let t = self.tokens.get(self.index);

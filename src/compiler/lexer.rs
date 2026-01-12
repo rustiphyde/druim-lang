@@ -29,27 +29,34 @@ impl<'a> Lexer<'a> {
             let start = self.pos;
             let ch = self.peek_char();
 
-            // Identifier or keyword
-            if is_ident_start(ch) {
-                let ident = self.read_while(is_ident_continue);
-                let kind = match ident.as_str() {
-                    "Num" => TokenKind::KwNum,
-                    "Dec" => TokenKind::KwDec,
-                    "Flag" => TokenKind::KwFlag,
-                    "Text" => TokenKind::KwText,
-                    "Emp" => TokenKind::KwEmp,
-                    _ => TokenKind::Ident,
-                };
+            // Identifier or keyword (may start with digit, but not all digits)
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                let start = self.pos;
+                let text = self.read_while(|c| c.is_ascii_alphanumeric() || c == '_');
 
-                tokens.push(Token {
-                    kind,
-                    lexeme: ident,
-                    pos: start,
-                });
+                let is_all_digits = text.chars().all(|c| c.is_ascii_digit());
+
+                if is_all_digits {
+                    // treat as number literal
+                    let kind = TokenKind::NumLit;
+                    tokens.push(Token { kind, lexeme: text, pos: start });
+                } else {
+                    let kind = match text.as_str() {
+                        "Num" => TokenKind::KwNum,
+                        "Dec" => TokenKind::KwDec,
+                        "Flag" => TokenKind::KwFlag,
+                        "Text" => TokenKind::KwText,
+                        "Emp" => TokenKind::KwEmp,
+                        _ => TokenKind::Ident,
+                    };
+
+                    tokens.push(Token { kind, lexeme: text, pos: start });
+                }
+
                 continue;
             }
 
-            // Number literal
+            // Decimal literal (must start with digit)
             if ch.is_ascii_digit() {
                 let number = self.read_number();
                 let kind = if number.contains('.') {
@@ -65,6 +72,7 @@ impl<'a> Lexer<'a> {
                 });
                 continue;
             }
+
 
             // Text literal
             if ch == '"' {

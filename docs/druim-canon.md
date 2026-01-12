@@ -120,7 +120,129 @@ The following identifiers are lexed as keywords when matched exactly:
 
 All other identifier strings are emitted as `Ident`.
 
+## Identifiers
+
+Identifiers are unquoted names used to refer to declared values, bindings, and targets within the language.
+
+### Lexical Form
+
+An identifier is a contiguous sequence of ASCII alphanumeric characters (`A–Z`, `a–z`, `0–9`) and underscores (`_`).
+
+Identifiers **may begin with a digit**.
+
+However, an identifier **must contain at least one non-digit character**.  
+A sequence consisting entirely of digits is **not** an identifier and is treated as a numeric literal.
+
+### Valid Identifiers
+
+```
+a
+abc
+a1
+1a
+9lives
+123abc
+123_456
+_foo
+```
+
+
+### Invalid Identifiers
+
+```
+1
+123
+000
+```
+
+
+> Identifiers are not quoted. Quoted text represents string literals and is not used for naming.
+
+### Distinction from Numeric Literals
+
+- A sequence composed only of digits is lexed as a numeric literal.
+- A sequence containing digits and at least one non-digit character is lexed as an identifier.
+- Decimal literals are recognized separately and are not identifiers.
+
+This distinction is purely lexical and does not, by itself, imply validity in all syntactic positions.
+
 ---
+
+## Numeric Literals
+
+Numeric literals represent literal numeric values written directly in source code.
+
+### Lexical Form
+
+Druim recognizes two forms of numeric literals:
+
+- **Integer literals**
+- **Decimal literals**
+
+Numeric literals are unquoted.
+
+### Integer Literals
+
+An integer literal is a contiguous sequence of one or more ASCII digits (`0–9`).
+
+```
+0
+1
+42
+123
+000
+```
+
+
+All-digit sequences are lexed as integer literals unless recognized as decimal literals.
+
+### Decimal Literals
+
+A decimal literal consists of:
+
+- one or more ASCII digits  
+- followed by a single dot (`.`)  
+- followed by one or more ASCII digits
+
+```
+0.1
+1.0
+12.34
+000.5
+6.0007
+```
+
+
+Decimal literals must contain digits on **both sides** of the dot.
+
+### Invalid Numeric Forms
+
+The following forms are not valid numeric literals:
+
+```
+.
+1.
+.5
+1..2
+```
+
+
+Such sequences result in a lexical error.
+
+### Distinction from Identifiers
+
+A numeric literal consists **only** of digits, or digits with a single decimal point.
+
+Any alphanumeric sequence that contains at least one non-digit character (such as a letter or underscore) is **not** a numeric literal and is lexed as an identifier.
+
+```
+123 // numeric literal
+123.456 // decimal literal
+123abc // identifier
+123_456 // identifier
+```
+
+This distinction is purely lexical and does not imply validity in all syntactic positions.
 
 ## Define Operators
 
