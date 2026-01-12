@@ -92,7 +92,7 @@ All tokens described here are **lexically atomic**: the lexer will never emit pa
 
 ### Identifiers
 - **Token**: `Ident`
-- Identifiers begin with an ASCII letter or `_`
+- Identifiers begin with an ASCII letter, digit, or `_`
 - Identifiers may contain ASCII letters, digits, or `_`
 - Keywords are resolved at lexing time
 
