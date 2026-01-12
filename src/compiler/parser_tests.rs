@@ -534,6 +534,36 @@ fn guard_allows_emp_condition() {
     }
 }
 
+#[test]
+fn guard_rhs_cannot_be_empty() {
+    let src = "a ?=;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_stmt()
+        .expect_err("expected invalid guard statement");
+
+    let source = Source::new(src.to_string());
+    let msg = render(&err, &source);
+
+    assert!(
+        msg.contains("invalid guard statement"),
+        "expected guard-specific error, got:\n{msg}"
+    );
+
+    assert!(
+        msg.contains("DefineEmpty"),
+        "expected DefineEmpty suggestion, got:\n{msg}"
+    );
+
+    assert!(
+        msg.contains("a =;"),
+        "expected example syntax in help text, got:\n{msg}"
+    );
+}
+
+
 
 
 

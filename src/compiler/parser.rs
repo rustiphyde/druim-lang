@@ -120,25 +120,27 @@ impl<'a> Parser<'a> {
                     return Ok(Stmt::Bind { name, target });
                 }
 
-                // name ?= expr ( : (?=)? expr )* ;
+                // name ?= expr ( : expr )* ;
                 if next.kind == TokenKind::Guard {
                     let name_tok = self.bump().unwrap(); // ident
                     let name = name_tok.lexeme.clone();
                     self.bump(); // consume ?=
+
+                    if self.peek_kind() == TokenKind::Semicolon {
+                        return Err(
+                            Diagnostic::error("invalid guard statement", self.current_span())
+                                .with_help("did you mean to use the DefineEmpty operator? use: a =;")
+                        );
+                    }
 
                     let mut branches = Vec::new();
 
                     // first branch after ?=
                     branches.push(self.parse_expr()?);
 
-                    // chained fallbacks: `: z` or `: ?= z` repeatedly
+                    // chained fallbacks: `: z` repeatedly
                     while self.peek_kind() == TokenKind::Colon {
                         self.bump(); // consume ':'
-
-                        // optional `?=` marker in chained branches
-                        if self.peek_kind() == TokenKind::Guard {
-                            self.bump(); // consume '?='
-                        }
 
                         branches.push(self.parse_expr()?);
                     }
