@@ -86,12 +86,44 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockExprEnd, "]:", start));
                 continue;
             }
+            if self.match_str("][") {
+                tokens.push(tok(TokenKind::BlockExprChain, "][", start));
+                continue;
+            }
             if self.match_str(":{") {
                 tokens.push(tok(TokenKind::BlockStmtStart, ":{", start));
                 continue;
             }
             if self.match_str("}:") {
                 tokens.push(tok(TokenKind::BlockStmtEnd, "}:", start));
+                continue;
+            }
+            if self.match_str("}{") {
+                tokens.push(tok(TokenKind::BlockStmtChain, "}{", start));
+                continue;
+            }
+            if self.match_str(":(") {
+                tokens.push(tok(TokenKind::BlockFuncStart, ":(", start));
+                continue;
+            }
+            if self.match_str("):") {
+                tokens.push(tok(TokenKind::BlockFuncEnd, "):", start));
+                continue;
+            }
+            if self.match_str(")(") {
+                tokens.push(tok(TokenKind::BlockFuncChain, ")(", start));
+                continue;
+            }
+            if self.match_str(":<") {
+                tokens.push(tok(TokenKind::BlockArrayStart, ":<", start));
+                continue;
+            }
+            if self.match_str(">:") {
+                tokens.push(tok(TokenKind::BlockArrayEnd, ">:", start));
+                continue;
+            }
+            if self.match_str("><") {
+                tokens.push(tok(TokenKind::BlockArrayChain, "><", start));
                 continue;
             }
             if self.match_str("?=") {
@@ -122,12 +154,16 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::Ge, ">=", start));
                 continue;
             }
-            if self.match_str("&&") {
-                tokens.push(tok(TokenKind::And, "&&", start));
+            if self.match_str("&?") {
+                tokens.push(tok(TokenKind::And, "&?", start));
                 continue;
             }
-            if self.match_str("||") {
-                tokens.push(tok(TokenKind::Or, "||", start));
+            if self.match_str("|?") {
+                tokens.push(tok(TokenKind::Or, "|?", start));
+                continue;
+            }
+            if self.match_str("!?") {
+                tokens.push(tok(TokenKind::Not, "!?", start));
                 continue;
             }
             if self.match_str("->") {
@@ -171,11 +207,12 @@ impl<'a> Lexer<'a> {
                 '*' => TokenKind::Mul,
                 '/' => TokenKind::Div,
                 '%' => TokenKind::Mod,
+                '>' => TokenKind::Gt,
+                '<' => TokenKind::Lt,
                 '(' => TokenKind::LParen,
                 ')' => TokenKind::RParen,
                 ',' => TokenKind::Comma,
                 ';' => TokenKind::Semicolon,
-                '!' => TokenKind::Not,
                 _ => {
                     return Err(LexError::UnexpectedChar {
                         ch,
