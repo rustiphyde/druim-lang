@@ -1,4 +1,6 @@
-![Druim Logo](./assets/Druim%20Logo%20Color%2064x64.png)
+<p align="center">
+  <img src="./assets/Druim%20Logo%20Color%2064x64.png" alt="Druim Logo" width="300">
+</p>
 
 # Druim
 
