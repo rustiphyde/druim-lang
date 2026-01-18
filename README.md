@@ -43,9 +43,9 @@ If something is not explicitly documented, it should be assumed disallowed.
 
 The authoritative language definition lives in:
 
-druim
+```druim
 druim-canon.md
-druim
+```
 
 When conflicts arise between code, tests, comments, or recollection, the canon wins.
 
@@ -80,20 +80,20 @@ Every construct must be:
 
 Valid identifiers:
 
-druim
+```druim
 abc
 1a
 123abc
 _foo
-druim
+```
 
 Invalid identifiers:
 
-druim
+```druim
 1
 123
 000
-druim
+```
 
 All-digit sequences are numeric literals.
 
@@ -106,22 +106,22 @@ Druim supports:
 - Integer literals (`num`)
 - Decimal literals (`dec`)
 
-druim
+```druim
 42
 0
 123
 1.0
 12.34
-druim
+```
 
 Invalid numeric forms cause a lexical error:
 
-druim
+```druim
 .
 1.
 .5
 1..2
-druim
+```
 
 ---
 
@@ -130,10 +130,10 @@ druim
 - Enclosed in double quotes
 - Unterminated strings are lexical errors
 
-druim
+```druim
 "hello"
 ""
-druim
+```
 
 ---
 
@@ -144,13 +144,13 @@ Blocks are not inferred by indentation or keywords.
 
 ### Block Statements (Scope-Bearing)
 
-druim
+```druim
 :{
     a = 1;
 }{
     b = a + 1;
 }:
-druim
+```
 
 Rules:
 
@@ -183,24 +183,24 @@ They never create or destroy scope.
 
 Defines a value by evaluating an expression.
 
-druim
+```druim
 a = 10;
 b = a + 2;
-druim
+```
 
 ### Define Empty (`=;`)
 
 Explicitly defines a value as empty.
 
-druim
+```druim
 x =;
-druim
+```
 
 Equivalent to:
 
-druim
+```druim
 x = emp;
-druim
+```
 
 ---
 
@@ -218,9 +218,9 @@ There is no undefined state in Druim.
 
 Copies the current value of an existing identifier.
 
-druim
+```druim
 a := b;
-druim
+```
 
 Rules:
 
@@ -235,9 +235,9 @@ Rules:
 
 Conditional definition without statements or blocks.
 
-druim
+```druim
 x ?= y : z;
-druim
+```
 
 Evaluation:
 
@@ -268,9 +268,9 @@ There is no third state.
 
 Safe access operator.
 
-druim
+```druim
 user::profile::email
-druim
+```
 
 Semantics:
 
@@ -311,9 +311,9 @@ Druim favors early, loud diagnostics.
 
 The compiler is intentionally staged:
 
-druim
+```druim
 token → lexer → parser → AST → diagnostics
-druim
+```
 
 Each stage:
 
