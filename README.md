@@ -1,3 +1,5 @@
+![Druim Logo](./assets/Druim%20Logo%20Color%2064x64.png)
+
 # Druim
 
 Druim is a deterministic, explicitly structured programming language under active development.
