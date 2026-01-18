@@ -25,7 +25,7 @@ mod tests {
 
     #[test]
     fn keyword_vs_identifier() {
-        let ks = kinds("num numx text emp fn");
+        let ks = kinds("num numx text void fn");
         assert_eq!(ks[0], KwNum);
         assert_eq!(ks[1], Ident);
         assert_eq!(ks[2], KwText);

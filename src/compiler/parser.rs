@@ -358,9 +358,10 @@ impl<'a> Parser<'a> {
             }
 
             TokenKind::KwFn => {
-                // expect function name
+                let span = self.current_span();
+
                 let name_tok = self.bump().ok_or_else(|| {
-                    Diagnostic::error("unexpected end of input", self.current_span())
+                    Diagnostic::error("unexpected end of input", span)
                         .with_help("expected function name")
                 })?;
 
