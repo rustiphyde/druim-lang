@@ -126,7 +126,8 @@ impl<'a> Parser<'a> {
                     let name = name_tok.lexeme.clone();
                     self.bump(); // consume ?=
 
-                    if self.peek_kind() == TokenKind::Semicolon {
+                    // Disallow empty first branch: `a ?=;` or `a ?= : z;`
+                    if self.peek_kind() == TokenKind::Semicolon || self.peek_kind() == TokenKind::Colon {
                         return Err(
                             Diagnostic::error("invalid guard statement", self.current_span())
                                 .with_help("did you mean to use the DefineEmpty operator? use: a =;")
@@ -192,6 +193,12 @@ impl<'a> Parser<'a> {
                 return Err(
                     Diagnostic::error("invalid bind statement", self.current_span())
                         .with_help("bind statements must start with an identifier"),
+                );
+            }
+            TokenKind::Guard => {
+                return Err(
+                    Diagnostic::error("invalid guard statement", self.current_span())
+                        .with_help("guard statements must start with an identifier"),
                 );
             }
             _ => {}

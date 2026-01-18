@@ -4,6 +4,7 @@ pub mod ast;
 pub mod parser;
 pub mod error;
 pub mod diagnostic;
+pub mod semantics;
 
 #[cfg(test)]
 mod lexer_tests;

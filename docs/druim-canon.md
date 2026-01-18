@@ -316,6 +316,11 @@ Druim uses explicit block operators. Each block family has a **start**, **end**,
 - `):` → `BlockFuncEnd`
 - `)(` → `BlockFuncChain`
 
+### Branch Blocks
+- `:|` → `BlockBranchStart`
+- `|:` → `BlockBranchEnd`
+- `||` → `BlockBranchChain`
+
 ### Array Blocks
 - `:<` → `BlockArrayStart`
 - `>:` → `BlockArrayEnd`
@@ -323,6 +328,200 @@ Druim uses explicit block operators. Each block family has a **start**, **end**,
 
 **Invariant:**  
 Block chain tokens (`}{`, `][`, `)(`, `><`) are only produced by the lexer and cannot be synthesized from individual characters.
+
+## Block Statements, Block Chains, and Scope Semantics
+
+Druim defines **multiple block forms**, each with distinct semantic roles.  
+**Only Block Statements define runtime scope.**  
+All other block forms are *expression-level* or *structural* and do **not** create or manage scope.
+
+This distinction is **intentional, explicit, and locked**.
+
+---
+
+### Block Forms in Druim
+
+Druim supports the following block syntaxes:
+
+### Block Statements (Scope-Bearing)
+
+- **Block Statement Start**: `:{`
+- **Block Statement Chain**: `}{`
+- **Block Statement End**: `}:`
+
+Example:
+
+```druim
+:{
+    a = 1;
+}{
+    b = 2;
+}{
+    c = a + b;
+}:
+```
+
+**This is the only block form that creates and destroys scope.**
+
+---
+
+### Block Expressions (No Scope)
+
+- **Block Expression**: `:[ expr ]:`
+- **Chained Block Expression**: `:[ expr ][ expr ]:`
+
+Used to group expressions while preserving precedence.
+
+```druim
+:[ x + 1 ][ y * 2 ]:
+```
+
+Evaluates expressions only.  
+**Does not introduce scope.**
+
+---
+
+### Block Functions (No Scope)
+
+- **Block Function**: `:( args )( body ):`
+- **Chained Block Function**: `:( ... )( ... )( ... ):`
+
+Used for function-like grouping.
+
+Structural only.  
+Scope behavior is governed by function semantics, not block semantics.
+
+---
+
+### Block Branches (No Scope)
+
+- **Branch Block**: `:| expr || expr |:`
+
+Used for branching logic.
+
+Branching logic operates **within an existing scope**.  
+Does not create or destroy scope.
+
+---
+
+### Block Arrays (No Scope)
+
+- **Block Array**: `:< elem >< elem >:`
+
+Used for array-like grouping.
+
+Pure value construction.  
+No scope interaction.
+
+---
+
+## Core Rule (LOCKED)
+
+**Only Block Statements (`:{ … }:`) create scope.**  
+**Only Block Statement End (`}:`) destroys scope.**
+
+No other block form interacts with scope.
+
+---
+
+## Block Statement Chaining Semantics
+
+Within **Block Statements**, chaining is allowed:
+
+- `:{` — **Start scope**
+- `}{` — **Continue same scope**
+- `}:` — **End scope**
+
+### Critical Rule
+
+**`}{` does NOT end scope.**
+
+All chained block statements share **one continuous runtime scope**.
+
+Example:
+
+Druim
+:{
+    a = 1;
+}{
+    b = a + 1;
+}{
+    c = a + b;
+}:
+Druim
+
+All variables (`a`, `b`, `c`) exist in the **same scope**.
+
+---
+
+## What `}:` Means
+
+- `}:` marks the **end of the block statement chain**
+- The scope created at `:{` is destroyed here
+- All variables defined inside the chain go out of scope
+
+There is **no partial scope exit** inside a block chain.
+
+---
+
+## Why Block Statements Are Highest-Order
+
+Block Statements are the **highest-order block** because:
+
+- They contain full statements
+- They manage variable lifetime
+- They define execution order
+- They are the only construct capable of introducing lexical scope
+- They can contain all other block types within their boundaries
+
+All other block forms exist **inside** the scope established by Block Statements.
+
+---
+
+## Structural vs Semantic Blocks
+
+**Structural Blocks**
+- Block Expressions
+- Block Functions
+- Block Branches
+- Block Arrays
+
+➡ Affect syntax and evaluation  
+➡ **Never affect scope**
+
+**Semantic Blocks**
+- Block Statements only
+
+➡ Affect runtime environment  
+➡ Control variable lifetime
+
+---
+
+## Evaluator Responsibility
+
+The evaluator MUST implement scope handling as follows:
+
+- On encountering `:{`
+  - Push a new scope **only if not already inside a block statement**
+- On encountering `}{`
+  - Continue execution in the **current scope**
+- On encountering `}:`
+  - Pop the scope
+
+All other block types must **reuse the active scope**.
+
+
+---
+
+## Canonical Guarantee
+
+This behavior is **stable and non-negotiable**.
+
+**Only Block Statements define scope.  
+Only `}:` ends scope.**
+
+Any implementation that violates this rule is semantically incorrect.
+
 
 ---
 
@@ -374,7 +573,7 @@ Compound comparison operators are always matched before single-character `<` or 
 
 The colon (`:`) introduces multiple structural operators. Longest matches are always preferred.
 
-- `::` → `Scope`
+- `::` → `Has`
 - `:=` → `Bind`
 - `:?` → `Present`
 - `:>` → `Cast`
