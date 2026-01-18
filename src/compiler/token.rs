@@ -12,7 +12,10 @@ pub enum TokenKind {
     KwDec,
     KwFlag,
     KwText,
-    KwEmp,
+    KwVoid,
+
+    // ===== Keywords (expressions) =====
+    KwFn,   // fn
 
     // ===== Assignment & binding =====
 
@@ -75,7 +78,9 @@ pub enum TokenKind {
     BlockArrayStart, // :<
     BlockArrayEnd,   // >:
     BlockArrayChain, // ><
-
+    BlockBranchStart, // :|
+    BlockBranchEnd,   // |:
+    BlockBranchChain, // ||   
 
     // ===== Special =====
     Eof,

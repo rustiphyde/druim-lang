@@ -1,4 +1,4 @@
-use crate::compiler::ast::{Expr, Stmt};
+use crate::compiler::ast::{Expr, Stmt, Program};
 use crate::compiler::semantics::env::Env;
 use crate::compiler::semantics::truth::{truth_of, Truth};
 use crate::compiler::semantics::value::Value;
@@ -14,6 +14,12 @@ impl Evaluator {
         }
     }
 
+    pub fn eval_program(&mut self, program: &Program) {
+        for stmt in &program.stmts {
+            self.eval_stmt(stmt);
+        }
+    }
+
     /// For tests only (read current value).
     pub fn get(&self, name: &str) -> Option<Value> {
         self.env.get_value(name)
@@ -26,7 +32,7 @@ impl Evaluator {
             Expr::Ident(name) => {
                 self.env
                     .get_value(name)
-                    .unwrap_or(Value::Emp)
+                    .unwrap_or(Value::Void)
             }
 
             _ => todo!("expression evaluation not implemented yet"),
@@ -41,7 +47,7 @@ impl Evaluator {
             }
 
             Stmt::DefineEmpty { name } => {
-                self.env.define(name.clone(), Value::Emp);
+                self.env.define(name.clone(), Value::Void);
             }
 
             Stmt::Bind { name, target } => {
@@ -63,7 +69,7 @@ impl Evaluator {
             }
 
             Stmt::Guard { target, branches } => {
-                let mut result = Value::Emp;
+                let mut result = Value::Void;
 
                 for expr in branches {
                     let v = self.eval_expr(expr);

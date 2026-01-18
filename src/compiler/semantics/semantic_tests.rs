@@ -8,8 +8,8 @@ fn flag_truth_evaluates_explicitly() {
 }
 
 #[test]
-fn emp_is_always_false() {
-    assert_eq!(truth_of(&Value::Emp), Truth::False);
+fn void_is_always_false() {
+    assert_eq!(truth_of(&Value::Void), Truth::False);
 }
 
 #[test]

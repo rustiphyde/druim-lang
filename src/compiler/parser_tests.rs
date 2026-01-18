@@ -513,8 +513,8 @@ fn guard_requires_identifier_lhs() {
 }
 
 #[test]
-fn guard_allows_emp_condition() {
-    let src = "x ?= emp;";
+fn guard_allows_void_condition() {
+    let src = "x ?= void;";
     let tokens = Lexer::new(src).tokenize().unwrap();
     let mut parser = Parser::new(&tokens);
 
@@ -526,8 +526,8 @@ fn guard_allows_emp_condition() {
             assert_eq!(branches.len(), 1);
 
             match &branches[0] {
-                Expr::Lit(Literal::Emp) => {}
-                other => panic!("expected emp literal, got {:?}", other),
+                Expr::Lit(Literal::Void) => {}
+                other => panic!("expected void literal, got {:?}", other),
             }
         }
         other => panic!("expected Guard statement, got {:?}", other),

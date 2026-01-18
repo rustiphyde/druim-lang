@@ -31,7 +31,7 @@ fn guard_skips_false_values_until_true() {
     let stmt = Stmt::Guard {
         target: "x".into(),
         branches: vec![
-            lit(Literal::Emp),
+            lit(Literal::Void),
             lit(Literal::Num(0)),
             lit(Literal::Text("".into())),
             lit(Literal::Text("ok".into())),
@@ -48,7 +48,7 @@ fn guard_skips_false_values_until_true() {
 }
 
 #[test]
-fn guard_assigns_emp_if_all_branches_false() {
+fn guard_assigns_void_if_all_branches_false() {
     let stmt = Stmt::Guard {
         target: "x".into(),
         branches: vec![
@@ -62,8 +62,8 @@ fn guard_assigns_emp_if_all_branches_false() {
     ev.eval_stmt(&stmt);
 
     match ev.get("x") {
-        Some(Value::Emp) => {}
-        other => panic!("expected x = Emp, got {:?}", other),
+        Some(Value::Void) => {}
+        other => panic!("expected x = Void, got {:?}", other),
     }
 }
 
@@ -86,7 +86,7 @@ fn guard_single_branch_true() {
 }
 
 #[test]
-fn guard_single_branch_false_becomes_emp() {
+fn guard_single_branch_false_becomes_void() {
     let stmt = Stmt::Guard {
         target: "x".into(),
         branches: vec![
@@ -98,7 +98,7 @@ fn guard_single_branch_false_becomes_emp() {
     ev.eval_stmt(&stmt);
 
     match ev.get("x") {
-        Some(Value::Emp) => {}
-        other => panic!("expected x = Emp, got {:?}", other),
+        Some(Value::Void) => {}
+        other => panic!("expected x = Void, got {:?}", other),
     }
 }

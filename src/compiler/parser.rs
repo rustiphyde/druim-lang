@@ -227,8 +227,6 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-
-
     fn parse_block_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         // consume :{
         let start_span = self.current_span();
@@ -240,6 +238,7 @@ impl<'a> Parser<'a> {
 
         // parse statements until we hit }:
         while self.peek_kind() != TokenKind::BlockStmtEnd {
+            
             if self.peek_kind() == TokenKind::Eof {
                 return Err(Diagnostic::error(
                     "unexpected end of block",
@@ -247,6 +246,10 @@ impl<'a> Parser<'a> {
                 ).with_help("expected `}:` to close the block"));
             }
 
+            if self.peek_kind() == TokenKind::BlockStmtChain {
+                self.bump(); // consume }{
+                continue;
+            }
 
             let stmt = self.parse_stmt()?;
             stmts.push(stmt);
@@ -260,9 +263,6 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::Block { stmts })
     }
-
-
-
 
     pub fn parse_expr(&mut self) -> Result<Expr, Diagnostic> {
         self.parse_bp(0)
@@ -317,25 +317,136 @@ impl<'a> Parser<'a> {
         match tok.kind {
 
             TokenKind::BlockExprStart => {
-                let inner = self.parse_expr()?;
+                let mut exprs = Vec::new();
 
-                // HARD RULE:
-                // Expression blocks must close immediately after the expression.
-                // No statements, no defines, no semicolons.
+                // first expression
+                exprs.push(self.parse_expr()?);
+
+                // consume first ]:
                 if self.peek_kind() != TokenKind::BlockExprEnd {
                     return Err(
                         Diagnostic::error("unexpected token", self.current_span())
-                            .with_help("expected expression")
+                            .with_help("expected `]:` to close expression block"),
                     );
                 }
+                self.bump(); // ]:
 
-                self.bump(); // consume BlockExprEnd
+                // chained blocks: ][ expr ]:
+                while self.peek_kind() == TokenKind::BlockExprChain {
+                    self.bump(); // ][
+
+                    exprs.push(self.parse_expr()?);
+
+                    if self.peek_kind() != TokenKind::BlockExprEnd {
+                        return Err(
+                            Diagnostic::error("unexpected token", self.current_span())
+                                .with_help("expected `]:` to close expression block"),
+                        );
+                    }
+                    self.bump(); // ]:
+                }
+
+                // fold left-to-right: last expression wins
+                let mut result = exprs.remove(0);
+                for e in exprs {
+                    result = e;
+                }
 
                 Ok(Expr::BlockExpr {
-                    expr: Box::new(inner),
+                    expr: Box::new(result),
                 })
             }
 
+            TokenKind::KwFn => {
+                // expect function name
+                let name_tok = self.bump().ok_or_else(|| {
+                    Diagnostic::error("unexpected end of input", self.current_span())
+                        .with_help("expected function name")
+                })?;
+
+                if name_tok.kind != TokenKind::Ident {
+                    return Err(
+                        Diagnostic::error("invalid function definition", self.current_span())
+                            .with_help("expected function name after `fn`"),
+                    );
+                }
+
+                let name = name_tok.lexeme.clone();
+
+                if !is_snake_case(&name) {
+                    return Err(
+                        Diagnostic::error("invalid function name", Span {
+                            start: name_tok.pos,
+                            end: name_tok.pos + name_tok.lexeme.len(),
+                        })
+                        .with_help("function names must be snake_cased"),
+                    );
+                }
+
+                // expect function argument block start
+                if self.peek_kind() != TokenKind::BlockFuncStart {
+                    return Err(
+                        Diagnostic::error("invalid function definition", self.current_span())
+                            .with_help("expected `:(` after function name"),
+                    );
+                }
+
+                self.bump(); // consume BlockFuncStart
+
+                // parse arguments
+                let args = self.parse_args()?;
+
+                let mut bodies = Vec::new();
+
+                // must have at least one body
+                if self.peek_kind() != TokenKind::BlockFuncChain {
+                    return Err(
+                        Diagnostic::error("invalid function definition", self.current_span())
+                            .with_help("expected function body `)(`"),
+                    );
+                }
+
+                // function-local scope
+                self.scopes.push(HashSet::new());
+
+                // bind function arguments into function-local scope
+                for arg in &args {
+                    if let Expr::Ident(name) = arg {
+                        self.define_name(name);
+                    } else {
+                        self.scopes.pop();
+                        return Err(
+                            Diagnostic::error("invalid function argument", self.current_span())
+                                .with_help("function arguments must be identifiers"),
+                        );
+                    }
+                }
+
+
+                while self.peek_kind() == TokenKind::BlockFuncChain {
+                    self.bump(); // consume )(
+
+                    bodies.push(self.parse_expr()?);
+                }
+
+                if self.peek_kind() != TokenKind::BlockFuncEnd {
+                    self.scopes.pop();
+                    return Err(
+                        Diagnostic::error("invalid function definition", self.current_span())
+                            .with_help("expected `):` to close function"),
+                    );
+                }
+
+                self.bump(); // consume ):
+
+                self.scopes.pop();
+
+                Ok(Expr::FnBlock {
+                    name,
+                    args,
+                    bodies,
+                })
+            }
 
 
             TokenKind::Ident => Ok(Expr::Ident(tok.lexeme.clone())),
@@ -351,8 +462,8 @@ impl<'a> Parser<'a> {
 
             TokenKind::TextLit => Ok(Expr::Lit(Literal::Text(tok.lexeme.clone()))),
 
-            // Emp literal: keyword emp
-            TokenKind::KwEmp => Ok(Expr::Lit(Literal::Emp)),
+            // Emp literal: keyword void
+            TokenKind::KwVoid => Ok(Expr::Lit(Literal::Void)),
 
             // unary operators
             TokenKind::Not => {
@@ -483,6 +594,26 @@ impl<'a> Parser<'a> {
     }
 }
 
+fn is_snake_case(name: &str) -> bool {
+    let mut prev_underscore = false;
+
+    for c in name.chars() {
+        if c == '_' {
+            if prev_underscore {
+                return false;
+            }
+            prev_underscore = true;
+        } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            prev_underscore = false;
+        } else {
+            return false;
+        }
+    }
+
+    !name.starts_with('_') && !name.ends_with('_')
+}
+
+
 const PREFIX_BP: u8 = 90;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -510,7 +641,7 @@ enum Infix {
     Or,
 
     // Colon semantics
-    Scope,
+    Has,
     Present,
     Cast,
 
@@ -547,7 +678,7 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
         TokenKind::Or => (25, 26, Or),
 
         // colon family
-        TokenKind::Scope => (22, 23, Scope),
+        TokenKind::Has => (22, 23, Has),
         TokenKind::Present => (22, 23, Present),
         TokenKind::Cast => (22, 23, Cast),
 
@@ -578,7 +709,7 @@ fn build_infix(kind: Infix, lhs: Expr, rhs: Expr) -> Expr {
         And => Expr::And(Box::new(lhs), Box::new(rhs)),
         Or => Expr::Or(Box::new(lhs), Box::new(rhs)),
 
-        Scope => Expr::Scope(Box::new(lhs), Box::new(rhs)),
+        Has => Expr::Has(Box::new(lhs), Box::new(rhs)),
         Present => Expr::Present(Box::new(lhs), Box::new(rhs)),
         Cast => Expr::Cast(Box::new(lhs), Box::new(rhs)),
 

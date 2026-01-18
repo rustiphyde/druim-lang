@@ -25,11 +25,12 @@ mod tests {
 
     #[test]
     fn keyword_vs_identifier() {
-        let ks = kinds("num numx text emp");
+        let ks = kinds("num numx text emp fn");
         assert_eq!(ks[0], KwNum);
         assert_eq!(ks[1], Ident);
         assert_eq!(ks[2], KwText);
-        assert_eq!(ks[3], KwEmp);
+        assert_eq!(ks[3], KwVoid);
+        assert_eq!(ks[4], KwFn);
     }
 
     #[test]
@@ -47,15 +48,20 @@ mod tests {
 
     #[test]
     fn block_tokens() {
-        let src = ":[ x + 1 ]: :{ a <- b; }:";
+        let src = ":[ x + 1 ][ c * 56 ]: :{ a <- b; }{ d := a }: fn my_function :( b )( a = b; ):";
         let tokens = Lexer::new(src).tokenize().unwrap();
 
         let kinds: Vec<_> = tokens.iter().map(|t| t.kind).collect();
 
         assert!(kinds.contains(&TokenKind::BlockExprStart));
+        assert!(kinds.contains(&TokenKind::BlockExprChain));
         assert!(kinds.contains(&TokenKind::BlockExprEnd));
         assert!(kinds.contains(&TokenKind::BlockStmtStart));
+        assert!(kinds.contains(&TokenKind::BlockStmtChain));
         assert!(kinds.contains(&TokenKind::BlockStmtEnd));
+        assert!(kinds.contains(&TokenKind::BlockFuncStart));
+        assert!(kinds.contains(&TokenKind::BlockFuncChain));
+        assert!(kinds.contains(&TokenKind::BlockFuncEnd));
     }
 
     #[test]

@@ -22,12 +22,11 @@ pub enum Value {
     Text(String),
 
     /// Explicit absence of value.
-    ///
-    /// `emp`:
+    ///void`:
     /// - always exists
     /// - is never undefined
     /// - always evaluates to false
-    Emp,
+    Void,
 }
 
 
@@ -42,7 +41,7 @@ impl Value {
             Literal::Dec(d) => Value::Dec(d.clone()),
             Literal::Flag(b) => Value::Flag(*b),
             Literal::Text(t) => Value::Text(t.clone()),
-            Literal::Emp => Value::Emp,
+            Literal::Void => Value::Void,
         }
     }
 }

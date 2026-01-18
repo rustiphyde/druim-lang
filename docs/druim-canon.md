@@ -115,7 +115,7 @@ The following identifiers are lexed as keywords when matched exactly:
 - `num` → `KwNum`
 - `dec` → `KwDec`
 - `text` → `KwText`
-- `emp` → `KwEmp`
+- `void` → `KwVoid`
 
 All other identifier strings are emitted as `Ident`.
 
@@ -274,7 +274,7 @@ When a value is *explicitly evaluated* as a `flag`, the following rules apply:
 - Any non-zero `num` → `true`
 - Any non-zero `dec` → `true`
 - Any `text` value → `true`
-- `emp` → `false`
+- `void` → `false`
 
 No other values are permitted to participate in truth evaluation.
 
@@ -284,8 +284,8 @@ No other values are permitted to participate in truth evaluation.
 - There is no silent fallback, null propagation, or implicit defaulting.
 
 ### Empty Definition
-- `x =;` is valid syntax and is equivalent to `x = emp;`
-- `emp` represents the absence of a value and always evaluates to `false` when coerced to `flag`.
+- `x =;` is valid syntax and is equivalent to `x = void;`
+- `void` represents the absence of a value and always evaluates to `false` when coerced to `flag`.
 
 ### Design Guarantee
 Every truth evaluation in Druim:
@@ -597,10 +597,10 @@ It is a **safe access and propagation operator** that always evaluates to a valu
 `A :: B` means:
 
 > If **A has B**, evaluate to **B**.  
-> If **A does not have B**, evaluate to **emp**.
+> If **A does not have B**, evaluate to **void**.
 
 There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator.  
-Failure is represented explicitly as `emp`.
+Failure is represented explicitly as `void`.
 
 ---
 
@@ -628,7 +628,7 @@ user::profile
 ```
 
 - If `user` has a `profile`, the expression evaluates to that profile
-- If not, the expression evaluates to `emp`
+- If not, the expression evaluates to `void`
 
 No crash. No undefined. No branching required.
 
@@ -645,7 +645,7 @@ a = user::profile;
 This means:
 
 - If `user` has `profile`, define `a` as that profile
-- Otherwise, define `a` as `emp`
+- Otherwise, define `a` as `void`
 
 This is **definition**, not assignment (`<-`).
 
@@ -664,9 +664,9 @@ This evaluates left to right:
 1. If `user` has `profile`
 2. And `profile` has `email`
 3. Then define `a` as `email`
-4. Otherwise, define `a` as `emp`
+4. Otherwise, define `a` as `void`
 
-At **any point** in the chain, failure collapses the entire expression to `emp`.
+At **any point** in the chain, failure collapses the entire expression to `void`.
 
 This makes deep access safe by default.
 
@@ -683,7 +683,7 @@ x ?= user::profile::email;
 This means:
 
 - If `user::profile::email` evaluates to a truthy value, assign it to `x`
-- Otherwise, `x` becomes `emp`
+- Otherwise, `x` becomes `void`
 
 No temporary variables.
 No special syntax.
@@ -716,7 +716,7 @@ If the left side can *contain named values*, `::` can query it.
 
 It only answers:
 
-> “Does this have that — yes or emp.”
+> “Does this have that — yes or void.”
 
 ---
 
@@ -814,7 +814,7 @@ a ?= x : y : z;
 
 - Evaluates expressions
 - Applies truth rules
-- Selects the first truthy value or `emp`
+- Selects the first truthy value or `void`
 - Defines `a` as the result
 
 #### Bind (`:=`)
@@ -901,14 +901,14 @@ Semantics:
 
 - `y` is evaluated and converted to a `flag`
 - If `flag(y)` is `true` → `x = y;`
-- If `flag(y)` is `false` → `x = emp;`
+- If `flag(y)` is `false` → `x = void;`
 
-This form implicitly falls back to `emp`.
+This form implicitly falls back to `void`.
 
 Equivalent to:
 
 ```druim  
-x ?= y : emp;  
+x ?= y : void;  
 ```
 
 ---
@@ -942,7 +942,7 @@ Semantics:
 - If `flag(y)` is `true` → `x = y;`
 - Else if `flag(z)` is `true` → `x = z;`
 - Else → `x = v;`
-- Else → `x = emp;`
+- Else → `x = void;`
 
 Rules:
 
@@ -955,11 +955,11 @@ Rules:
      a ?=;
      ```
 - Fallbacks are unbound in count
-- `emp` is the implicit terminal fallback of every guard
+- `void` is the implicit terminal fallback of every guard
 - Evaluation proceeds left-to-right
 - The first truthy branch wins
-- If all guard and fallback expressions evaluate to false target is assigned **emp**
-- **emp** always evaluates to a false **flag**
+- If all guard and fallback expressions evaluate to false target is assigned **void**
+- **void** always evaluates to a false **flag**
 
 ---
 
@@ -973,7 +973,7 @@ Guard conditions use **explicit truth evaluation**, not implicit truthiness.
 | `num`  | `0` → false, non-zero → true |
 | `dec`  | `0.0` → false, non-zero → true |
 | `text` | empty → false, non-empty → true |
-| `emp`  | always false |
+| `void`  | always false |
 
 There is no `undefined` value in Druim.
 
@@ -983,7 +983,7 @@ There is no `undefined` value in Druim.
 
 - Guard never produces `undefined`
 - All assignments resolve deterministically
-- `emp` represents intentional absence, not missing state
+- `void` represents intentional absence, not missing state
 - Guard is an expression-level construct, not a statement or block
 
 ---

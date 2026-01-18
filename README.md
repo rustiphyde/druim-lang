@@ -201,12 +201,12 @@ x =;
 Equivalent to:
 
 ```druim
-x = emp;
+x = void;
 ```
 
 ---
 
-## `emp` (Empty Value)
+## `void` (Empty Value)
 
 - Represents intentional absence
 - Is not `null` or `undefined`
@@ -245,7 +245,7 @@ Evaluation:
 
 - If `flag(y)` is true → `x = y`
 - Otherwise → `x = z`
-- If all branches fail → `x = emp`
+- If all branches fail → `x void`
 
 Guards are expressions, not control flow.
 
@@ -260,7 +260,7 @@ Truth is explicit and total.
 - `0`, `0.0` → false
 - Non-zero numbers → true
 - Non-empty text → true
-- `emp` → false
+- `void` → false
 
 There is no third state.
 
@@ -277,7 +277,7 @@ user::profile::email
 Semantics:
 
 - If every step exists → evaluates to the final value
-- If any step is missing → evaluates to `emp`
+- If any step is missing → evaluates void`
 - Never throws
 - Never creates scope
 - Fully chainable

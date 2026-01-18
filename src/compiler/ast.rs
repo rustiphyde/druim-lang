@@ -16,7 +16,7 @@ pub enum Literal {
     ///
     /// `emp` always evaluates to a false flag.
     /// There is no `undefined` in Druim.
-    Emp,
+    Void,
 }
 
 
@@ -67,9 +67,24 @@ pub enum Expr {
     /// Establishes a computed region without introducing statements.
     ///
     /// Syntax:
-    ///     :[ expr ]:
+    ///     :[ expr ][ expr]:
     BlockExpr {
         expr: Box<Expr>,
+    },
+
+    /// Named function block.
+    ///
+    /// Introduced explicitly with the `fn` keyword and a snake_cased identifier.
+    /// Establishes a function-local scope.
+    /// Variables declared inside are visible only within the function
+    /// and chained bodies unless restricted by future keywords.
+    ///
+    /// Syntax:
+    ///     fn my_function :( args )( body1 )( body2 ):
+    FnBlock {
+        name: String,
+        args: Vec<Expr>,
+        bodies: Vec<Expr>,
     },
     
 }
@@ -83,7 +98,7 @@ pub enum Stmt {
     /// boundaries and do not require semicolon termination.
     ///
     /// Syntax:
-    ///     :{ stmt* }:
+    ///     :{ stmt* }{ stmt* }:
     Block {
         stmts: Vec<Stmt>,
     },

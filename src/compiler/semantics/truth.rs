@@ -21,8 +21,7 @@ impl Truth {
 /// RULES (LOCKED):
 ///
 /// - `flag(true)`  → true
-/// - `flag(false)` → false
-/// - `emp`         → false
+/// - `void`         → false
 /// - `num(0)`      → false
 /// - `num(!0)`     → true
 /// - `dec(0.0)`    → false
@@ -37,7 +36,7 @@ pub fn truth_of(value: &Value) -> Truth {
             if *b { Truth::True } else { Truth::False }
         }
 
-        Value::Emp => Truth::False,
+        Value::Void => Truth::False,
 
         Value::Num(n) => {
             if *n == 0 { Truth::False } else { Truth::True }

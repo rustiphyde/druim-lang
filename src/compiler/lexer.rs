@@ -99,8 +99,8 @@ impl<'a> Lexer<'a> {
                     "num" => TokenKind::KwNum,
                     "dec" => TokenKind::KwDec,
                     "flag" => TokenKind::KwFlag,
-                    "text" => TokenKind::KwText,
-                    "emp" => TokenKind::KwEmp,
+                    "text" => TokenKind::KwVoid,
+                    "fn" => TokenKind::KwFn,
                     _ => TokenKind::Ident,
                 };
 
@@ -178,6 +178,19 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockArrayChain, "><", start));
                 continue;
             }
+            if self.match_str(":|") {
+                tokens.push(tok(TokenKind::BlockBranchStart, ":|", start));
+                continue;
+            }
+            if self.match_str("|:") {
+                tokens.push(tok(TokenKind::BlockBranchEnd, "|:", start));
+                continue;
+            }
+            if self.match_str("||") {
+                tokens.push(tok(TokenKind::BlockBranchChain, "||", start));
+                continue;
+            }
+
 
             // ===== Other multi-char operators =====
             if self.match_str("?=") {
