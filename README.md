@@ -43,8 +43,7 @@ If something is not explicitly documented, it should be assumed disallowed.
 
 The authoritative language definition lives in:
 
-[druim-canon.md](./druim-canon.md)
-
+[druim-canon.md](./docs/druim-canon.md)
 
 When conflicts arise between code, tests, comments, or recollection, the canon wins.
 
