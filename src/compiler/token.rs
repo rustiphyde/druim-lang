@@ -19,7 +19,7 @@ pub enum TokenKind {
 
     // ===== Colon family =====
     Colon,         // :
-    Scope,         // ::
+    Has,         // ::
     Present,       // :?
     Cast,          // :>
 

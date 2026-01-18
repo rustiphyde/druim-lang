@@ -17,7 +17,7 @@ mod tests {
     fn colon_family_tokens() {
         let ks = kinds("a:b a::b a:=b a:?b a:>b");
         assert!(ks.contains(&Colon));
-        assert!(ks.contains(&Scope));
+        assert!(ks.contains(&Has));
         assert!(ks.contains(&Bind));
         assert!(ks.contains(&Present));
         assert!(ks.contains(&Cast));

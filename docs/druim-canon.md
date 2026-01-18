@@ -339,7 +339,7 @@ This distinction is **intentional, explicit, and locked**.
 
 ---
 
-### Block Forms in Druim
+## Block Forms in Druim
 
 Druim supports the following block syntaxes:
 
@@ -415,7 +415,7 @@ No scope interaction.
 
 ---
 
-## Core Rule (LOCKED)
+### Core Rule (LOCKED)
 
 **Only Block Statements (`:{ … }:`) create scope.**  
 **Only Block Statement End (`}:`) destroys scope.**
@@ -424,7 +424,7 @@ No other block form interacts with scope.
 
 ---
 
-## Block Statement Chaining Semantics
+### Block Statement Chaining Semantics
 
 Within **Block Statements**, chaining is allowed:
 
@@ -454,7 +454,7 @@ All variables (`a`, `b`, `c`) exist in the **same scope**.
 
 ---
 
-## What `}:` Means
+### What `}:` Means
 
 - `}:` marks the **end of the block statement chain**
 - The scope created at `:{` is destroyed here
@@ -464,7 +464,7 @@ There is **no partial scope exit** inside a block chain.
 
 ---
 
-## Why Block Statements Are Highest-Order
+### Why Block Statements Are Highest-Order
 
 Block Statements are the **highest-order block** because:
 
@@ -478,7 +478,7 @@ All other block forms exist **inside** the scope established by Block Statements
 
 ---
 
-## Structural vs Semantic Blocks
+### Structural vs Semantic Blocks
 
 **Structural Blocks**
 - Block Expressions
@@ -497,7 +497,7 @@ All other block forms exist **inside** the scope established by Block Statements
 
 ---
 
-## Evaluator Responsibility
+### Evaluator Responsibility
 
 The evaluator MUST implement scope handling as follows:
 
@@ -513,7 +513,7 @@ All other block types must **reuse the active scope**.
 
 ---
 
-## Canonical Guarantee
+### Canonical Guarantee
 
 This behavior is **stable and non-negotiable**.
 
@@ -579,36 +579,309 @@ The colon (`:`) introduces multiple structural operators. Longest matches are al
 - `:>` → `Cast`
 - `:`  → `Colon`
 
-### Bind (`:=`)
+## The `::` Has Operator
 
-The `:=` operator establishes a binding between the left-hand identifier and an
-already-defined identifier on the right-hand side.
+The `::` operator in Druim is called the **Has operator**.
 
-`Bind` does **not** create a new value.
+It answers a simple, human question:
 
-What `Bind` does:
+> “Does this thing contain that thing — and if so, give it to me.”
 
-- Creates a named binding to an existing value
-- Requires the right-hand side to be an identifier
-- Requires the right-hand identifier to already be defined
-- Is distinct from value definition (`=`) and empty definition (`=;`)
-
-What `Bind` does **not** do:
-
-- Does not evaluate expressions
-- Does not accept literals or blocks on the right-hand side
-- Does not allocate or compute a new value
-
-Syntactically, `Bind` is a complete statement and must terminate with a semicolon.
-
-Example:
-
-```druim
-a = 10;
-b := a;
-```
+It is **not assignment**, **not mutation**, and **not scope creation**.  
+It is a **safe access and propagation operator** that always evaluates to a value.
 
 ---
+
+### Core Meaning
+
+`A :: B` means:
+
+> If **A has B**, evaluate to **B**.  
+> If **A does not have B**, evaluate to **emp**.
+
+There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator.  
+Failure is represented explicitly as `emp`.
+
+---
+
+### Why This Exists
+
+In many languages, accessing something that doesn’t exist:
+
+- Throws an error
+- Returns `undefined`
+- Requires special syntax or keywords
+- Forces defensive boilerplate
+
+Druim does none of that.
+
+The Has operator lets you **ask for something without assuming it exists**.
+
+---
+
+### Basic Example (Real-World)
+
+Imagine a `user` container that *may or may not* have a `profile`.
+
+```druim
+user::profile
+```
+
+- If `user` has a `profile`, the expression evaluates to that profile
+- If not, the expression evaluates to `emp`
+
+No crash. No undefined. No branching required.
+
+---
+
+### Definition via Expression
+
+Because `::` is an **expression**, it can be used anywhere a value is expected.
+
+```druim
+a = user::profile;
+```
+
+This means:
+
+- If `user` has `profile`, define `a` as that profile
+- Otherwise, define `a` as `emp`
+
+This is **definition**, not assignment (`<-`).
+
+---
+
+### Chaining Behavior (Critical)
+
+The Has operator is **chainable**.
+
+```druim
+a = user::profile::email;
+```
+
+This evaluates left to right:
+
+1. If `user` has `profile`
+2. And `profile` has `email`
+3. Then define `a` as `email`
+4. Otherwise, define `a` as `emp`
+
+At **any point** in the chain, failure collapses the entire expression to `emp`.
+
+This makes deep access safe by default.
+
+---
+
+### Use in Conditionals (Without New Keywords)
+
+Because `::` evaluates to a value, and because truth is explicit in Druim, it can be used directly in guards and conditionals.
+
+```druim
+x ?= user::profile::email;
+```
+
+This means:
+
+- If `user::profile::email` evaluates to a truthy value, assign it to `x`
+- Otherwise, `x` becomes `emp`
+
+No temporary variables.
+No special syntax.
+No extra keywords.
+
+---
+
+### What `::` Works With
+
+The Has operator works uniformly with any **container-like structure**, including:
+
+- Block Statements
+- Block Expressions
+- Block Functions
+- Block Arrays
+- Branch blocks
+- Any named or structured value
+
+If the left side can *contain named values*, `::` can query it.
+
+---
+
+### What `::` Is Not
+
+- It is **not assignment**
+- It is **not mutation**
+- It does **not create scope**
+- It does **not throw errors**
+- It does **not imply truth**
+
+It only answers:
+
+> “Does this have that — yes or emp.”
+
+---
+
+### Design Philosophy
+
+The Has operator exists to:
+
+- Eliminate `undefined`
+- Make absence explicit
+- Allow safe deep access
+- Reduce boilerplate
+- Preserve composability
+- Keep failure non-fatal and inspectable
+
+In Druim, **absence is data**, and `::` is how you ask for it safely.
+
+
+## Bind (`:=`)
+
+The `:=` operator establishes a **value binding** between two identifiers.
+
+In human terms:
+
+> “Take the current value of that thing and give me my own copy of it.”
+
+`Bind` copies the **current resolved value** of an existing identifier into a new name, **without linking their futures**.
+
+This is **not reference aliasing**.
+
+---
+
+### Core Meaning
+
+```druim
+a := b;
+```
+Means:
+
+- `b` **must already exist**
+- `a` receives the **current value** of `b`
+- `a` and `b` are **independent after binding**
+- Future mutations of `b` do **not** affect `a`
+- No expressions are evaluated
+- No fallback logic is applied
+
+---
+
+### What Bind *Is*
+
+`Bind` is a **value snapshot operator**.
+
+It answers the question:
+
+> “What is this value *right now*, and let me work with it independently.”
+
+---
+
+### What Bind *Does*
+
+- Copies the current value of an existing identifier
+- Produces a **new, independent value**
+- Requires the right-hand side to be an identifier
+- Requires the identifier to already be defined
+- Allows safe manipulation without altering the source
+
+---
+
+### What Bind *Does Not Do*
+
+- Does not evaluate expressions
+- Does not perform conditional logic
+- Does not track future changes
+- Does not alias or link identities
+- Does not provide fallback behavior
+
+---
+
+### Comparison With Other Operators
+
+#### Define (`=`)
+
+```druim
+a = expr;
+```
+
+- Evaluates `expr`
+- Produces a new value
+- Defines `a`
+
+#### Guard (`?=`)
+
+```druim
+a ?= x : y : z;
+```
+
+- Evaluates expressions
+- Applies truth rules
+- Selects the first truthy value or `emp`
+- Defines `a` as the result
+
+#### Bind (`:=`)
+
+```druim
+a := b;
+```
+
+- Evaluates nothing
+- Copies the current value of `b`
+- Produces a new, independent value
+- Freezes the value at bind-time
+
+---
+
+### Real-World Example
+
+Imagine a configuration that must remain stable:
+
+```druim
+config = :{
+    retries = 3;
+}:
+```
+
+You want to experiment locally without touching the original:
+
+```druim
+testConfig := config;
+testConfig.retries = 5;
+```
+
+Result:
+
+- `testConfig.retries` → `5`
+- `config.retries` → still `3`
+
+This behavior is **intentional**.
+
+---
+
+### Why Bind Exists
+
+`Bind` enables:
+
+- Safe experimentation
+- Temporary manipulation
+- Snapshotting values
+- Explicit intent without side effects
+
+Without `Bind`, developers are forced to choose between:
+- Recomputing (`=`)
+- Conditional logic (`?=`)
+- Or accidental mutation
+
+`Bind` fills this gap cleanly.
+
+---
+
+### Design Principle
+
+- `=` defines
+- `?=` decides
+- `:=` copies
+
+Each operator has **one job**.
+
 
 ## Guard (`?=` / `:`)
 

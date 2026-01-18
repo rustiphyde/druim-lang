@@ -49,8 +49,7 @@ pub enum Expr {
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
 
-    // ===== Colon semantics =====
-    Scope(Box<Expr>, Box<Expr>),     // ::
+    Has(Box<Expr>, Box<Expr>),     // ::
     Present(Box<Expr>, Box<Expr>),   // :?
     Cast(Box<Expr>, Box<Expr>),      // :>
 
