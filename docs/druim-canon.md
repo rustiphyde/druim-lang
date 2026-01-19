@@ -381,15 +381,55 @@ Evaluates expressions only.
 
 ---
 
-### Block Functions (No Scope)
+### Block Functions (Function Semantics)
 
-- **Block Function**: `:( args )( body ):`
-- **Chained Block Function**: `:( ... )( ... )( ... ):`
+Block function tokens:
 
-Used for function-like grouping.
+- Function Block Start: :(
+- Function Block Chain: )(
+- Function Block End: ):
 
-Structural only.  
-Scope behavior is governed by function semantics, not block semantics.
+Function blocks are used exclusively to define functions and are only valid
+when introduced by the fn keyword.
+
+```druim
+fn my_function :( a, b )( a + b ):
+```
+
+#### Function Definition Rules (LOCKED)
+
+- Every function must begin with the keyword fn
+- Function names must be snake_cased
+- A function definition consists of:
+  - fn
+  - A snake_cased identifier
+  - A function argument block
+  - One or more function body blocks
+- Function bodies are expressions
+- Statements are not valid as function bodies unless wrapped in a block expression
+
+```druim
+fn compute :( x )( :{
+    temp = x * 2;
+    temp + 1
+}: ):
+```
+
+#### Return Semantics
+
+- A function returns the value of its body expression
+- There is no return keyword
+- The final evaluated expression determines the function value
+
+#### Scope Semantics
+
+- Functions introduce a function local scope
+- Function arguments are bound into this scope
+- Function scope is independent of block statement scope
+- Block syntax does not control function scope
+
+Function scope exists because the construct is a function, not because of block tokens.
+
 
 ---
 
@@ -464,64 +504,80 @@ There is **no partial scope exit** inside a block chain.
 
 ---
 
-### Why Block Statements Are Highest-Order
+### Why Block Statements Are Highest Order
 
-Block Statements are the **highest-order block** because:
+Block Statements are the highest order block because:
 
 - They contain full statements
-- They manage variable lifetime
+- They manage variable lifetime for statement execution
 - They define execution order
-- They are the only construct capable of introducing lexical scope
-- They can contain all other block types within their boundaries
+- They introduce statement scoped lexical environments
+- They may contain all other block forms
 
-All other block forms exist **inside** the scope established by Block Statements.
+Block Statements define scope because they are a semantic construct,
+not because of their block tokens.
 
 ---
 
-### Structural vs Semantic Blocks
+### Structural vs Semantic Constructs
 
-**Structural Blocks**
+Structural Blocks
 - Block Expressions
-- Block Functions
 - Block Branches
 - Block Arrays
 
-➡ Affect syntax and evaluation  
-➡ **Never affect scope**
+These affect syntax and evaluation only.
+They never introduce scope.
 
-**Semantic Blocks**
-- Block Statements only
+Semantic Constructs
+- Block Statements
+- Function Definitions
 
-➡ Affect runtime environment  
-➡ Control variable lifetime
+These affect the runtime environment and introduce scope.
 
 ---
 
+### Scope Introduction Rules
+
+Scope is introduced only by semantic constructs.
+
+Block Statements
+- Introduce scope when entered
+- End scope only at `}:`
+
+Function Definitions
+- Introduce a function local scope at fn
+- This scope exists independently of block statements
+- Function scope is not controlled by block tokens
+
+All other block forms reuse the active scope.
+
+
 ### Evaluator Responsibility
 
-The evaluator MUST implement scope handling as follows:
+The evaluator must implement scope handling as follows:
 
-- On encountering `:{`
-  - Push a new scope **only if not already inside a block statement**
-- On encountering `}{`
-  - Continue execution in the **current scope**
-- On encountering `}:`
-  - Pop the scope
+- On encountering fn
+  - Push a new function scope
+- On encountering :{
+  - Push a new statement scope
+- On encountering }:
+  - Pop the most recent statement scope
+- On exiting a function
+  - Pop the function scope
 
-All other block types must **reuse the active scope**.
-
+Block syntax alone must never introduce or end scope.
 
 ---
 
 ### Canonical Guarantee
 
-This behavior is **stable and non-negotiable**.
+This behavior is stable and non negotiable.
 
-**Only Block Statements define scope.  
-Only `}:` ends scope.**
+Scope is introduced only by semantic constructs.
+Block tokens alone never control scope.
 
 Any implementation that violates this rule is semantically incorrect.
-
 
 ---
 

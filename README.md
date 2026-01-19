@@ -144,7 +144,7 @@ Invalid numeric forms cause a lexical error:
 Druim uses explicit block operators.  
 Blocks are not inferred by indentation or keywords.
 
-### Block Statements (Scope-Bearing)
+### Block Statements (Statement Scope)
 
 ```druim
 :{
@@ -156,26 +156,71 @@ Blocks are not inferred by indentation or keywords.
 
 Rules:
 
-- `:{` starts a new scope
-- `}{` continues the same scope
-- `}:` ends the scope
-- Only block statements create or destroy scope
-- There is exactly one scope per block chain
+- :{ begins a block statement
+- }{ continues the same block statement
+- }: ends the block statement
+- Block Statements introduce statement scoped lexical environments
+- Exactly one statement scope exists per block chain
+
+Statement scope exists because the construct is semantic,
+not because of block tokens alone.
 
 This behavior is locked.
 
 ---
 
-### Other Block Forms (No Scope)
+### Other Block Forms (Structural Only)
 
-These blocks are structural only:
+The following block forms are structural only.
 
-- Expression block: `:[ expr ]:`
-- Function block: `:( args )( body ):`
-- Branch block: `:| expr || expr |:`
-- Array block: `:< elem >< elem >:`
+They affect syntax and evaluation but never introduce scope.
 
-They never create or destroy scope.
+- Expression block
+  - :[ expr ]:
+- Branch block
+  - :| expr || expr |:
+- Array block
+  - :< elem >< elem >:
+
+These blocks always reuse the active scope.
+
+---
+
+## Functions
+
+Functions in Druim are explicit and expression based.
+
+druim
+fn add :( a, b )( a + b ):
+druim
+
+Rules:
+
+- Functions must begin with fn
+- Function names must be snake_cased
+- Function bodies are expressions
+- Statements are allowed only inside block expressions
+- The value of the body expression is the function return value
+- Functions introduce their own local scope
+
+There is no return keyword.
+
+### Function Blocks and Scope
+
+Function blocks are not structural blocks.
+
+They are part of function definitions and are only valid when introduced by fn.
+
+```druim
+fn example :( x )( x + 1 ):
+```
+
+Rules:
+
+- Functions introduce a function local scope
+- Function scope is created at fn
+- Function scope is independent of block statement scope
+- Block tokens do not control function scope
 
 ---
 
