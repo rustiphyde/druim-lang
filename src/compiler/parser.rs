@@ -1,4 +1,4 @@
-use crate::compiler::ast::{Expr, Literal, Program, Stmt};
+use crate::compiler::ast::{Expr, Literal, Program, Stmt, Param};
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
 use std::collections::HashSet;
@@ -35,6 +35,26 @@ impl<'a> Parser<'a> {
         if self.peek_kind() == TokenKind::BlockStmtStart {
             return self.parse_block_stmt();
         }
+
+                // Return statement
+        if self.peek_kind() == TokenKind::KwRet {
+            self.bump(); // consume `ret`
+
+            // `ret;`
+            if self.peek_kind() == TokenKind::Semicolon {
+                self.bump();
+                return Ok(Stmt::Return { value: None });
+            }
+
+            // `ret expr;`
+            let value = self.parse_expr()?;
+            self.expect(TokenKind::Semicolon, "`;`")?;
+
+            return Ok(Stmt::Return {
+                value: Some(value),
+            });
+        }
+
 
         // HARD RULE (stmt-level):
         // Define / DefineEmpty / Bind are ONLY valid if the statement starts with an identifier.
@@ -394,8 +414,15 @@ impl<'a> Parser<'a> {
 
                 self.bump(); // consume BlockFuncStart
 
-                // parse arguments
-                let args = self.parse_args()?;
+                let args: Vec<Param> = self
+                    .parse_param_list()?
+                    .into_iter()
+                    .map(|name| Param {
+                        name,
+                        default: None,
+                    })
+                    .collect();
+
 
                 let mut bodies = Vec::new();
 
@@ -411,24 +438,31 @@ impl<'a> Parser<'a> {
                 self.scopes.push(HashSet::new());
 
                 // bind function arguments into function-local scope
-                for arg in &args {
-                    if let Expr::Ident(name) = arg {
-                        self.define_name(name);
-                    } else {
-                        self.scopes.pop();
-                        return Err(
-                            Diagnostic::error("invalid function argument", self.current_span())
-                                .with_help("function arguments must be identifiers"),
-                        );
-                    }
+                for param in &args {
+                    self.define_name(&param.name);
                 }
+
 
 
                 while self.peek_kind() == TokenKind::BlockFuncChain {
                     self.bump(); // consume )(
 
-                    bodies.push(self.parse_expr()?);
+                    let body = self.parse_expr()?;
+
+                    if !is_valid_function_body(&body) {
+                        return Err(
+                            Diagnostic::error(
+                                "invalid function body",
+                                self.current_span(),
+                            )
+                            .with_help("function bodies must be expressions or block expressions"),
+                        );
+                    }
+
+                    bodies.push(body);
                 }
+
+
 
                 if self.peek_kind() != TokenKind::BlockFuncEnd {
                     self.scopes.pop();
@@ -528,6 +562,58 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
+    fn parse_param_list(&mut self) -> Result<Vec<String>, Diagnostic> {
+        let mut params = Vec::new();
+
+        // empty parameter list
+        if self.peek_kind() == TokenKind::BlockFuncChain {
+            return Ok(params);
+        }
+
+
+        loop {
+            let span = self.current_span();
+            let tok = self.bump().ok_or_else(|| {
+                Diagnostic::error("unexpected end of input", span)
+                    .with_help("expected parameter name")
+            })?;
+
+            if tok.kind != TokenKind::Ident {
+                return Err(
+                    Diagnostic::error(
+                        "invalid function parameter",
+                        Span {
+                            start: tok.pos,
+                            end: tok.pos + tok.lexeme.len(),
+                        },
+                    )
+                    .with_help("function parameters must be identifiers"),
+                );
+            }
+
+            params.push(tok.lexeme.clone());
+
+            match self.peek_kind() {
+                TokenKind::Comma => {
+                    self.bump();
+                }
+                TokenKind::BlockFuncChain => {
+                    break;
+                }
+                _ => {
+                    return Err(
+                        Diagnostic::error("unexpected token", self.current_span())
+                            .with_help("expected `,` or function body start `)(`"),
+                    );
+                }
+            }
+
+        }
+
+        Ok(params)
+    }
+
+
     fn expect(&mut self, kind: TokenKind, expected: &'static str) -> Result<(), Diagnostic> {
         let span_start = self.current_span().start;
         let tok = self.bump().ok_or_else(|| {
@@ -613,6 +699,39 @@ fn is_snake_case(name: &str) -> bool {
 
     !name.starts_with('_') && !name.ends_with('_')
 }
+
+fn is_valid_function_body(expr: &Expr) -> bool {
+    match expr {
+        Expr::BlockExpr { .. } => true,
+
+        // Plain expressions are valid
+        Expr::Ident(_)
+        | Expr::Lit(_)
+        | Expr::Add(_, _)
+        | Expr::Sub(_, _)
+        | Expr::Mul(_, _)
+        | Expr::Div(_, _)
+        | Expr::Mod(_, _)
+        | Expr::Eq(_, _)
+        | Expr::Ne(_, _)
+        | Expr::Lt(_, _)
+        | Expr::Le(_, _)
+        | Expr::Gt(_, _)
+        | Expr::Ge(_, _)
+        | Expr::And(_, _)
+        | Expr::Or(_, _)
+        | Expr::Has(_, _)
+        | Expr::Present(_, _)
+        | Expr::Cast(_, _)
+        | Expr::Pipe(_, _)
+        | Expr::Call { .. } => true,
+
+        // Anything else is rejected by default
+        _ => false,
+    }
+}
+
+
 
 
 const PREFIX_BP: u8 = 90;

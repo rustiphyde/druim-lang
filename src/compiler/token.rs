@@ -16,6 +16,7 @@ pub enum TokenKind {
 
     // ===== Keywords (expressions) =====
     KwFn,   // fn
+    KwRet,  // ret
 
     // ===== Assignment & binding =====
 

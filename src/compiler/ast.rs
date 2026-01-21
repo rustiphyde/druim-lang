@@ -14,7 +14,7 @@ pub enum Literal {
 
     /// Explicit absence of value.
     ///
-    /// `emp` always evaluates to a false flag.
+    /// `void` always evaluates to a false flag.
     /// There is no `undefined` in Druim.
     Void,
 }
@@ -83,7 +83,7 @@ pub enum Expr {
     ///     fn my_function :( args )( body1 )( body2 ):
     FnBlock {
         name: String,
-        args: Vec<Expr>,
+        args: Vec<Param>,
         bodies: Vec<Expr>,
     },
     
@@ -128,6 +128,22 @@ pub enum Stmt {
     SendTo {
         value: Expr,
         destination: Expr,
+    },
+
+        /// Explicit function return.
+    ///
+    /// Terminates execution of the current function body
+    /// and yields a value to the caller.
+    ///
+    /// This is a statement, not an expression.
+    ///
+    /// Syntax:
+    ///     ret expr;
+    ///     ret;
+    ///
+    /// `ret;` is equivalent to returning `void`.
+    Return {
+        value: Option<Expr>,
     },
 
     /// Declarative name binding.
@@ -191,5 +207,12 @@ pub enum Stmt {
 pub struct Program {
     pub stmts: Vec<Stmt>,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    pub name: String,
+    pub default: Option<Expr>,
+}
+
 
 

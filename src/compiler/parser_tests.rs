@@ -563,6 +563,41 @@ fn guard_rhs_cannot_be_empty() {
     );
 }
 
+#[test]
+fn parses_function_with_expression_body() {
+    let src = "fn add_one :( x )( x + 1 ):";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser.parse_expr().expect("failed to parse function");
+
+    match expr {
+        Expr::FnBlock { name, args, bodies } => {
+            assert_eq!(name, "add_one");
+            assert_eq!(args.len(), 1);
+            assert_eq!(bodies.len(), 1);
+        }
+        other => panic!("expected FnBlock, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_return_statement_with_value() {
+    let src = "ret 42;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let stmt = parser.parse_stmt().expect("failed to parse return");
+
+    match stmt {
+        Stmt::Return { value: Some(Expr::Lit(Literal::Num(n))) } => {
+            assert_eq!(n, 42);
+        }
+        other => panic!("expected return statement, got {:?}", other),
+    }
+}
+
+
 
 
 

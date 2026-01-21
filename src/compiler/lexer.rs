@@ -102,6 +102,7 @@ impl<'a> Lexer<'a> {
                     "text" => TokenKind::KwText,
                     "void" => TokenKind::KwVoid,
                     "fn" => TokenKind::KwFn,
+                    "ret" => TokenKind::KwRet,
                     _ => TokenKind::Ident,
                 };
 

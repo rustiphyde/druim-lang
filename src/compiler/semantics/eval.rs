@@ -7,6 +7,13 @@ pub struct Evaluator {
     env: Env,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum Control {
+    Continue,
+    Return(Value),
+}
+
+
 impl Evaluator {
     pub fn new() -> Self {
         Self {
@@ -40,20 +47,35 @@ impl Evaluator {
     }
 
     pub fn eval_stmt(&mut self, stmt: &Stmt) {
+        match self.eval_stmt_ctrl(stmt) {
+            Control::Continue => {}
+            Control::Return(_v) => {
+                // For now, this is a runtime error because we have not
+                // implemented "ret only allowed inside functions" as a compile-time rule yet.
+                panic!("return executed outside of a function");
+            }
+        }    }
+
+    fn eval_stmt_ctrl(&mut self, stmt: &Stmt) -> Control {
         match stmt {
             Stmt::Define { name, value } => {
                 let v = self.eval_expr(value);
                 self.env.define(name.clone(), v);
+                Control::Continue
             }
 
             Stmt::DefineEmpty { name } => {
+                // Use your current "void" value here.
+                // If your Value type is still Emp in this file, keep Value::Emp.
                 self.env.define(name.clone(), Value::Void);
+                Control::Continue
             }
 
             Stmt::Bind { name, target } => {
                 self.env
                     .bind(name.clone(), target)
                     .expect("bind target must exist");
+                Control::Continue
             }
 
             Stmt::AssignFrom { target, source } => {
@@ -66,9 +88,12 @@ impl Evaluator {
                 } else {
                     panic!("invalid assignment target");
                 }
+
+                Control::Continue
             }
 
             Stmt::Guard { target, branches } => {
+                // Use your current "void" default here.
                 let mut result = Value::Void;
 
                 for expr in branches {
@@ -80,14 +105,30 @@ impl Evaluator {
                 }
 
                 self.env.define(target.clone(), result);
+                Control::Continue
+            }
+
+            Stmt::Return { value } => {
+                let v = match value {
+                    Some(expr) => self.eval_expr(expr),
+                    None => Value::Void,
+                };
+                Control::Return(v)
             }
 
             Stmt::Block { stmts } => {
                 self.env.push_scope();
+
                 for s in stmts {
-                    self.eval_stmt(s);
+                    let ctl = self.eval_stmt_ctrl(s);
+                    if let Control::Return(v) = ctl {
+                        self.env.pop_scope();
+                        return Control::Return(v);
+                    }
                 }
+
                 self.env.pop_scope();
+                Control::Continue
             }
 
             Stmt::SendTo { .. } => {

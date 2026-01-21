@@ -430,6 +430,103 @@ fn compute :( x )( :{
 
 Function scope exists because the construct is a function, not because of block tokens.
 
+## Return Statements (`ret`)
+
+Druim functions support an explicit return statement using the `ret` keyword.
+
+Return statements are **control-flow constructs**, not expressions.
+
+They are only valid **inside function bodies**.
+
+---
+
+### Syntax
+
+```druim
+ret;
+ret expr;
+```
+
+- `ret;` returns `void`
+- `ret expr;` returns the evaluated value of `expr`
+
+---
+
+### Function Semantics
+
+- A function may contain multiple bodies
+- Bodies are evaluated in order
+- The first `ret` encountered immediately terminates function execution
+- The returned value becomes the function’s result
+- If no `ret` is encountered, the function returns `void`
+
+---
+
+### Scope Rules
+
+- `ret` does not introduce or destroy scope
+- `ret` may appear inside:
+  - Expression blocks
+  - Nested statement blocks
+- Scope unwinding is handled by the evaluator
+
+---
+
+### Valid Contexts
+
+`ret` is valid only:
+
+- Inside a function block
+- Inside any nested block within a function
+
+It is invalid:
+
+- At the top level
+- Inside non-function code
+- Inside expression blocks outside a function
+
+Using `ret` outside a function is a compile-time error.
+
+---
+
+### Canonical Guarantees
+
+- `ret` is a statement, never an expression
+- `ret` always terminates the current function
+- `ret` cannot be chained
+- `ret` does not participate in operator precedence
+- `ret` has no value itself
+
+This behavior is stable and non-negotiable.
+
+---
+
+### Example
+
+```druim
+fn add_one :( x )( 
+    ret x + 1;
+):
+```
+
+---
+
+### Interaction With `void`
+
+- `ret;` is equivalent to `ret void;`
+- `void` is the absence of value
+- A function that does not return explicitly returns `void`
+
+---
+
+### Implementation Notes (Non-Semantic)
+
+- Parsers must intercept `ret` before expression parsing
+- Evaluators must short-circuit execution on `ret`
+- Return handling is explicit and must not be implicit or inferred
+
+Any implementation that treats `ret` as an expression is incorrect.
+
 
 ---
 
@@ -1063,3 +1160,4 @@ There is no `undefined` value in Druim.
 
 The lexer is responsible only for structure and atomicity.  
 All semantic meaning is deferred to later compilation stages.
+
