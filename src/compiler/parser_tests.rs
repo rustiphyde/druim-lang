@@ -12,17 +12,26 @@ fn parse_stmt(src: &str) -> Stmt {
     parser.parse_stmt().expect("failed to parse statement")
 }
 
+fn parse_stmt_err(src: &str) -> Diagnostic {
+    let mut lexer = Lexer::new(src);
+    let tokens = lexer.tokenize().expect("lexing failed");
+    let mut parser = Parser::new(&tokens);
+    parser.parse_stmt().expect_err("expected statement parse error")
+}
+
 fn parse_expr_err(src: &str) -> Diagnostic {
     let mut lexer = Lexer::new(src);
     let tokens = lexer.tokenize().expect("lexing failed");
     let mut parser = Parser::new(&tokens);
-
-    parser
-        .parse_expr()
-        .expect_err("expected expression parse error")
+    parser.parse_expr().expect_err("expected expression parse error")
 }
 
-
+fn parse_expr(src: &str) -> Expr {
+    let mut lexer = Lexer::new(src);
+    let tokens = lexer.tokenize().expect("lexing failed");
+    let mut parser = Parser::new(&tokens);
+    parser.parse_expr().expect("failed to parse expression")
+}
 
 
 #[test]
@@ -596,15 +605,4 @@ fn parses_return_statement_with_value() {
         other => panic!("expected return statement, got {:?}", other),
     }
 }
-
-
-
-
-
-
-
-
-
-
-
 
