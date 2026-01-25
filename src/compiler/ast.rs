@@ -72,15 +72,24 @@ pub enum Expr {
         expr: Box<Expr>,
     },
 
-    /// Named function block.
+        /// Named function block.
     ///
     /// Introduced explicitly with the `fn` keyword and a snake_cased identifier.
     /// Establishes a function-local scope.
-    /// Variables declared inside are visible only within the function
-    /// and chained bodies unless restricted by future keywords.
+    ///
+    /// A function consists of:
+    /// - exactly one parameter block `:( ... )`
+    /// - one or more chained body blocks `)( ... )`
+    ///
+    /// Function bodies are evaluated in order.
+    /// Execution terminates only when a `ret` statement is encountered.
+    ///
+    /// If execution reaches the end of the final body without a `ret`,
+    /// the function returns `void`.
     ///
     /// Syntax:
     ///     fn my_function :( args )( body1 )( body2 ):
+
     FnBlock {
         name: String,
         args: Vec<Param>,
@@ -198,9 +207,6 @@ pub enum Stmt {
         target: String,
         branches: Vec<Expr>,
     }
-
-
-
 }
 
 #[derive(Debug, Clone, PartialEq)]

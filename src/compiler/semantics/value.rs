@@ -28,7 +28,7 @@ pub enum Value {
     /// - always evaluates to false
     Void,
 
-        /// User-defined function value.
+    /// User-defined function value.
     ///
     /// Represents a callable function introduced by a `fn` block.
     /// Functions are first-class values and may be:
@@ -44,7 +44,7 @@ pub enum Value {
     /// - `ret;` returns `void`
     /// - If no `ret` executes, the function implicitly returns `void`
     Func(Function),
-    
+
 }
 
 #[derive(Debug, Clone, PartialEq)]

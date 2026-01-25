@@ -144,7 +144,7 @@ Invalid numeric forms cause a lexical error:
 Druim uses explicit block operators.  
 Blocks are not inferred by indentation or keywords.
 
-### Block Statements (Statement Scope)
+### Block Statements (Scope-Bearing)
 
 ```druim
 :{
@@ -156,169 +156,186 @@ Blocks are not inferred by indentation or keywords.
 
 Rules:
 
-- :{ begins a block statement
-- }{ continues the same block statement
-- }: ends the block statement
-- Block Statements introduce statement scoped lexical environments
-- Exactly one statement scope exists per block chain
-
-Statement scope exists because the construct is semantic,
-not because of block tokens alone.
+- `:{` starts a new scope
+- `}{` continues the same scope
+- `}:` ends the scope
+- Only block statements create or destroy scope
+- There is exactly one scope per block chain
 
 This behavior is locked.
 
 ---
 
-### Other Block Forms (Structural Only)
+### Other Block Forms
 
-The following block forms are structural only.
+These blocks are structural and do not create or destroy scope in the surrounding program:
 
-They affect syntax and evaluation but never introduce scope.
+- Expression block: :[ expr ]:
+- Branch block: :| expr || expr |:
+- Array block: :< elem >< elem >:
 
-- Expression block
-  - :[ expr ]:
-- Branch block
-  - :| expr || expr |:
-- Array block
-  - :< elem >< elem >:
+They reuse the active scope established by the nearest enclosing block statement (or the top-level scope).
 
-These blocks always reuse the active scope.
+Function definitions are also expressions, but they are not “structural only”:
+- A function call creates a function-local scope for that invocation.
+- This function-local scope is separate from the caller’s scope.
+
 
 ---
 
 ## Functions
 
-Functions in Druim are explicit and expression based.
+### Function Definitions
+
+A function definition in Druim is an expression that produces a callable value.
+
+A valid function definition must satisfy all of the following:
+
+- Uses the fn keyword
+- Uses a snake_case identifier
+- Contains exactly one parameter block
+- Contains at least one function body block
+
+Syntax:
 
 ```druim
-fn add :( a, b )( a + b ):
+fn my_function :( param1, param2 )( body1 )( body2 ):
 ```
-
-Rules:
-
-- Functions must begin with fn
-- Function names must be snake_cased
-- Function bodies are expressions
-- Statements are allowed only inside block expressions
-- The value of the body expression is the function return value
-- Functions introduce their own local scope
-
-There is no return keyword.
-
-### Function Blocks and Scope
-
-Function blocks are not structural blocks.
-
-They are part of function definitions and are only valid when introduced by fn.
-
-```druim
-fn example :( x )( x + 1 ):
-```
-
-Rules:
-
-- Functions introduce a function local scope
-- Function scope is created at fn
-- Function scope is independent of block statement scope
-- Block tokens do not control function scope
-
-## Return Statements (`ret`)
-
-Druim functions support an explicit return statement using the `ret` keyword.
-
-Return statements are **control-flow constructs**, not expressions.
-
-They are only valid **inside function bodies**.
 
 ---
 
-### Syntax
+### Parameters
+
+- Parameters are declared inside the single parameter block :(
+- Each parameter must be a plain identifier
+- Default parameter values exist in the AST but are not enabled in the grammar yet
+
+Example:
+
+```druim
+fn add :(a, b)(
+    ret a + b;
+):
+```
+
+---
+
+### Function Bodies
+
+- Function bodies are introduced with **`)(`**
+- A function may contain one or more body blocks
+- Body blocks are evaluated sequentially, in order
+- All body blocks share the same function-local scope
+
+Example with multiple bodies:
+
+```druim
+fn example :(x)(
+    y = x * 2;
+)(
+    ret y + 1;
+):
+```
+
+---
+
+### Return Semantics
+
+Return is controlled by the ret statement.
+
+Forms:
 
 ```druim
 ret;
 ret expr;
 ```
 
-- `ret;` returns `void`
-- `ret expr;` returns the evaluated value of `expr`
+Rules:
+
+- ret; returns void
+- ret expr; returns the evaluated value of expr
+- If no ret statement is executed, the function returns void
+- ret is a statement, not an expression
 
 ---
 
-### Function Semantics
+### Functions as Expressions
 
-- A function may contain multiple bodies
-- Bodies are evaluated in order
-- The first `ret` encountered immediately terminates function execution
-- The returned value becomes the function’s result
-- If no `ret` is encountered, the function returns `void`
+Because function definitions are expressions, they may be used anywhere an expression is allowed.
 
----
-
-### Scope Rules
-
-- `ret` does not introduce or destroy scope
-- `ret` may appear inside:
-  - Expression blocks
-  - Nested statement blocks
-- Scope unwinding is handled by the evaluator
-
----
-
-### Valid Contexts
-
-`ret` is valid only:
-
-- Inside a function block
-- Inside any nested block within a function
-
-It is invalid:
-
-- At the top level
-- Inside non-function code
-- Inside expression blocks outside a function
-
-Using `ret` outside a function is a compile-time error.
-
----
-
-### Canonical Guarantees
-
-- `ret` is a statement, never an expression
-- `ret` always terminates the current function
-- `ret` cannot be chained
-- `ret` does not participate in operator precedence
-- `ret` has no value itself
-
-This behavior is stable and non-negotiable.
-
----
-
-### Example
+Example:
 
 ```druim
-fn add_one :( x )( 
-    ret x + 1;
+my_func = fn multiply :(a, b)(
+    ret a * b;
+):
+result = my_func(2, 12);
+```
+
+---
+
+## Function Scope
+
+A function call always introduces its own scope.
+
+This scope is created when the function is entered and exists for the entire lifetime of that call.
+
+What this means:
+
+- Parameters are defined in the function scope
+- All chained function bodies share the same function scope
+- Names defined in one body are visible to later bodies by default
+- ret exits the function and returns a value
+- If no ret is executed, the function returns void
+
+Example:
+
+```druim
+fn add :(a, b)(
+    c = a + b;
+)(
+    ret c;
 ):
 ```
 
 ---
 
-### Interaction With `void`
+### Body-Local Scope with loc
 
-- `ret;` is equivalent to `ret void;`
-- `void` is the absence of value
-- A function that does not return explicitly returns `void`
+Druim allows explicit restriction of scope inside a function body using the loc keyword.
+
+- loc introduces a body-local sub-scope
+- Names defined with loc exist only within that body
+- loc does not create a new function
+- loc does not affect other bodies in the chain
+
+Example:
+
+```druim
+fn example :(x)(
+    loc y = x * 2;
+)(
+    ret x;
+):
+```
+
+In this example:
+- x exists in the function scope
+- y exists only in the first body
+- the second body cannot access y
 
 ---
 
-### Implementation Notes (Non-Semantic)
+### Scope Model Summary
 
-- Parsers must intercept `ret` before expression parsing
-- Evaluators must short-circuit execution on `ret`
-- Return handling is explicit and must not be implicit or inferred
+- Every function call has exactly one function scope
+- Function scope spans all chained bodies
+- Body-local scope is opt-in via loc
+- Expression blocks do not create scope
+- Block statements create their own scope
+- Functions create their own scope when called
 
-Any implementation that treats `ret` as an expression is incorrect.
-
+This behavior is locked and canonical.
 
 ---
 

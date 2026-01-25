@@ -54,5 +54,10 @@ pub fn truth_of(value: &Value) -> Truth {
         Value::Text(t) => {
             if t.is_empty() { Truth::False } else { Truth::True }
         }
+
+        Value::Func(_) => {
+            panic!("Functions cannot be evaluated as a flag in Druim.");
+        }
+
     }
 }

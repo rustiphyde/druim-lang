@@ -42,9 +42,25 @@ impl Evaluator {
                     .unwrap_or(Value::Void)
             }
 
+            Expr::FnBlock { name, args, bodies } => {
+                let func = crate::compiler::semantics::value::Function {
+                    name: name.clone(),
+                    params: args.iter().map(|p| p.name.clone()).collect(),
+                    bodies: bodies.clone(),
+                };
+
+                let value = Value::Func(func);
+
+                // Bind function into the current scope
+                self.env.define(name.clone(), value.clone());
+
+                value
+            }
+
             _ => todo!("expression evaluation not implemented yet"),
         }
     }
+
 
     pub fn eval_stmt(&mut self, stmt: &Stmt) {
         match self.eval_stmt_ctrl(stmt) {

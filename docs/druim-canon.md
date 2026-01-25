@@ -10,7 +10,7 @@ Druim is under active development. As such, this document is **living**: it will
 
 ---
 
-## Scope
+## Document Scope
 
 This document describes:
 
@@ -91,41 +91,52 @@ All tokens described here are **lexically atomic**: the lexer will never emit pa
 ## Identifiers and Literals
 
 ### Identifiers
-- **Token**: `Ident`
-- Identifiers begin with an ASCII letter, digit, or `_`
-- Identifiers may contain ASCII letters, digits, or `_`
+- **Token**: Ident
+- Identifiers begin with an ASCII letter, digit, or _
+- Identifiers may contain ASCII letters, digits, or _
 - Keywords are resolved at lexing time
 
 ### Numeric Literals
-- **`NumLit`** — whole number literals
-- **`DecLit`** — decimal literals (contain a single `.`)
+- **NumLit** — whole number literals
+- **DecLit** — decimal literals (contain a single .)
 - Numeric literals are not signed at the lexer level
 
 ### Text Literals
-- **`TextLit`**
-- Enclosed in double quotes (`"`)
+- **TextLit**
+- Enclosed in double quotes (")
 - Unterminated text literals are a lexical error
 
 ---
 
 ## Keywords (Types)
 
-The following identifiers are lexed as keywords when matched exactly:
+The following identifiers are lexed as **type keywords** when matched exactly:
 
-- `num` → `KwNum`
-- `dec` → `KwDec`
-- `text` → `KwText`
-- `void` → `KwVoid`
+- num   → KwNum
+- dec   → KwDec
+- text  → KwText
+- void  → KwVoid
 
-All other identifier strings are emitted as `Ident`.
+These keywords represent literal or type-level concepts.
+
+## Keywords (Control and Scope)
+
+The following identifiers are lexed as **control or scope keywords**:
+
+- fn   → KwFn      (function definition)
+- ret  → KwRet     (function return)
+- loc  → KwLoc     (body-local binding)
+
+These keywords affect control flow or scope and are not expressions.
 
 ## Identifiers
 
 Identifiers are unquoted names used to refer to declared values, bindings, and targets within the language.
+All other identifier strings that do not match a keyword exactly are emitted as Ident.
 
 ### Lexical Form
 
-An identifier is a contiguous sequence of ASCII alphanumeric characters (`A–Z`, `a–z`, `0–9`) and underscores (`_`).
+An identifier is a contiguous sequence of ASCII alphanumeric characters (A–Z, a–z, 0–9) and underscores (_).
 
 Identifiers **may begin with a digit**.
 
@@ -182,7 +193,7 @@ Numeric literals are unquoted.
 
 ### Integer Literals
 
-An integer literal is a contiguous sequence of one or more ASCII digits (`0–9`).
+An integer literal is a contiguous sequence of one or more ASCII digits (0–9).
 
 ```druim
 0
@@ -200,7 +211,7 @@ All-digit sequences are lexed as integer literals unless recognized as decimal l
 A decimal literal consists of:
 
 - one or more ASCII digits  
-- followed by a single dot (`.`)  
+- followed by a single dot (.)  
 - followed by one or more ASCII digits
 
 ```druim
@@ -246,11 +257,11 @@ This distinction is purely lexical and does not imply validity in all syntactic 
 ## Define Operators
 
 ### Define
-- `=` → `Define`
+- = → Define
 - Assigns a value to the left-hand side
 
 ### Define Empty
-- `=;` → `DefineEmpty`
+- =; → DefineEmpty
 - Lexically atomic
 - Explicitly defines the left-hand side as an empty value
 - This is a complete define statement
@@ -261,20 +272,20 @@ Druim does **not** have implicit truthiness in the C/JS sense.
 All conditional evaluation is **explicit, deterministic, and total**.
 
 ### Flag Type
-- `flag` is the boolean type in Druim.
-- A `flag` may only ever be `true` or `false`.
+- flag is the boolean type in Druim.
+- A flag may only ever be true or false.
 
 ### Truth Coercion Rules
-When a value is *explicitly evaluated* as a `flag`, the following rules apply:
+When a value is *explicitly evaluated* as a flag, the following rules apply:
 
-- `flag(true)` → `true`
-- `flag(false)` → `false`
-- `0` → `false`
-- `0.0` → `false`
-- Any non-zero `num` → `true`
-- Any non-zero `dec` → `true`
-- Any `text` value → `true`
-- `void` → `false`
+- flag(true) → true
+- flag(false) → false
+- 0 → false
+- 0.0 → false
+- Any non-zero num → true
+- Any non-zero dec → true
+- Any text value → true
+- void → false
 
 No other values are permitted to participate in truth evaluation.
 
@@ -284,13 +295,13 @@ No other values are permitted to participate in truth evaluation.
 - There is no silent fallback, null propagation, or implicit defaulting.
 
 ### Empty Definition
-- `x =;` is valid syntax and is equivalent to `x = void;`
-- `void` represents the absence of a value and always evaluates to `false` when coerced to `flag`.
+- x =; is valid syntax and is equivalent to x = void;
+- void represents the absence of a value and always evaluates to false when coerced to flag.
 
 ### Design Guarantee
 Every truth evaluation in Druim:
 - Is explicitly defined
-- Produces a valid `flag`
+- Produces a valid flag
 - Or fails with a diagnostic
 
 There is no third state.
@@ -302,439 +313,200 @@ There is no third state.
 Druim uses explicit block operators. Each block family has a **start**, **end**, and **chain** token. These tokens are always matched before any single-character operators.
 
 ### Statement Blocks
-- `:{` → `BlockStmtStart`
-- `}:` → `BlockStmtEnd`
-- `}{` → `BlockStmtChain`
+- :{ → BlockStmtStart
+- }: → BlockStmtEnd
+- }{ → BlockStmtChain
 
 ### Expression Blocks
-- `:[` → `BlockExprStart`
-- `]:` → `BlockExprEnd`
-- `][` → `BlockExprChain`
+- :[ → BlockExprStart
+- ]: → BlockExprEnd
+- ][ → BlockExprChain
 
 ### Function Blocks
-- `:(` → `BlockFuncStart`
-- `):` → `BlockFuncEnd`
-- `)(` → `BlockFuncChain`
+- :( → BlockFuncStart
+- ): → BlockFuncEnd
+- )( → BlockFuncChain
 
 ### Branch Blocks
-- `:|` → `BlockBranchStart`
-- `|:` → `BlockBranchEnd`
-- `||` → `BlockBranchChain`
+- :| → BlockBranchStart
+- |: → BlockBranchEnd
+- || → BlockBranchChain
 
 ### Array Blocks
-- `:<` → `BlockArrayStart`
-- `>:` → `BlockArrayEnd`
-- `><` → `BlockArrayChain`
+- :< → BlockArrayStart
+- >: → BlockArrayEnd
+- >< → BlockArrayChain
 
 **Invariant:**  
-Block chain tokens (`}{`, `][`, `)(`, `><`) are only produced by the lexer and cannot be synthesized from individual characters.
+Block chain tokens (}{, ][, )(, ><) are only produced by the lexer and cannot be synthesized from individual characters.
 
-## Block Statements, Block Chains, and Scope Semantics
+## Blocks and Scope
 
-Druim defines **multiple block forms**, each with distinct semantic roles.  
-**Only Block Statements define runtime scope.**  
-All other block forms are *expression-level* or *structural* and do **not** create or manage scope.
+Druim uses multiple block forms. Each form has a fixed delimiter family and a fixed semantic role.
 
-This distinction is **intentional, explicit, and locked**.
+### Block Statements
 
----
+Block Statements contain statements and establish lexical scope.
 
-## Block Forms in Druim
+The delimiter family is:
 
-Druim supports the following block syntaxes:
+```druim
+:{
+    stmt;
+}{
+    stmt;
+```
 
-### Block Statements (Scope-Bearing)
+Rules:
 
-- **Block Statement Start**: `:{`
-- **Block Statement Chain**: `}{`
-- **Block Statement End**: `}:`
+- :{ starts a new block-statement scope.
+- }{ continues the same scope (block chaining does not nest).
+- }: ends the scope.
+- Exactly one scope exists per statement-block chain.
+
+### Block Expressions
+
+Block Expressions contain expressions only and do not establish scope.
+
+The delimiter family is:
+
+```druim
+:[ expr ][ expr ]:
+```
+
+Rules:
+
+- Each segment between :[ and ]: must parse as an expression.
+- Chained segments are evaluated left to right.
+- The last segment yields the value of the whole block expression.
+- No new scope is created by a block expression.
+
+### Functions
+
+A function definition is an expression that produces a callable value.
+
+Syntax:
+
+```druim
+fn my_function :(a, b)( body1 )( body2 ):
+```
+
+Rules:
+
+- A function definition must use fn, a snake_case identifier, exactly one parameter block, and at least one body block.
+- Parameters are plain identifiers.
+- Default parameter values are reserved and currently not part of the grammar unless explicitly implemented.
+
+#### Function Scope
+
+A function introduces a function-local scope when the function is invoked.
+
+- Parameters are defined in the function scope at call entry.
+- All chained bodies share the same function scope.
+- Names defined in an earlier body are visible to later bodies by default.
 
 Example:
 
 ```druim
-:{
-    a = 1;
-}{
-    b = 2;
-}{
-    c = a + b;
-}:
-```
-
-**This is the only block form that creates and destroys scope.**
-
----
-
-### Block Expressions (No Scope)
-
-- **Block Expression**: `:[ expr ]:`
-- **Chained Block Expression**: `:[ expr ][ expr ]:`
-
-Used to group expressions while preserving precedence.
-
-```druim
-:[ x + 1 ][ y * 2 ]:
-```
-
-Evaluates expressions only.  
-**Does not introduce scope.**
-
----
-
-### Block Functions (Function Semantics)
-
-Block function tokens:
-
-- Function Block Start: :(
-- Function Block Chain: )(
-- Function Block End: ):
-
-Function blocks are used exclusively to define functions and are only valid
-when introduced by the fn keyword.
-
-```druim
-fn my_function :( a, b )( a + b ):
-```
-
-#### Function Definition Rules (LOCKED)
-
-- Every function must begin with the keyword fn
-- Function names must be snake_cased
-- A function definition consists of:
-  - fn
-  - A snake_cased identifier
-  - A function argument block
-  - One or more function body blocks
-- Function bodies are expressions
-- Statements are not valid as function bodies unless wrapped in a block expression
-
-```druim
-fn compute :( x )( :{
-    temp = x * 2;
-    temp + 1
-}: ):
-```
-
-#### Return Semantics
-
-- A function returns the value of its body expression
-- There is no return keyword
-- The final evaluated expression determines the function value
-
-#### Scope Semantics
-
-- Functions introduce a function local scope
-- Function arguments are bound into this scope
-- Function scope is independent of block statement scope
-- Block syntax does not control function scope
-
-Function scope exists because the construct is a function, not because of block tokens.
-
-## Return Statements (`ret`)
-
-Druim functions support an explicit return statement using the `ret` keyword.
-
-Return statements are **control-flow constructs**, not expressions.
-
-They are only valid **inside function bodies**.
-
----
-
-### Syntax
-
-```druim
-ret;
-ret expr;
-```
-
-- `ret;` returns `void`
-- `ret expr;` returns the evaluated value of `expr`
-
----
-
-### Function Semantics
-
-- A function may contain multiple bodies
-- Bodies are evaluated in order
-- The first `ret` encountered immediately terminates function execution
-- The returned value becomes the function’s result
-- If no `ret` is encountered, the function returns `void`
-
----
-
-### Scope Rules
-
-- `ret` does not introduce or destroy scope
-- `ret` may appear inside:
-  - Expression blocks
-  - Nested statement blocks
-- Scope unwinding is handled by the evaluator
-
----
-
-### Valid Contexts
-
-`ret` is valid only:
-
-- Inside a function block
-- Inside any nested block within a function
-
-It is invalid:
-
-- At the top level
-- Inside non-function code
-- Inside expression blocks outside a function
-
-Using `ret` outside a function is a compile-time error.
-
----
-
-### Canonical Guarantees
-
-- `ret` is a statement, never an expression
-- `ret` always terminates the current function
-- `ret` cannot be chained
-- `ret` does not participate in operator precedence
-- `ret` has no value itself
-
-This behavior is stable and non-negotiable.
-
----
-
-### Example
-
-```druim
-fn add_one :( x )( 
-    ret x + 1;
+fn example :(x)(
+    y = x * 2;
+)(
+    ret y + 1;
 ):
 ```
 
----
+#### Body-Local Scope with loc
 
-### Interaction With `void`
+Druim supports body-local restriction inside a function body via loc.
 
-- `ret;` is equivalent to `ret void;`
-- `void` is the absence of value
-- A function that does not return explicitly returns `void`
-
----
-
-### Implementation Notes (Non-Semantic)
-
-- Parsers must intercept `ret` before expression parsing
-- Evaluators must short-circuit execution on `ret`
-- Return handling is explicit and must not be implicit or inferred
-
-Any implementation that treats `ret` as an expression is incorrect.
-
-
----
-
-### Block Branches (No Scope)
-
-- **Branch Block**: `:| expr || expr |:`
-
-Used for branching logic.
-
-Branching logic operates **within an existing scope**.  
-Does not create or destroy scope.
-
----
-
-### Block Arrays (No Scope)
-
-- **Block Array**: `:< elem >< elem >:`
-
-Used for array-like grouping.
-
-Pure value construction.  
-No scope interaction.
-
----
-
-### Core Rule (LOCKED)
-
-**Only Block Statements (`:{ … }:`) create scope.**  
-**Only Block Statement End (`}:`) destroys scope.**
-
-No other block form interacts with scope.
-
----
-
-### Block Statement Chaining Semantics
-
-Within **Block Statements**, chaining is allowed:
-
-- `:{` — **Start scope**
-- `}{` — **Continue same scope**
-- `}:` — **End scope**
-
-### Critical Rule
-
-**`}{` does NOT end scope.**
-
-All chained block statements share **one continuous runtime scope**.
+- loc introduces a sub-scope that exists only for the remainder of the current body.
+- Names declared with loc are not visible to later bodies in the chain.
 
 Example:
 
-Druim
-:{
-    a = 1;
-}{
-    b = a + 1;
-}{
-    c = a + b;
-}:
-Druim
+```druim
+fn example :(x)(
+    loc y = x * 2;
+)(
+    ret x;
+):
+```
 
-All variables (`a`, `b`, `c`) exist in the **same scope**.
+### Evaluator Scope Responsibilities
 
----
+The evaluator must implement scope handling with these guarantees:
 
-### What `}:` Means
-
-- `}:` marks the **end of the block statement chain**
-- The scope created at `:{` is destroyed here
-- All variables defined inside the chain go out of scope
-
-There is **no partial scope exit** inside a block chain.
-
----
-
-### Why Block Statements Are Highest Order
-
-Block Statements are the highest order block because:
-
-- They contain full statements
-- They manage variable lifetime for statement execution
-- They define execution order
-- They introduce statement scoped lexical environments
-- They may contain all other block forms
-
-Block Statements define scope because they are a semantic construct,
-not because of their block tokens.
-
----
-
-### Structural vs Semantic Constructs
-
-Structural Blocks
-- Block Expressions
-- Block Branches
-- Block Arrays
-
-These affect syntax and evaluation only.
-They never introduce scope.
-
-Semantic Constructs
-- Block Statements
-- Function Definitions
-
-These affect the runtime environment and introduce scope.
-
----
-
-### Scope Introduction Rules
-
-Scope is introduced only by semantic constructs.
-
-Block Statements
-- Introduce scope when entered
-- End scope only at `}:`
-
-Function Definitions
-- Introduce a function local scope at fn
-- This scope exists independently of block statements
-- Function scope is not controlled by block tokens
-
-All other block forms reuse the active scope.
-
-
-### Evaluator Responsibility
-
-The evaluator must implement scope handling as follows:
-
-- On encountering fn
-  - Push a new function scope
-- On encountering :{
-  - Push a new statement scope
-- On encountering }:
-  - Pop the most recent statement scope
-- On exiting a function
-  - Pop the function scope
-
-Block syntax alone must never introduce or end scope.
-
----
+- On :{ push a new lexical scope for the statement-block chain.
+- On }{ do not push or pop; continue executing in the current lexical scope.
+- On }: pop the lexical scope created by the matching :{.
+- On function call, push a function scope, bind parameters, execute bodies in order, then pop the function scope.
+- On loc within a function body, push a body-local scope for that body and pop it before leaving that body.
 
 ### Canonical Guarantee
 
-This behavior is stable and non negotiable.
+- Block Statements establish lexical scope.
+- Block Expressions do not establish scope.
+- Function calls establish function scope.
+- loc restricts visibility to a single function body.
 
-Scope is introduced only by semantic constructs.
-Block tokens alone never control scope.
-
-Any implementation that violates this rule is semantically incorrect.
-
----
-
+This behavior is stable and locked.
 ## Logical Operators
 
 Logical operators are **compound tokens only**. Single-character logical symbols are not valid.
 
-- `&?` → `And`
-- `|?` → `Or`
-- `!?` → `Not`
+- &? → And
+- |? → Or
+- !? → Not
 
-Bare `&`, `|`, and `!` are not legal tokens.
+Bare &, |, and ! are not legal tokens.
 
 ---
 
 ## Comparison Operators
 
-- `==` → `Eq`
-- `!=` → `Ne`
-- `<`  → `Lt`
-- `<=` → `Le`
-- `>`  → `Gt`
-- `>=` → `Ge`
+- == → Eq
+- != → Ne
+- <  → Lt
+- <= → Le
+- >  → Gt
+- >= → Ge
 
 **Invariant:**  
-Compound comparison operators are always matched before single-character `<` or `>`.
+Compound comparison operators are always matched before single-character < or >.
 
 ---
 
 ## Arithmetic Operators
 
-- `+` → `Add`
-- `-` → `Sub`
-- `*` → `Mul`
-- `/` → `Div`
-- `%` → `Mod`
+- + → Add
+- - → Sub
+- * → Mul
+- / → Div
+- % → Mod
 
 ---
 
 ## Flow and Direction Operators
 
-- `|>` → `Pipe`
-- `->` → `ArrowR`
-- `<-` → `ArrowL`
+- |> → Pipe
+- -> → ArrowR
+- <- → ArrowL
 
 ---
 
 ## Colon Family Operators
 
-The colon (`:`) introduces multiple structural operators. Longest matches are always preferred.
+The colon (:) introduces multiple structural operators. Longest matches are always preferred.
 
-- `::` → `Has`
-- `:=` → `Bind`
-- `:?` → `Present`
-- `:>` → `Cast`
-- `:`  → `Colon`
+- :: → Has
+- := → Bind
+- :? → Present
+- :> → Cast
+- :  → Colon
 
-## The `::` Has Operator
+## The :: Has Operator
 
-The `::` operator in Druim is called the **Has operator**.
+The :: operator in Druim is called the **Has operator**.
 
 It answers a simple, human question:
 
@@ -747,13 +519,13 @@ It is a **safe access and propagation operator** that always evaluates to a valu
 
 ### Core Meaning
 
-`A :: B` means:
+A :: B means:
 
 > If **A has B**, evaluate to **B**.  
 > If **A does not have B**, evaluate to **void**.
 
 There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator.  
-Failure is represented explicitly as `void`.
+Failure is represented explicitly as void.
 
 ---
 
@@ -762,7 +534,7 @@ Failure is represented explicitly as `void`.
 In many languages, accessing something that doesn’t exist:
 
 - Throws an error
-- Returns `undefined`
+- Returns undefined
 - Requires special syntax or keywords
 - Forces defensive boilerplate
 
@@ -774,14 +546,14 @@ The Has operator lets you **ask for something without assuming it exists**.
 
 ### Basic Example (Real-World)
 
-Imagine a `user` container that *may or may not* have a `profile`.
+Imagine a user container that *may or may not* have a profile.
 
 ```druim
 user::profile
 ```
 
-- If `user` has a `profile`, the expression evaluates to that profile
-- If not, the expression evaluates to `void`
+- If user has a profile, the expression evaluates to that profile
+- If not, the expression evaluates to void
 
 No crash. No undefined. No branching required.
 
@@ -789,7 +561,7 @@ No crash. No undefined. No branching required.
 
 ### Definition via Expression
 
-Because `::` is an **expression**, it can be used anywhere a value is expected.
+Because :: is an **expression**, it can be used anywhere a value is expected.
 
 ```druim
 a = user::profile;
@@ -797,10 +569,10 @@ a = user::profile;
 
 This means:
 
-- If `user` has `profile`, define `a` as that profile
-- Otherwise, define `a` as `void`
+- If user has profile, define a as that profile
+- Otherwise, define a as void
 
-This is **definition**, not assignment (`<-`).
+This is **definition**, not assignment (<-).
 
 ---
 
@@ -814,12 +586,12 @@ a = user::profile::email;
 
 This evaluates left to right:
 
-1. If `user` has `profile`
-2. And `profile` has `email`
-3. Then define `a` as `email`
-4. Otherwise, define `a` as `void`
+1. If user has profile
+2. And profile has email
+3. Then define a as email
+4. Otherwise, define a as void
 
-At **any point** in the chain, failure collapses the entire expression to `void`.
+At **any point** in the chain, failure collapses the entire expression to void.
 
 This makes deep access safe by default.
 
@@ -827,7 +599,7 @@ This makes deep access safe by default.
 
 ### Use in Conditionals (Without New Keywords)
 
-Because `::` evaluates to a value, and because truth is explicit in Druim, it can be used directly in guards and conditionals.
+Because :: evaluates to a value, and because truth is explicit in Druim, it can be used directly in guards and conditionals.
 
 ```druim
 x ?= user::profile::email;
@@ -835,8 +607,8 @@ x ?= user::profile::email;
 
 This means:
 
-- If `user::profile::email` evaluates to a truthy value, assign it to `x`
-- Otherwise, `x` becomes `void`
+- If user::profile::email evaluates to a truthy value, assign it to x
+- Otherwise, x becomes void
 
 No temporary variables.
 No special syntax.
@@ -844,7 +616,7 @@ No extra keywords.
 
 ---
 
-### What `::` Works With
+### What :: Works With
 
 The Has operator works uniformly with any **container-like structure**, including:
 
@@ -855,11 +627,11 @@ The Has operator works uniformly with any **container-like structure**, includin
 - Branch blocks
 - Any named or structured value
 
-If the left side can *contain named values*, `::` can query it.
+If the left side can *contain named values*, :: can query it.
 
 ---
 
-### What `::` Is Not
+### What :: Is Not
 
 - It is **not assignment**
 - It is **not mutation**
@@ -877,25 +649,25 @@ It only answers:
 
 The Has operator exists to:
 
-- Eliminate `undefined`
+- Eliminate undefined
 - Make absence explicit
 - Allow safe deep access
 - Reduce boilerplate
 - Preserve composability
 - Keep failure non-fatal and inspectable
 
-In Druim, **absence is data**, and `::` is how you ask for it safely.
+In Druim, **absence is data**, and :: is how you ask for it safely.
 
 
-## Bind (`:=`)
+## Bind (:=)
 
-The `:=` operator establishes a **value binding** between two identifiers.
+The := operator establishes a **value binding** between two identifiers.
 
 In human terms:
 
 > “Take the current value of that thing and give me my own copy of it.”
 
-`Bind` copies the **current resolved value** of an existing identifier into a new name, **without linking their futures**.
+Bind copies the **current resolved value** of an existing identifier into a new name, **without linking their futures**.
 
 This is **not reference aliasing**.
 
@@ -908,10 +680,10 @@ a := b;
 ```
 Means:
 
-- `b` **must already exist**
-- `a` receives the **current value** of `b`
-- `a` and `b` are **independent after binding**
-- Future mutations of `b` do **not** affect `a`
+- b **must already exist**
+- a receives the **current value** of b
+- a and b are **independent after binding**
+- Future mutations of b do **not** affect a
 - No expressions are evaluated
 - No fallback logic is applied
 
@@ -919,7 +691,7 @@ Means:
 
 ### What Bind *Is*
 
-`Bind` is a **value snapshot operator**.
+Bind is a **value snapshot operator**.
 
 It answers the question:
 
@@ -949,17 +721,17 @@ It answers the question:
 
 ### Comparison With Other Operators
 
-#### Define (`=`)
+#### Define (=)
 
 ```druim
 a = expr;
 ```
 
-- Evaluates `expr`
+- Evaluates expr
 - Produces a new value
-- Defines `a`
+- Defines a
 
-#### Guard (`?=`)
+#### Guard (?=)
 
 ```druim
 a ?= x : y : z;
@@ -967,17 +739,17 @@ a ?= x : y : z;
 
 - Evaluates expressions
 - Applies truth rules
-- Selects the first truthy value or `void`
-- Defines `a` as the result
+- Selects the first truthy value or void
+- Defines a as the result
 
-#### Bind (`:=`)
+#### Bind (:=)
 
 ```druim
 a := b;
 ```
 
 - Evaluates nothing
-- Copies the current value of `b`
+- Copies the current value of b
 - Produces a new, independent value
 - Freezes the value at bind-time
 
@@ -1002,8 +774,8 @@ testConfig.retries = 5;
 
 Result:
 
-- `testConfig.retries` → `5`
-- `config.retries` → still `3`
+- testConfig.retries → 5
+- config.retries → still 3
 
 This behavior is **intentional**.
 
@@ -1011,36 +783,36 @@ This behavior is **intentional**.
 
 ### Why Bind Exists
 
-`Bind` enables:
+Bind enables:
 
 - Safe experimentation
 - Temporary manipulation
 - Snapshotting values
 - Explicit intent without side effects
 
-Without `Bind`, developers are forced to choose between:
-- Recomputing (`=`)
-- Conditional logic (`?=`)
+Without Bind, developers are forced to choose between:
+- Recomputing (=)
+- Conditional logic (?=)
 - Or accidental mutation
 
-`Bind` fills this gap cleanly.
+Bind fills this gap cleanly.
 
 ---
 
 ### Design Principle
 
-- `=` defines
-- `?=` decides
-- `:=` copies
+- = defines
+- ?= decides
+- := copies
 
 Each operator has **one job**.
 
 
-## Guard (`?=` / `:`)
+## Guard (?= / :)
 
 The Guard operator provides conditional assignment without introducing statements, blocks, or control-flow keywords.
 
-It evaluates expressions using explicit boolean (`flag`) semantics and always resolves to a defined value.
+It evaluates expressions using explicit boolean (flag) semantics and always resolves to a defined value.
 
 ---
 
@@ -1092,23 +864,25 @@ x ?= y : z : v;
 
 Semantics:
 
-- If `flag(y)` is `true` → `x = y;`
-- Else if `flag(z)` is `true` → `x = z;`
-- Else → `x = v;`
-- Else → `x = void;`
+- If flag(y) is true → x = y;
+- Else if flag(z) is true → x = z;
+- Else → x = v;
+- Else → x = void;
 
 Rules:
 
 - **?=** appears exactly once, immediately after the target identifier
 - **:** is the only fallback separator
-- Every segment after `?=` is an expression
+- Every segment after ?= is an expression
 - **?=** requires at least one branch expression
-- This syntax is invalid
+- This syntax is invalid:
+
      ```druim
      a ?=;
      ```
+     
 - Fallbacks are unbound in count
-- `void` is the implicit terminal fallback of every guard
+- void is the implicit terminal fallback of every guard
 - Evaluation proceeds left-to-right
 - The first truthy branch wins
 - If all guard and fallback expressions evaluate to false target is assigned **void**
@@ -1122,31 +896,31 @@ Guard conditions use **explicit truth evaluation**, not implicit truthiness.
 
 | Type  | Truth Rule |
 |------|------------|
-| `flag` | `true` / `false` |
-| `num`  | `0` → false, non-zero → true |
-| `dec`  | `0.0` → false, non-zero → true |
-| `text` | empty → false, non-empty → true |
-| `void`  | always false |
+| flag | true / false |
+| num  | 0 → false, non-zero → true |
+| dec  | 0.0 → false, non-zero → true |
+| text | empty → false, non-empty → true |
+| void  | always false |
 
-There is no `undefined` value in Druim.
+There is no undefined value in Druim.
 
 ---
 
 ### Guarantees
 
-- Guard never produces `undefined`
+- Guard never produces undefined
 - All assignments resolve deterministically
-- `void` represents intentional absence, not missing state
+- void represents intentional absence, not missing state
 - Guard is an expression-level construct, not a statement or block
 
 ---
 
 ## Punctuation
 
-- `(` → `LParen`
-- `)` → `RParen`
-- `,` → `Comma`
-- `;` → `Semicolon`
+- ( → LParen
+- ) → RParen
+- , → Comma
+- ; → Semicolon
 
 ---
 
@@ -1155,9 +929,8 @@ There is no `undefined` value in Druim.
 - Whitespace is ignored except as a separator
 - Longest-match wins for all operators
 - Tokens are emitted left-to-right with no backtracking
-- Any unexpected character produces a `LexError::UnexpectedChar`
-- End of input produces a final `Eof` token
+- Any unexpected character produces a LexError::UnexpectedChar
+- End of input produces a final Eof` token
 
 The lexer is responsible only for structure and atomicity.  
 All semantic meaning is deferred to later compilation stages.
-
