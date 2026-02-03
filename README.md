@@ -144,11 +144,13 @@ Invalid numeric forms cause a lexical error:
 Druim uses explicit block operators.  
 Blocks are not inferred by indentation or keywords.
 
-### Block Statements (Scope-Bearing)
+### Blocks (Scope-Bearing)
 
 ```druim
 :{
-    a = 1;
+    a = 2;
+    fn my_func :(x, y)(ret x * y):
+    b = my_func(a, 12);
 }{
     b = a + 1;
 }:
@@ -159,27 +161,8 @@ Rules:
 - `:{` starts a new scope
 - `}{` continues the same scope
 - `}:` ends the scope
-- Only block statements create or destroy scope
-- There is exactly one scope per block chain
 
 This behavior is locked.
-
----
-
-### Other Block Forms
-
-These blocks are structural and do not create or destroy scope in the surrounding program:
-
-- Expression block: :[ expr ]:
-- Branch block: :| expr || expr |:
-- Array block: :< elem >< elem >:
-
-They reuse the active scope established by the nearest enclosing block statement (or the top-level scope).
-
-Function definitions are also expressions, but they are not “structural only”:
-- A function call creates a function-local scope for that invocation.
-- This function-local scope is separate from the caller’s scope.
-
 
 ---
 
@@ -206,7 +189,7 @@ fn my_function :( param1, param2 )( body1 )( body2 ):
 
 ### Parameters
 
-- Parameters are declared inside the single parameter block :(
+- Parameters are declared inside the single parameter block `:(`
 - Each parameter must be a plain identifier
 - Default parameter values exist in the AST but are not enabled in the grammar yet
 
@@ -302,12 +285,12 @@ fn add :(a, b)(
 
 ### Body-Local Scope with loc
 
-Druim allows explicit restriction of scope inside a function body using the loc keyword.
+Druim allows explicit restriction of scope inside a function body or individual block within a chain using the loc keyword.
 
-- loc introduces a body-local sub-scope
-- Names defined with loc exist only within that body
+- loc introduces a body-local or individual block-local sub-scope
+- Names defined with loc exist only within that body or individual block
 - loc does not create a new function
-- loc does not affect other bodies in the chain
+- loc does not affect other bodies or blocks in the chain
 
 Example:
 
@@ -323,6 +306,7 @@ In this example:
 - x exists in the function scope
 - y exists only in the first body
 - the second body cannot access y
+- attempting to do so woulod produce an error
 
 ---
 
@@ -376,7 +360,7 @@ There is no undefined state in Druim.
 
 ---
 
-## Bind (`:=`)
+## Copy (`:=`)
 
 Copies the current value of an existing identifier.
 

@@ -308,82 +308,51 @@ There is no third state.
 
 ---
 
-## Block Operators
-
-Druim uses explicit block operators. Each block family has a **start**, **end**, and **chain** token. These tokens are always matched before any single-character operators.
-
-### Statement Blocks
-- :{ → BlockStmtStart
-- }: → BlockStmtEnd
-- }{ → BlockStmtChain
-
-### Expression Blocks
-- :[ → BlockExprStart
-- ]: → BlockExprEnd
-- ][ → BlockExprChain
-
-### Function Blocks
-- :( → BlockFuncStart
-- ): → BlockFuncEnd
-- )( → BlockFuncChain
-
-### Branch Blocks
-- :| → BlockBranchStart
-- |: → BlockBranchEnd
-- || → BlockBranchChain
-
-### Array Blocks
-- :< → BlockArrayStart
-- >: → BlockArrayEnd
-- >< → BlockArrayChain
-
-**Invariant:**  
-Block chain tokens (}{, ][, )(, ><) are only produced by the lexer and cannot be synthesized from individual characters.
-
 ## Blocks and Scope
 
-Druim uses multiple block forms. Each form has a fixed delimiter family and a fixed semantic role.
+In Druim, blocks exist solely to establish lexical scope.
+Blocks do not produce values and do not restrict what may appear inside them beyond general syntactic validity.
 
-### Block Statements
+### Blocks
 
-Block Statements contain statements and establish lexical scope.
+Blocks establish a scope boundary. They may contain any top-level construct that is meaningful in a scoped context.
 
 The delimiter family is:
 
 ```druim
 :{
-    stmt;
+    …
 }{
-    stmt;
+    …
+}:
 ```
 
 Rules:
 
-- :{ starts a new block-statement scope.
-- }{ continues the same scope (block chaining does not nest).
+- :{ begins a new block scope.
+- }{ continues the same scope (block chaining does not introduce nesting).
 - }: ends the scope.
-- Exactly one scope exists per statement-block chain.
+- Exactly one lexical scope exists per block chain, individual bindings may be restricted to a single block segment via loc.
+- Blocks do not evaluate to a value.
+- Blocks exist only to control name visibility and lifetime.
 
-### Block Expressions
+Blocks may contain, in any valid order:
 
-Block Expressions contain expressions only and do not establish scope.
+- statements
+- function definitions
+- other blocks
+- any construct that is syntactically meaningful at block level
 
-The delimiter family is:
+Blocks impose no additional restrictions beyond general syntactic validity.
+Standalone expressions that have no structural effect (e.g. 1 + 2) are rejected by the grammar, not by block semantics.
 
-```druim
-:[ expr ][ expr ]:
-```
-
-Rules:
-
-- Each segment between :[ and ]: must parse as an expression.
-- Chained segments are evaluated left to right.
-- The last segment yields the value of the whole block expression.
-- No new scope is created by a block expression.
 
 ### Functions
 
 A function definition is an expression that produces a callable value.
+
+Although function definitions are expressions, they are treated as structural declarations and may appear as standalone forms. 
+Other expressions may not appear standalone unless they have a defined structural role.
 
 Syntax:
 
@@ -436,27 +405,26 @@ fn example :(x)(
 
 The evaluator must implement scope handling with these guarantees:
 
-- On :{ push a new lexical scope for the statement-block chain.
+- On :{ push a new lexical scope for the block chain.
 - On }{ do not push or pop; continue executing in the current lexical scope.
-- On }: pop the lexical scope created by the matching :{.
+- On }: pop the lexical scope created by the matching `:{`.
 - On function call, push a function scope, bind parameters, execute bodies in order, then pop the function scope.
 - On loc within a function body, push a body-local scope for that body and pop it before leaving that body.
 
 ### Canonical Guarantee
 
-- Block Statements establish lexical scope.
-- Block Expressions do not establish scope.
-- Function calls establish function scope.
-- loc restricts visibility to a single function body.
+- Blocks establish lexical scope.
+- Function bodies establish function scope.
+- loc restricts visibility to a single function body or block within a chain.
 
 This behavior is stable and locked.
 ## Logical Operators
 
 Logical operators are **compound tokens only**. Single-character logical symbols are not valid.
 
-- &? → And
-- |? → Or
-- !? → Not
+- && → And
+- || → Or
+- ! → Not
 
 Bare &, |, and ! are not legal tokens.
 
@@ -499,9 +467,9 @@ Compound comparison operators are always matched before single-character < or >.
 The colon (:) introduces multiple structural operators. Longest matches are always preferred.
 
 - :: → Has
-- := → Bind
+- := → Copy
 - :? → Present
-- :> → Cast
+- :> → Bind
 - :  → Colon
 
 ## The :: Has Operator
@@ -620,11 +588,8 @@ No extra keywords.
 
 The Has operator works uniformly with any **container-like structure**, including:
 
-- Block Statements
-- Block Expressions
-- Block Functions
-- Block Arrays
-- Branch blocks
+- Functions
+- Arrays
 - Any named or structured value
 
 If the left side can *contain named values*, :: can query it.
@@ -659,15 +624,15 @@ The Has operator exists to:
 In Druim, **absence is data**, and :: is how you ask for it safely.
 
 
-## Bind (:=)
+## Copy (:=)
 
-The := operator establishes a **value binding** between two identifiers.
+The := operator establishes a **value copying** between two identifiers.
 
 In human terms:
 
 > “Take the current value of that thing and give me my own copy of it.”
 
-Bind copies the **current resolved value** of an existing identifier into a new name, **without linking their futures**.
+Copy copies the **current resolved value** of an existing identifier into a new name, **without linking their futures**.
 
 This is **not reference aliasing**.
 
@@ -682,16 +647,16 @@ Means:
 
 - b **must already exist**
 - a receives the **current value** of b
-- a and b are **independent after binding**
+- a and b are **independent after copying**
 - Future mutations of b do **not** affect a
 - No expressions are evaluated
 - No fallback logic is applied
 
 ---
 
-### What Bind *Is*
+### What Copy *Is*
 
-Bind is a **value snapshot operator**.
+Copy is a **value snapshot operator**.
 
 It answers the question:
 
@@ -699,7 +664,7 @@ It answers the question:
 
 ---
 
-### What Bind *Does*
+### What Copy *Does*
 
 - Copies the current value of an existing identifier
 - Produces a **new, independent value**
@@ -709,7 +674,7 @@ It answers the question:
 
 ---
 
-### What Bind *Does Not Do*
+### What Copy *Does Not Do*
 
 - Does not evaluate expressions
 - Does not perform conditional logic
@@ -742,7 +707,7 @@ a ?= x : y : z;
 - Selects the first truthy value or void
 - Defines a as the result
 
-#### Bind (:=)
+#### Copy (:=)
 
 ```druim
 a := b;
@@ -751,7 +716,7 @@ a := b;
 - Evaluates nothing
 - Copies the current value of b
 - Produces a new, independent value
-- Freezes the value at bind-time
+- Freezes the value at copy-time
 
 ---
 
@@ -781,21 +746,21 @@ This behavior is **intentional**.
 
 ---
 
-### Why Bind Exists
+### Why Copy Exists
 
-Bind enables:
+Copy enables:
 
 - Safe experimentation
 - Temporary manipulation
 - Snapshotting values
 - Explicit intent without side effects
 
-Without Bind, developers are forced to choose between:
+Without Copy, developers are forced to choose between:
 - Recomputing (=)
 - Conditional logic (?=)
 - Or accidental mutation
 
-Bind fills this gap cleanly.
+Copy fills this gap cleanly.
 
 ---
 

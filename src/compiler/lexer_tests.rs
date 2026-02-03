@@ -18,9 +18,9 @@ mod tests {
         let ks = kinds("a:b a::b a:=b a:?b a:>b");
         assert!(ks.contains(&Colon));
         assert!(ks.contains(&Has));
-        assert!(ks.contains(&Bind));
+        assert!(ks.contains(&Copy));
         assert!(ks.contains(&Present));
-        assert!(ks.contains(&Cast));
+        assert!(ks.contains(&Bind));
     }
 
     #[test]
@@ -50,20 +50,20 @@ mod tests {
 
     #[test]
     fn block_tokens() {
-        let src = ":[ x + 1 ][ c * 56 ]: :{ a <- b; }{ d := a }: fn my_function :( b )( a = b; ):";
+        let src = ":[ 1, 2, 3 ][ \"carrots\", \"eggs\", \"milk\" ]: :{ a = 16; }{ d := a; }: fn my_function :( b )( a = b; ):";
         let tokens = Lexer::new(src).tokenize().unwrap();
 
         let kinds: Vec<_> = tokens.iter().map(|t| t.kind).collect();
 
-        assert!(kinds.contains(&TokenKind::BlockExprStart));
-        assert!(kinds.contains(&TokenKind::BlockExprChain));
-        assert!(kinds.contains(&TokenKind::BlockExprEnd));
-        assert!(kinds.contains(&TokenKind::BlockStmtStart));
-        assert!(kinds.contains(&TokenKind::BlockStmtChain));
-        assert!(kinds.contains(&TokenKind::BlockStmtEnd));
-        assert!(kinds.contains(&TokenKind::BlockFuncStart));
-        assert!(kinds.contains(&TokenKind::BlockFuncChain));
-        assert!(kinds.contains(&TokenKind::BlockFuncEnd));
+        assert!(kinds.contains(&TokenKind::ArrayStart));
+        assert!(kinds.contains(&TokenKind::ArrayChain));
+        assert!(kinds.contains(&TokenKind::ArrayEnd));
+        assert!(kinds.contains(&TokenKind::BlockStart));
+        assert!(kinds.contains(&TokenKind::BlockChain));
+        assert!(kinds.contains(&TokenKind::BlockEnd));
+        assert!(kinds.contains(&TokenKind::FuncStart));
+        assert!(kinds.contains(&TokenKind::FuncChain));
+        assert!(kinds.contains(&TokenKind::FuncEnd));
     }
 
     #[test]

@@ -54,8 +54,8 @@ impl Env {
             .find_map(|s| s.names.get(name).cloned())
     }
 
-    /// Bind a new name in the current scope to an existing slot (aliasing).
-    pub fn bind(&mut self, name: String, target: &str) -> Result<(), ()> {
+    /// Copy a new name in the current scope to an existing slot (aliasing).
+    pub fn copy(&mut self, name: String, target: &str) -> Result<(), ()> {
         let slot = self.lookup(target).ok_or(())?;
         self.scopes
             .last_mut()

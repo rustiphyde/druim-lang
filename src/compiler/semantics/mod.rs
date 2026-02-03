@@ -3,7 +3,6 @@ pub mod truth;
 pub mod eval;
 pub mod env;
 
-
 #[cfg(test)]
 mod semantic_tests;
 

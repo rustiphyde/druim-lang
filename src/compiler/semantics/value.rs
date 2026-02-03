@@ -1,4 +1,4 @@
-use crate::compiler::ast::{Literal, Expr};
+use crate::compiler::ast::{Literal, Node, Param};
 
 /// Runtime value representation.
 ///
@@ -43,15 +43,15 @@ pub enum Value {
     /// - `ret expr;` returns the evaluated expression
     /// - `ret;` returns `void`
     /// - If no `ret` executes, the function implicitly returns `void`
-    Func(Function),
+    Func(Func),
 
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Function {
+pub struct Func {
     pub name: String,
-    pub params: Vec<String>,
-    pub bodies: Vec<Expr>,
+    pub params: Vec<Param>,
+    pub bodies: Vec<Node>,
 }
 
 

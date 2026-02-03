@@ -131,66 +131,41 @@ impl<'a> Lexer<'a> {
 
             // ===== Block delimiters (must be before single ':') =====
             if self.match_str(":[") {
-                tokens.push(tok(TokenKind::BlockExprStart, ":[", start));
+                tokens.push(tok(TokenKind::ArrayStart, ":[", start));
                 continue;
             }
             if self.match_str("]:") {
-                tokens.push(tok(TokenKind::BlockExprEnd, "]:", start));
+                tokens.push(tok(TokenKind::ArrayEnd, "]:", start));
                 continue;
             }
             if self.match_str("][") {
-                tokens.push(tok(TokenKind::BlockExprChain, "][", start));
+                tokens.push(tok(TokenKind::ArrayChain, "][", start));
                 continue;
             }
 
             if self.match_str(":{") {
-                tokens.push(tok(TokenKind::BlockStmtStart, ":{", start));
+                tokens.push(tok(TokenKind::BlockStart, ":{", start));
                 continue;
             }
             if self.match_str("}:") {
-                tokens.push(tok(TokenKind::BlockStmtEnd, "}:", start));
+                tokens.push(tok(TokenKind::BlockEnd, "}:", start));
                 continue;
             }
             if self.match_str("}{") {
-                tokens.push(tok(TokenKind::BlockStmtChain, "}{", start));
+                tokens.push(tok(TokenKind::BlockChain, "}{", start));
                 continue;
             }
 
             if self.match_str(":(") {
-                tokens.push(tok(TokenKind::BlockFuncStart, ":(", start));
+                tokens.push(tok(TokenKind::FuncStart, ":(", start));
                 continue;
             }
             if self.match_str("):") {
-                tokens.push(tok(TokenKind::BlockFuncEnd, "):", start));
+                tokens.push(tok(TokenKind::FuncEnd, "):", start));
                 continue;
             }
             if self.match_str(")(") {
-                tokens.push(tok(TokenKind::BlockFuncChain, ")(", start));
-                continue;
-            }
-
-            if self.match_str(":<") {
-                tokens.push(tok(TokenKind::BlockArrayStart, ":<", start));
-                continue;
-            }
-            if self.match_str(">:") {
-                tokens.push(tok(TokenKind::BlockArrayEnd, ">:", start));
-                continue;
-            }
-            if self.match_str("><") {
-                tokens.push(tok(TokenKind::BlockArrayChain, "><", start));
-                continue;
-            }
-            if self.match_str(":|") {
-                tokens.push(tok(TokenKind::BlockBranchStart, ":|", start));
-                continue;
-            }
-            if self.match_str("|:") {
-                tokens.push(tok(TokenKind::BlockBranchEnd, "|:", start));
-                continue;
-            }
-            if self.match_str("||") {
-                tokens.push(tok(TokenKind::BlockBranchChain, "||", start));
+                tokens.push(tok(TokenKind::FuncChain, ")(", start));
                 continue;
             }
 
@@ -226,16 +201,12 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
-            if self.match_str("&?") {
-                tokens.push(tok(TokenKind::And, "&?", start));
+            if self.match_str("&&") {
+                tokens.push(tok(TokenKind::And, "&&", start));
                 continue;
             }
-            if self.match_str("|?") {
-                tokens.push(tok(TokenKind::Or, "|?", start));
-                continue;
-            }
-            if self.match_str("!?") {
-                tokens.push(tok(TokenKind::Not, "!?", start));
+            if self.match_str("||") {
+                tokens.push(tok(TokenKind::Or, "||", start));
                 continue;
             }
 
@@ -254,7 +225,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             if self.match_str(":=") {
-                tokens.push(tok(TokenKind::Bind, ":=", start));
+                tokens.push(tok(TokenKind::Copy, ":=", start));
                 continue;
             }
             if self.match_str(":?") {
@@ -262,7 +233,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             if self.match_str(":>") {
-                tokens.push(tok(TokenKind::Cast, ":>", start));
+                tokens.push(tok(TokenKind::Bind, ":>", start));
                 continue;
             }
             if self.match_char(':') {
@@ -284,6 +255,7 @@ impl<'a> Lexer<'a> {
                 ')' => TokenKind::RParen,
                 ',' => TokenKind::Comma,
                 ';' => TokenKind::Semicolon,
+                '!' => TokenKind::Not,
                 _ => {
                     return Err(LexError::UnexpectedChar {
                         ch,

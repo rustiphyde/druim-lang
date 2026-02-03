@@ -1,24 +1,24 @@
-use crate::compiler::ast::{Expr, Literal, Stmt};
+use crate::compiler::ast::{Node, Guard, Literal};
 use crate::compiler::semantics::eval::Evaluator;
 use crate::compiler::semantics::value::Value;
 
-fn lit(v: Literal) -> Expr {
-    Expr::Lit(v)
+fn lit(v: Literal) -> Node {
+    Node::Lit(v)
 }
 
 #[test]
 fn guard_assigns_first_truthy_branch() {
-    let stmt = Stmt::Guard {
+    let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
             lit(Literal::Flag(false)),
             lit(Literal::Num(1)), // truthy
             lit(Literal::Num(2)),
         ],
-    };
+    });
 
     let mut ev = Evaluator::new();
-    ev.eval_stmt(&stmt);
+    ev.eval_node(&node);
 
     match ev.get("x") {
         Some(Value::Num(n)) => assert_eq!(n, 1),
@@ -28,7 +28,7 @@ fn guard_assigns_first_truthy_branch() {
 
 #[test]
 fn guard_skips_false_values_until_true() {
-    let stmt = Stmt::Guard {
+    let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
             lit(Literal::Void),
@@ -36,10 +36,10 @@ fn guard_skips_false_values_until_true() {
             lit(Literal::Text("".into())),
             lit(Literal::Text("ok".into())),
         ],
-    };
+    });
 
     let mut ev = Evaluator::new();
-    ev.eval_stmt(&stmt);
+    ev.eval_node(&node);
 
     match ev.get("x") {
         Some(Value::Text(s)) => assert_eq!(s, "ok"),
@@ -49,17 +49,17 @@ fn guard_skips_false_values_until_true() {
 
 #[test]
 fn guard_assigns_void_if_all_branches_false() {
-    let stmt = Stmt::Guard {
+    let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
             lit(Literal::Flag(false)),
             lit(Literal::Num(0)),
             lit(Literal::Text("".into())),
         ],
-    };
+    });
 
     let mut ev = Evaluator::new();
-    ev.eval_stmt(&stmt);
+    ev.eval_node(&node);
 
     match ev.get("x") {
         Some(Value::Void) => {}
@@ -69,15 +69,15 @@ fn guard_assigns_void_if_all_branches_false() {
 
 #[test]
 fn guard_single_branch_true() {
-    let stmt = Stmt::Guard {
+    let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
             lit(Literal::Num(5)),
         ],
-    };
+    });
 
     let mut ev = Evaluator::new();
-    ev.eval_stmt(&stmt);
+    ev.eval_node(&node);
 
     match ev.get("x") {
         Some(Value::Num(n)) => assert_eq!(n, 5),
@@ -87,15 +87,15 @@ fn guard_single_branch_true() {
 
 #[test]
 fn guard_single_branch_false_becomes_void() {
-    let stmt = Stmt::Guard {
+    let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
             lit(Literal::Num(0)),
         ],
-    };
+    });
 
     let mut ev = Evaluator::new();
-    ev.eval_stmt(&stmt);
+    ev.eval_node(&node);
 
     match ev.get("x") {
         Some(Value::Void) => {}

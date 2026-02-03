@@ -24,9 +24,9 @@ pub enum TokenKind {
 
     // ===== Colon family =====
     Colon,         // :
-    Has,         // ::
+    Has,           // ::
     Present,       // :?
-    Cast,          // :>
+    Bind,          // :>
 
     // ===== Arithmetic =====
     Add,           // +
@@ -44,9 +44,9 @@ pub enum TokenKind {
     Ge,            // >=
 
     // ===== Logical =====
-    And,           // &?
-    Or,            // |?
-    Not,           // !?
+    And,           // &&
+    Or,            // ||
+    Not,           // !
 
     // ===== Flow =====
     Pipe,          // |>
@@ -57,8 +57,8 @@ pub enum TokenKind {
     Define,        // =
     DefineEmpty,   // =;
 
-    // ===== Bind & Guard =====
-    Bind,          // :=
+    // ===== Copy & Guard =====
+    Copy,          // :=
     Guard,         // ?=
 
     // ===== Punctuation =====
@@ -68,22 +68,15 @@ pub enum TokenKind {
     Semicolon,     // ;
 
     // ===== Blocks =====
-    BlockStmtStart, // :{
-    BlockStmtEnd,   // }:
-    BlockStmtChain, // }{
-    BlockExprStart, // :[
-    BlockExprEnd,   // ]:
-    BlockExprChain, // ][
-    BlockFuncStart, // :(
-    BlockFuncEnd,   // ):
-    BlockFuncChain, // )(
-    BlockArrayStart, // :<
-    BlockArrayEnd,   // >:
-    BlockArrayChain, // ><
-    BlockBranchStart, // :|
-    BlockBranchEnd,   // |:
-    BlockBranchChain, // ||   
-
+    BlockStart, // :{
+    BlockEnd,   // }:
+    BlockChain, // }{
+    ArrayStart, // :[
+    ArrayEnd,   // ]:
+    ArrayChain, // ][
+    FuncStart, // :(
+    FuncEnd,   // ):
+    FuncChain, // )(
     // ===== Special =====
     Eof,
 }

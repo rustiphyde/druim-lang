@@ -1,4 +1,4 @@
-use crate::compiler::ast::{Expr, Stmt, Program};
+use crate::compiler::ast::{Node, Program};
 use crate::compiler::semantics::env::Env;
 use crate::compiler::semantics::truth::{truth_of, Truth};
 use crate::compiler::semantics::value::Value;
@@ -22,8 +22,8 @@ impl Evaluator {
     }
 
     pub fn eval_program(&mut self, program: &Program) {
-        for stmt in &program.stmts {
-            self.eval_stmt(stmt);
+        for node in &program.nodes {
+            self.eval_node(node);
         }
     }
 
@@ -32,111 +32,109 @@ impl Evaluator {
         self.env.get_value(name)
     }
 
-    pub fn eval_expr(&mut self, expr: &Expr) -> Value {
-        match expr {
-            Expr::Lit(lit) => Value::from_literal(lit),
+    fn eval_value(&mut self, node: &Node) -> Value {
+        match node {
+            Node::Lit(lit) => Value::from_literal(lit),
 
-            Expr::Ident(name) => {
-                self.env
-                    .get_value(name)
-                    .unwrap_or(Value::Void)
+            Node::Ident(name) => {
+                self.env.get_value(name).unwrap_or(Value::Void)
             }
 
-            Expr::FnBlock { name, args, bodies } => {
-                let func = crate::compiler::semantics::value::Function {
-                    name: name.clone(),
-                    params: args.iter().map(|p| p.name.clone()).collect(),
-                    bodies: bodies.clone(),
-                };
+            Node::Func(func) => {
+                let value = Value::Func(crate::compiler::semantics::value::Func {
+                    name: func.name.clone(),
+                    params: func.params.clone(),
+                    bodies: func.bodies.clone(),
+                });
 
-                let value = Value::Func(func);
-
-                // Bind function into the current scope
-                self.env.define(name.clone(), value.clone());
-
+                self.env.define(func.name.clone(), value.clone());
                 value
             }
 
-            _ => todo!("expression evaluation not implemented yet"),
+            Node::Block(block) => {
+                self.env.push_scope();
+
+                let mut last = Value::Void;
+                for n in &block.nodes {
+                    last = self.eval_value(n);
+                }
+
+                self.env.pop_scope();
+                last
+            }
+
+            _ => Value::Void,
         }
     }
 
 
-    pub fn eval_stmt(&mut self, stmt: &Stmt) {
-        match self.eval_stmt_ctrl(stmt) {
+    pub fn eval_node(&mut self, node: &Node) {
+        match self.eval_node_ctrl(node) {
             Control::Continue => {}
-            Control::Return(_v) => {
-                // For now, this is a runtime error because we have not
-                // implemented "ret only allowed inside functions" as a compile-time rule yet.
+            Control::Return(_) => {
                 panic!("return executed outside of a function");
             }
-        }    }
+        }
+    }
 
-    fn eval_stmt_ctrl(&mut self, stmt: &Stmt) -> Control {
-        match stmt {
-            Stmt::Define { name, value } => {
-                let v = self.eval_expr(value);
-                self.env.define(name.clone(), v);
+
+    fn eval_node_ctrl(&mut self, node: &Node) -> Control {
+        match node {
+            Node::Define(def) => {
+                let v = self.eval_value(&def.value);
+                self.env.define(def.name.clone(), v);
                 Control::Continue
             }
 
-            Stmt::DefineEmpty { name } => {
-                // Use your current "void" value here.
-                // If your Value type is still Emp in this file, keep Value::Emp.
-                self.env.define(name.clone(), Value::Void);
+            Node::DefineEmpty(def) => {
+                self.env.define(def.name.clone(), Value::Void);
                 Control::Continue
             }
 
-            Stmt::Bind { name, target } => {
+            Node::Copy(copy) => {
                 self.env
-                    .bind(name.clone(), target)
+                    .copy(copy.name.clone(), &copy.target)
+                    .expect("copy target must exist");
+                Control::Continue
+            }
+
+            Node::Bind(bind) => {
+                let v = self
+                    .env
+                    .get_value(&bind.target)
                     .expect("bind target must exist");
+                self.env.define(bind.name.clone(), v);
                 Control::Continue
             }
 
-            Stmt::AssignFrom { target, source } => {
-                let value = self.eval_expr(source);
-
-                if let Expr::Ident(name) = target {
-                    self.env
-                        .assign(name, value)
-                        .expect("assignment target must exist");
-                } else {
-                    panic!("invalid assignment target");
-                }
-
-                Control::Continue
-            }
-
-            Stmt::Guard { target, branches } => {
-                // Use your current "void" default here.
+            Node::Guard(guard) => {
                 let mut result = Value::Void;
 
-                for expr in branches {
-                    let v = self.eval_expr(expr);
+                for branch in &guard.branches {
+                    let v = self.eval_value(branch);
                     if truth_of(&v) == Truth::True {
                         result = v;
                         break;
                     }
                 }
 
-                self.env.define(target.clone(), result);
+                self.env.define(guard.target.clone(), result);
                 Control::Continue
             }
 
-            Stmt::Return { value } => {
-                let v = match value {
-                    Some(expr) => self.eval_expr(expr),
+            Node::Ret(ret) => {
+                let v = match &ret.value {
+                    Some(node) => self.eval_value(node),
                     None => Value::Void,
                 };
                 Control::Return(v)
             }
 
-            Stmt::Block { stmts } => {
+            Node::Block(block) => {
                 self.env.push_scope();
 
-                for s in stmts {
-                    let ctl = self.eval_stmt_ctrl(s);
+                for n in &block.nodes {
+                    let ctl = self.eval_node_ctrl(n);
                     if let Control::Return(v) = ctl {
                         self.env.pop_scope();
                         return Control::Return(v);
@@ -147,9 +145,24 @@ impl Evaluator {
                 Control::Continue
             }
 
-            Stmt::SendTo { .. } => {
-                todo!("send semantics not implemented yet");
+            Node::Func(func) => {
+                let value = Value::Func(crate::compiler::semantics::value::Func {
+                    name: func.name.clone(),
+                    params: func.params.clone(),
+                    bodies: func.bodies.clone(),
+                });
+
+                self.env.define(func.name.clone(), value.clone());
+                Control::Continue
             }
+
+            // literals, identifiers, calls, etc.
+           other => {
+                let _ = self.eval_value(other);
+                Control::Continue
+            }
+
         }
+
     }
 }
