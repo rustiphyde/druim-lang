@@ -619,7 +619,7 @@ Bare `&`, `|`, are not legal tokens.
 
 - `==` → Eq
 - `!=` → Ne
-- <  → Lt
+- `<`  → Lt
 - `<=` → Le
 - `>`  → Gt
 - `>=` → Ge
