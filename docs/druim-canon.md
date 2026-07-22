@@ -617,12 +617,12 @@ Bare `&`, `|`, are not legal tokens.
 
 ## Comparison Operators
 
-- == → Eq
-- != → Ne
+- `==` → Eq
+- `!=` → Ne
 - <  → Lt
-- <= → Le
-- >  → Gt
-- >= → Ge
+- `<=` → Le
+- `>`  → Gt
+- `>=` → Ge
 
 **Invariant:**  
 Compound comparison operators are always matched before single-character < or >.
