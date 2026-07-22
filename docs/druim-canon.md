@@ -607,9 +607,9 @@ This behavior is stable and locked.
 
 The binary logical operators are compound tokens. Their single-character forms are not valid.
 
-- **&&** → And
-- **||** → Or
-- **!** → Not
+- `&&` → And
+- `||` → Or
+- `!` → Not
 
 Bare `&`, `|`, are not legal tokens.
 
