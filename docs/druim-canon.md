@@ -1,5 +1,14 @@
 # Druim Canon (Living Document)
 
+## Canon Revision Baseline
+- Revision ID: DRUIM-CANON-R003
+- Status: Current
+- Effective Date: 2026-07-22
+- Authoritative Scope: Global
+- Supersedes: DRUIM-CANON-R002
+- Notes: This revision formalizes statement-boundary invariants for Define, DefineEmpty, Copy, Bind, and Guard; clarifies complete-expression requirements; and resolves inconsistencies in the documented truth and Guard rules.
+
+
 ## Purpose
 
 This document defines the **current canonical truths** of the Druim programming language.
@@ -115,6 +124,7 @@ The following identifiers are lexed as **type keywords** when matched exactly:
 - num   → KwNum
 - dec   → KwDec
 - text  → KwText
+- flag  → KwFlag
 - void  → KwVoid
 
 These keywords represent literal or type-level concepts.
@@ -125,7 +135,7 @@ The following identifiers are lexed as **control or scope keywords**:
 
 - fn   → KwFn      (function definition)
 - ret  → KwRet     (function return)
-- loc  → KwLoc     (body-local binding)
+- loc  → KwLoc     (local scope)
 
 These keywords affect control flow or scope and are not expressions.
 
@@ -155,7 +165,6 @@ a1
 123_456
 _foo
 ```
-
 
 ### Invalid Identifiers
 
@@ -236,7 +245,6 @@ The following forms are not valid numeric literals:
 1..2
 ```
 
-
 Such sequences result in a lexical error.
 
 ### Distinction from Identifiers
@@ -254,17 +262,155 @@ Any alphanumeric sequence that contains at least one non-digit character (such a
 
 This distinction is purely lexical and does not imply validity in all syntactic positions.
 
+## Statement Structure and Boundaries
+
+Druim statements are structurally complete forms terminated by a semicolon unless their syntax includes an atomic terminator.
+
+### Statement Terminators
+
+The semicolon (`;`) terminates a statement.
+
+The `=;` DefineEmpty operator is lexically atomic and includes the statement terminator as part of the operator token.
+
+### Complete Consumption
+
+A valid statement must consume every token belonging to that statement.
+
+After the statement's final identifier, value, or expression has been parsed, the next token must be the terminating semicolon unless the statement uses the atomic `=;` operator.
+
+Unexpected tokens may not appear between the completed statement body and its terminator.
+
+Invalid:
+
+```druim
+a := b c;
+a :> b c;
+a = 12 13;
+a ?= 12 13;
+a ?= 12 : 13 14;
+```
+
+A parser must never silently discard or consume an unexpected token as though it were the statement terminator.
+
+### Statement-Operator Chaining
+
+Statement operators may not be chained within one statement.
+
+The statement operators are:
+
+• = — Define
+• =; — DefineEmpty
+• := — Copy
+• :> — Bind
+• ?= — Guard
+
+Invalid:
+
+```druim
+a = 12 = 13;
+a := b := c;
+a :> b :> c;
+a = 12 :> b;
+a ?= b := c;
+```
+Each operation must be written as a separate statement.
+
+## Local Modifier
+
+The **loc** keyword may appear at most once and only at the beginning of a statement form that supports local scope.
+
+Valid:
+
+```druim
+loc a = 12;
+loc a =;
+loc a := b;
+loc a :> b;
+loc a ?= b : c;
+```
+
+Invalid:
+```druim
+loc loc a = 12;
+a loc = 12;
+```
+
+## Parser Boundary Invariant
+
+A successful parser routine must leave the parser positioned immediately after the complete construct it parsed.
+
+A statement parser must therefore:
+
+1. Parse the complete statement body.
+2. Verify that no unexpected tokens remain within that statement.
+3. Consume the statement terminator.
+4. Leave the next statement untouched.
+
+A parser may not report success after parsing only a valid prefix of an otherwise invalid statement.
+
+This captures the exact invariant exposed by the Copy, Bind, Define, and Guard tests.
+
 ## Define Operators
 
-### Define
-- = → Define
-- Assigns a value to the left-hand side
+### Define (`=`)
+- The Define operator evaluates exactly one complete expression and defines the target identifier as the resulting value.
 
-### Define Empty
-- =; → DefineEmpty
-- Lexically atomic
-- Explicitly defines the left-hand side as an empty value
-- This is a complete define statement
+```druim
+a = 12;
+b = 12 + 13;
+c = user::profile;
+```
+Rules:
+
+• The left-hand side must be exactly one identifier.
+• The right-hand side must contain exactly one complete expression.
+• The right-hand side may not be empty.
+• A bare identifier may not be used as the entire right-hand side when Copy (:=) or Bind (:>) expresses the intended operation.
+• No unexpected tokens may remain between the expression and the terminating semicolon.
+• Define may not be chained with another statement operator.
+
+Invalid:
+
+```druim
+12 = a;
+a =;
+a = b;
+a = 12 13;
+a = 12 :> b;
+```
+
+To copy the current value of an existing identifier, use Copy:
+
+```druim
+a := b;
+```
+
+To establish shared identity with an existing identifier, use Bind:
+
+```druim
+a :> b;
+```
+
+
+### Define Empty (=;)
+
+- The DefineEmpty operator explicitly defines the target identifier as void.
+
+```druim
+a =;
+```
+
+It is equivalent in meaning to:
+```druim
+a = void;
+```
+
+Rules
+• **=;** is one lexically atomic token.
+• The left-hand side must be exactly one identifier.
+• **=;** completes the statement itself.
+• No separate semicolon follows it.
+• DefineEmpty may not be chained with another statement operator.
 
 ## Truth Evaluation (Flags)
 
@@ -327,77 +473,116 @@ The delimiter family is:
 }:
 ```
 
-Rules:
+### Block Structure Rules
 
-- :{ begins a new block scope.
-- }{ continues the same scope (block chaining does not introduce nesting).
-- }: ends the scope.
-- Exactly one lexical scope exists per block chain, individual bindings may be restricted to a single block segment via loc.
+- `:{` begins a new block scope.
+- `}{` continues the same block chain.
+- `}:` ends the block scope.
+- Block chaining does **not** introduce nesting.
+- Exactly one lexical scope exists per block chain.
+- Individual bindings may be restricted to a single block segment via the `loc` keyword.
 - Blocks do not evaluate to a value.
 - Blocks exist only to control name visibility and lifetime.
+
+### Block Nesting
+
+Nested blocks are **not allowed** in Druim.
+
+A `:{ ... }:` block may not appear inside another block.
+
+The only valid way to extend a block is through **block chaining** using `}{`.
+
+Invalid:
+
+```druim
+:{
+    :{
+        x = 1;
+    }:
+}:
+```
+
+Valid:
+
+```druim
+:{
+    x = 1;
+}{
+    y = 2;
+}:
+```
+
+### Block Contents
 
 Blocks may contain, in any valid order:
 
 - statements
 - function definitions
-- other blocks
 - any construct that is syntactically meaningful at block level
 
 Blocks impose no additional restrictions beyond general syntactic validity.
-Standalone expressions that have no structural effect (e.g. 1 + 2) are rejected by the grammar, not by block semantics.
 
+Standalone expressions that have no structural effect (e.g. `1 + 2`) are rejected by the grammar, not by block semantics.
 
-### Functions
+---
+
+## Functions
 
 A function definition is an expression that produces a callable value.
 
-Although function definitions are expressions, they are treated as structural declarations and may appear as standalone forms. 
+Function definitions are treated as structural declarations and may appear as standalone forms.
 Other expressions may not appear standalone unless they have a defined structural role.
 
-Syntax:
+### Function Delimiters
+
+Functions use the delimiter family:
 
 ```druim
-fn my_function :(a, b)( body1 )( body2 ):
+:( parameters )( body ):
 ```
 
-Rules:
+- `:(` begins the parameter block.
+- `)(` separates the parameter block from the body block.
+- `):` ends the function definition.
 
-- A function definition must use fn, a snake_case identifier, exactly one parameter block, and at least one body block.
-- Parameters are plain identifiers.
-- Default parameter values are reserved and currently not part of the grammar unless explicitly implemented.
+These delimiters are structural and must appear exactly once each in a valid function definition.
 
-#### Function Scope
+### Syntax
 
-A function introduces a function-local scope when the function is invoked.
+```druim
+fn my_function :(a, b)( body ):
+```
+
+### Rules
+
+- A function definition must use `fn`, followed by a `snake_case` identifier.
+- Exactly **one parameter block** and **one body block** must be present.
+- Each parameter must be a valid parameter form.
+- A parameter may be a plain identifier.
+- A parameter may include a default value using the Define form.
+- Parameter defaults use `=` and must contain exactly one complete expression.
+- Copy, Bind, Guard, and DefineEmpty are not valid parameter-default forms unless a later canon revision explicitly permits them.
+- The body contains a sequence of valid statements.
+
+Example with a default parameter:
+
+```druim
+fn my_func :(w, x = 12;)(ret w * x;):
+```
+
+### Function Scope
+
+A function introduces a **function-local scope** when the function is invoked.
 
 - Parameters are defined in the function scope at call entry.
-- All chained bodies share the same function scope.
-- Names defined in an earlier body are visible to later bodies by default.
+- Bindings created inside the function body exist only for the duration of the call.
 
 Example:
 
 ```druim
 fn example :(x)(
     y = x * 2;
-)(
-    ret y + 1;
-):
-```
-
-#### Body-Local Scope with loc
-
-Druim supports body-local restriction inside a function body via loc.
-
-- loc introduces a sub-scope that exists only for the remainder of the current body.
-- Names declared with loc are not visible to later bodies in the chain.
-
-Example:
-
-```druim
-fn example :(x)(
-    loc y = x * 2;
-)(
-    ret x;
+    ret y;
 ):
 ```
 
@@ -408,25 +593,25 @@ The evaluator must implement scope handling with these guarantees:
 - On :{ push a new lexical scope for the block chain.
 - On }{ do not push or pop; continue executing in the current lexical scope.
 - On }: pop the lexical scope created by the matching `:{`.
-- On function call, push a function scope, bind parameters, execute bodies in order, then pop the function scope.
-- On loc within a function body, push a body-local scope for that body and pop it before leaving that body.
+- On function call, push a function scope, bind parameters, then pop the function scope.
 
 ### Canonical Guarantee
 
 - Blocks establish lexical scope.
-- Function bodies establish function scope.
-- loc restricts visibility to a single function body or block within a chain.
+- Function body establishes function scope.
+- loc restricts visibility to a single block segment within a chain.
 
 This behavior is stable and locked.
+
 ## Logical Operators
 
-Logical operators are **compound tokens only**. Single-character logical symbols are not valid.
+The binary logical operators are compound tokens. Their single-character forms are not valid.
 
-- && → And
-- || → Or
-- ! → Not
+- **&&** → And
+- **||** → Or
+- **!** → Not
 
-Bare &, |, and ! are not legal tokens.
+Bare `&`, `|`, are not legal tokens.
 
 ---
 
@@ -626,7 +811,7 @@ In Druim, **absence is data**, and :: is how you ask for it safely.
 
 ## Copy (:=)
 
-The := operator establishes a **value copying** between two identifiers.
+The := operator performs a **value copy** between two identifiers.
 
 In human terms:
 
@@ -653,6 +838,32 @@ Means:
 - No fallback logic is applied
 
 ---
+
+### Syntactic Form
+
+Copy has exactly this form:
+
+```druim
+target := source;
+```
+
+Rules:
+
+• **target** must be exactly one identifier.
+• **source** must be exactly one identifier.
+• No expression may appear on either side.
+• No additional tokens may appear before the semicolon.
+• Copy may not be chained with another statement operator.
+
+Invalid:
+
+```druim
+a := 12;
+a := b + c;
+a := b c;
+a := b := c;
+a := b :> c;
+```
 
 ### What Copy *Is*
 
@@ -706,6 +917,16 @@ a ?= x : y : z;
 - Applies truth rules
 - Selects the first truthy value or void
 - Defines a as the result
+
+#### Bind (`:>`)
+
+```druim
+a :> b;
+```
+
+- Evaluates nothing
+- Creates shared identity
+- Future changes propagate across all bound identifiers
 
 #### Copy (:=)
 
@@ -769,15 +990,190 @@ Copy fills this gap cleanly.
 - = defines
 - ?= decides
 - := copies
+- :> binds
 
 Each operator has **one job**.
 
+---
+
+## Bind (`:>`)
+
+The `:>` operator establishes a **live identity binding** between two identifiers.
+
+In human terms:
+
+> “Make this name refer to the same thing as that name.”
+
+Bind connects two identifiers to the **same underlying value identity**, such that future mutations through either name are visible to the other.
+
+This is **reference aliasing**.
+
+---
+
+### Core Meaning
+
+```druim
+a :> b;
+```
+
+Means:
+
+- `b` **must already exist**
+- `a` becomes an alias of `b`
+- `a` and `b` refer to the same underlying identity
+- Future mutations of either identifier affect the shared value
+- No expressions are evaluated
+- No fallback logic is applied
+
+Bind does not create a new value. It links identities.
+
+---
+
+### Syntactic Form
+
+Bind has exactly this form:
+
+```druim
+target :> source;
+```
+
+Rules:
+
+• **target** must be exactly one identifier.
+• **source** must be exactly one identifier.
+• No expression may appear on either side.
+• No additional tokens may appear before the semicolon.
+• Bind may not be chained with another statement operator.
+
+Invalid:
+```druim
+a :> 12;
+a :> b + c;
+a :> b c;
+a :> b :> c;
+a :> b := c;
+```
+
+### What Bind *Is*
+
+Bind is an **identity-linking operator**.
+
+It answers the question:
+
+> "Make these two names refer to the same value."
+
+Bind does not snapshot the value.  
+It establishes shared identity.
+
+---
+
+### What Bind *Does*
+
+- Links two identifiers to the same underlying value
+- Requires the right-hand side to be an identifier
+- Requires the identifier to already be defined
+- Propagates future mutations across all bound names
+- Does not evaluate expressions
+- Does not create a new value
+
+---
+
+### What Bind *Does Not Do*
+
+- Does not copy values
+- Does not evaluate expressions
+- Does not perform conditional logic
+- Does not freeze or snapshot state
+- Does not provide fallback behavior
+
+---
+
+### Comparison With Other Operators
+
+#### Define (=)
+
+```druim
+a = expr;
+```
+
+- Evaluates expr
+- Produces a new value
+- Defines a
+
+#### Copy (:=)
+
+```druim
+a := b;
+```
+
+- Snapshots current value of b
+- Produces independent value
+- Future changes do not propagate
+
+#### Bind (`:>`)
+
+```druim
+a :> b;
+```
+
+- Evaluates nothing
+- Creates shared identity
+- Future changes propagate across all bound identifiers
+
+---
+
+### Real-World Example
+
+```druim
+a = 10;
+b :> a;
+a = 20;
+```
+
+Result:
+
+- `b` evaluates to `20`
+
+Because `a` and `b` refer to the same identity.
+
+---
+
+### Why Bind Exists
+
+Bind enables:
+
+- Intentional aliasing
+- Shared state by design
+- Identity-based programming
+- Explicit linkage between names
+
+Without Bind, developers are forced to choose between:
+- Snapshotting (`:=`)
+- Re-defining (`=`)
+- Or duplicating state manually
+
+Bind provides explicit identity sharing.
+
+---
+
+### Design Principle
+
+- = defines
+- ?= decides
+- := copies
+- :> binds
+
+Each operator has **one job**.
 
 ## Guard (?= / :)
 
-The Guard operator provides conditional assignment without introducing statements, blocks, or control-flow keywords.
+Guard is a target-defining statement that performs ordered, truth-based value selection.
 
-It evaluates expressions using explicit boolean (flag) semantics and always resolves to a defined value.
+It evaluates one or more branch expressions from left to right. The first branch whose value evaluates to `true` under Druim's explicit flag-conversion rules becomes the target's value.
+
+If no branch evaluates to `true`, the target is defined as `void`.
+
+Guard is not a general standalone expression and does not itself produce a value for use inside another expression.
 
 ---
 
@@ -789,11 +1185,10 @@ x ?= y;
 
 Semantics:
 
-- `y` is evaluated and converted to a `flag`
-- If `flag(y)` is `true` → `x = y;`
-- If `flag(y)` is `false` → `x = void;`
-
-This form implicitly falls back to `void`.
+1. Evaluate **y**.
+2. Convert the resulting value to **flag**.
+3. If the result is **true**, define **x** as the evaluated value of **y**.
+4. Otherwise, define **x** as **void**.
 
 Equivalent to:
 
@@ -801,71 +1196,70 @@ Equivalent to:
 x ?= y : void;  
 ```
 
----
+### Multiple Branches
 
-### Guard With Fallback
-
-```druim  
-x ?= y : z;  
+```druim
+x ?= y : z : v;
 ```
 
 Semantics:
 
-- If `flag(y)` is `true` → `x = y;`
-- Otherwise → `x = z;`
+1. Evaluate **y**. If **flag(y)** is **true**, define **x** as **y** and stop.
+2. Otherwise, evaluate **z**. If **flag(z)** is **true**, define **x** as **z** and stop.
+3. Otherwise, evaluate **v**. If **flag(v)** is true, define **x** as **v** and stop.
+4. If every branch evaluates to **false**, define **x** as **void**.
 
-Both branches are expressions.  
-The result is always a defined value.
+Every segment is a guarded branch. The final written branch is not an unconditional fallback.
 
----
+The implicit terminal result of every Guard is **void**.
 
-### Guard Chaining
+### Structural Rules
 
-Guards may be chained to express ordered conditional resolution.
+• The target must be exactly one identifier.
+• **?=** appears exactly once, immediately after the target.
+• At least one branch expression is required.
+• **:** separates subsequent branch expressions.
+• Each branch must contain exactly one complete expression.
+• Empty branches are invalid.
+• No unexpected tokens may remain after a branch or before the terminating semicolon.
+• Statement operators may not appear inside Guard branches.
+• Guard may not be chained with another statement operator.
+• The number of branches is not syntactically bounded.
 
-```druim  
-x ?= y : z : v;  
+Valid:
+
+```druim
+x ?= y;
+x ?= y : z;
+x ?= first() : second() : void;
+loc x ?= a : b : c;
 ```
 
-Semantics:
+Invalid:
 
-- If flag(y) is true → x = y;
-- Else if flag(z) is true → x = z;
-- Else → x = v;
-- Else → x = void;
-
-Rules:
-
-- **?=** appears exactly once, immediately after the target identifier
-- **:** is the only fallback separator
-- Every segment after ?= is an expression
-- **?=** requires at least one branch expression
-- This syntax is invalid:
-
-     ```druim
-     a ?=;
-     ```
-     
-- Fallbacks are unbound in count
-- void is the implicit terminal fallback of every guard
-- Evaluation proceeds left-to-right
-- The first truthy branch wins
-- If all guard and fallback expressions evaluate to false target is assigned **void**
-- **void** always evaluates to a false **flag**
+```druim
+x ?=;
+x ?= y :;
+x ?= y z;
+x ?= y : z v;
+x ?= y := z;
+loc loc x ?= y;
+```
 
 ---
+
 
 ### Truth Evaluation
 
-Guard conditions use **explicit truth evaluation**, not implicit truthiness.
+Guard uses Druim's canonical explicit truth-conversion rules.
 
 | Type  | Truth Rule |
 |------|------------|
-| flag | true / false |
-| num  | 0 → false, non-zero → true |
-| dec  | 0.0 → false, non-zero → true |
-| text | empty → false, non-empty → true |
-| void  | always false |
+| **flag** | **true** remains true; **false** remains false |
+| **num**  | **0** is false; every non-zero value is true |
+| **dec**  | **0.0** is false, every non-zero value is true |
+| **text** | Every text value is true |
+| **void**  | Always false |
 
 There is no undefined value in Druim.
 
@@ -873,12 +1267,26 @@ There is no undefined value in Druim.
 
 ### Guarantees
 
-- Guard never produces undefined
-- All assignments resolve deterministically
-- void represents intentional absence, not missing state
-- Guard is an expression-level construct, not a statement or block
+• Guard always defines its target.
+• Guard never produces undefined.
+• Branches are evaluated from left to right.
+• Evaluation stops after the first truthy branch.
+• If all branches are false, the target becomes void.
+• Guard introduces no block and no additional scope.
 
 ---
+
+### Reserved Structural Delimiters
+
+The following delimiter families are recognized at the lexical level but do not yet have defined semantic behavior:
+
+- :[   → ArrayStart
+- ]:   → ArrayEnd
+- ][   → ArrayChain
+
+These tokens are reserved for future structural constructs.
+
+Until formally defined in a canon revision, they have no guaranteed semantics.
 
 ## Punctuation
 

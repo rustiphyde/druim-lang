@@ -1,9 +1,11 @@
-use crate::compiler::ast::{Node, Guard, Literal};
+use crate::compiler::ast::{Guard, GuardBranch, Literal, Node};
 use crate::compiler::semantics::eval::Evaluator;
 use crate::compiler::semantics::value::Value;
 
-fn lit(v: Literal) -> Node {
-    Node::Lit(v)
+fn branch(v: Literal) -> GuardBranch {
+    GuardBranch {
+        expr: Node::Lit(v),
+    }
 }
 
 #[test]
@@ -11,9 +13,9 @@ fn guard_assigns_first_truthy_branch() {
     let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
-            lit(Literal::Flag(false)),
-            lit(Literal::Num(1)), // truthy
-            lit(Literal::Num(2)),
+            branch(Literal::Flag(false)),
+            branch(Literal::Num(1)),
+            branch(Literal::Num(2)),
         ],
     });
 
@@ -31,10 +33,10 @@ fn guard_skips_false_values_until_true() {
     let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
-            lit(Literal::Void),
-            lit(Literal::Num(0)),
-            lit(Literal::Text("".into())),
-            lit(Literal::Text("ok".into())),
+            branch(Literal::Void),
+            branch(Literal::Num(0)),
+            branch(Literal::Text("".into())),
+            branch(Literal::Text("ok".into())),
         ],
     });
 
@@ -52,9 +54,9 @@ fn guard_assigns_void_if_all_branches_false() {
     let node = Node::Guard(Guard {
         target: "x".into(),
         branches: vec![
-            lit(Literal::Flag(false)),
-            lit(Literal::Num(0)),
-            lit(Literal::Text("".into())),
+            branch(Literal::Flag(false)),
+            branch(Literal::Num(0)),
+            branch(Literal::Text("".into())),
         ],
     });
 
@@ -71,9 +73,7 @@ fn guard_assigns_void_if_all_branches_false() {
 fn guard_single_branch_true() {
     let node = Node::Guard(Guard {
         target: "x".into(),
-        branches: vec![
-            lit(Literal::Num(5)),
-        ],
+        branches: vec![branch(Literal::Num(5))],
     });
 
     let mut ev = Evaluator::new();
@@ -89,9 +89,7 @@ fn guard_single_branch_true() {
 fn guard_single_branch_false_becomes_void() {
     let node = Node::Guard(Guard {
         target: "x".into(),
-        branches: vec![
-            lit(Literal::Num(0)),
-        ],
+        branches: vec![branch(Literal::Num(0))],
     });
 
     let mut ev = Evaluator::new();

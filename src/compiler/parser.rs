@@ -1,10 +1,15 @@
-use crate::compiler::ast::{Node, Literal, Program, Param, Define, DefineEmpty, Copy, Bind, Guard, Block, Ret, Func, Call};
+use crate::compiler::ast::{
+    Bind, Block, BlockSegment, Call, Copy, Define, DefineEmpty, Func,
+    Guard, GuardBranch, Literal, Node, Param, Program, Ret,
+};
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
 
 pub struct Parser<'a> {
     tokens: &'a [Token],
-    index: usize,    
+    index: usize,
+    in_block: bool,
+    in_func: bool, 
 }
 
 impl<'a> Parser<'a> {
@@ -12,6 +17,8 @@ impl<'a> Parser<'a> {
         Self {
             tokens,
             index: 0,
+            in_block: false,
+            in_func: false,
         }
     }
 
@@ -150,7 +157,15 @@ impl<'a> Parser<'a> {
         }
 
         // ✅ Structure validated — now parse the return value
-        let value = self.parse_rhs()?;
+        let value =
+            if self.index + 1 == stmt_end
+                && self.peek_kind() == TokenKind::Ident
+            {
+                let ident = self.bump().expect("identifier token must exist");
+                Node::Ident(ident.lexeme.clone())
+            } else {
+                self.parse_rhs()?
+            };
 
         // Consume terminating semicolon
         self.bump(); // `;`
@@ -162,42 +177,50 @@ impl<'a> Parser<'a> {
 
     fn parse_define_empty(&mut self) -> Result<Node, Diagnostic> {
 
-        // 1️⃣ Optional `loc` (syntactic only — no semantics here)
-        let _is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump(); // consume `loc`
+        // Optional `loc` (syntactic only — no semantics here)
+        let is_local = if self.peek_kind() == TokenKind::KwLoc {
+            self.bump();
             true
         } else {
             false
         };
 
-        // Identifier
-        let ident_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error("invalid define empty statement", self.current_span())
-                .with_help("Druim define empty statements must start with an identifier.")
-        })?;
+        // Identifier (single assertion)
+        let ident_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid empty definition", self.current_span())
+                        .with_help(
+                            "Druim empty definitions must begin with an identifier.\n\
+                            Example: `x =;`",
+                        ),
+                );
+            }
+        };
 
         if ident_tok.kind != TokenKind::Ident {
             return Err(
                 Diagnostic::error(
-                    "invalid define empty statement",
+                    "invalid empty definition",
                     Span {
                         start: ident_tok.pos,
                         end: ident_tok.pos + ident_tok.lexeme.len(),
                     },
                 )
                 .with_help(
-                    "Druim Define empty statements must begin with an identifier.\n\
-                    Example: `x = 42;`",
+                    "Druim empty definitions must begin with an identifier.\n\
+                    Example: `x =;`",
                 ),
             );
         }
 
         let name = ident_tok.lexeme.clone();
 
-        // 3️⃣ Consume `=;` (operator is already known by parse_statement_entry)
-        self.bump(); // consume `=;`
+        // Consume `=;` (operator already identified by entry function)
+        self.bump();
 
-        // 4️⃣ Chaining is illegal: `a =; = b;` / `a =; := b;` / etc.
+        // Chaining is illegal
         match self.peek_kind() {
             TokenKind::Define
             | TokenKind::DefineEmpty
@@ -205,9 +228,9 @@ impl<'a> Parser<'a> {
             | TokenKind::Bind
             | TokenKind::Guard => {
                 return Err(
-                    Diagnostic::error("invalid define empty statement", self.current_span())
+                    Diagnostic::error("invalid empty definition", self.current_span())
                         .with_help(
-                            "Druim statement operators cannot be chained.\n\
+                            "Statement operators cannot be chained.\n\
                             Split this into multiple statements.\n\
                             Example: `a =; b = 1;`",
                         ),
@@ -216,12 +239,17 @@ impl<'a> Parser<'a> {
             _ => {}
         }
 
-        Ok(Node::DefineEmpty(DefineEmpty { name }))
+        let node = Node::DefineEmpty(DefineEmpty { name });
+
+        if is_local {
+            Ok(Node::Local(Box::new(node)))
+        } else {
+            Ok(node)
+        }
     }
 
     fn parse_define(&mut self) -> Result<Node, Diagnostic> {
-
-        // 1️⃣ Statement MUST terminate
+        // Statement MUST terminate
         let stmt_end = match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
@@ -238,19 +266,27 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // 2️⃣ Optional `loc`
-        let _is_local = if self.peek_kind() == TokenKind::KwLoc {
+        // Optional `loc`
+        let is_local = if self.peek_kind() == TokenKind::KwLoc {
             self.bump();
             true
         } else {
             false
         };
 
-        // 3️⃣ Identifier (exactly once)
-        let ident_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error("invalid define statement", self.current_span())
-                .with_help("Druim define statements must start with an identifier.")
-        })?;
+        // Identifier (single assertion)
+        let ident_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid define statement", self.current_span())
+                        .with_help(
+                            "Druim define statements must begin with an identifier.\n\
+                            Example: `x = 42;`",
+                        ),
+                );
+            }
+        };
 
         if ident_tok.kind != TokenKind::Ident {
             return Err(
@@ -270,10 +306,10 @@ impl<'a> Parser<'a> {
 
         let name = ident_tok.lexeme.clone();
 
-        // 4️⃣ Consume `=` (guaranteed by entry routing)
+        // Consume `=` (guaranteed by entry routing)
         self.bump();
 
-        // 5️⃣ RHS must exist
+        // RHS must exist
         if self.peek_kind() == TokenKind::Semicolon {
             return Err(
                 Diagnostic::error("invalid define statement", self.current_span())
@@ -285,12 +321,28 @@ impl<'a> Parser<'a> {
             );
         }
 
-        // 6️⃣ Structural scan: no statement operators allowed inside RHS
+        // Structural scan: no statement operators allowed inside RHS
         let mut i = self.index;
         while i < stmt_end {
             match self.tokens[i].kind {
-                TokenKind::Define
-                | TokenKind::DefineEmpty
+                TokenKind::Define => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid define statement",
+                            Span {
+                                start: self.tokens[i].pos,
+                                end: self.tokens[i].pos + self.tokens[i].lexeme.len(),
+                            },
+                        )
+                        .with_help(
+                            "Define statements cannot be chained.\n\
+                            Split this into multiple statements.\n\
+                            Example: `a = 1; b = 2;`",
+                        ),
+                    );
+                }
+
+                TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
                 | TokenKind::Guard => {
@@ -304,17 +356,18 @@ impl<'a> Parser<'a> {
                         )
                         .with_help(
                             "Define statements cannot contain other statement operators.\n\
-                            If you intended to assign from another identifier, use `:=`.\n\
-                            Example: `a := b;`",
+                            Split this into separate statements.",
                         ),
                     );
                 }
+
                 _ => {}
             }
+
             i += 1;
         }
 
-        // 7️⃣ RHS must not be a single identifier
+        // RHS must not be a single identifier
         if self.index + 1 == stmt_end && self.tokens[self.index].kind == TokenKind::Ident {
             return Err(
                 Diagnostic::error(
@@ -325,29 +378,66 @@ impl<'a> Parser<'a> {
                     },
                 )
                 .with_help(
-                    "Define statements cannot assign directly from another identifier.\n\
-                    Use `:=` to copy from an identifier.\n\
-                    Example: `a := b;`",
+                    "Define statements cannot define directly from another identifier.\n\
+                    Use `:=` to copy a value or `:>` to create a live binding.\n\
+                    Examples: `a := b;` or `a :> b;`",
                 ),
             );
         }
 
-        // 8️⃣ Parse RHS LAST (now structurally valid)
+        // Parse RHS LAST
         let value = self.parse_rhs()?;
 
-        // 9️⃣ Consume `;`
+        // The parsed expression must consume the entire RHS.
+        // Only the terminating semicolon may remain.
+        let next_tok = match self.peek() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("unterminated define statement", self.current_span())
+                        .with_help(
+                            "Druim expected a semicolon `;` after the defined value.\n\
+                            Example: `x = 42;`",
+                        ),
+                );
+            }
+        };
+
+        if next_tok.kind != TokenKind::Semicolon {
+            return Err(
+                Diagnostic::error(
+                    "invalid define statement",
+                    Span {
+                        start: next_tok.pos,
+                        end: next_tok.pos + next_tok.lexeme.len(),
+                    },
+                )
+                .with_help(
+                    "A Druim define statement must contain exactly one complete expression.\n\
+                    Unexpected tokens remain after the defined value.\n\
+                    Example: `x = 12 + 13;`",
+                ),
+            );
+        }
+
+        // Consume `;`
         self.bump();
 
-        Ok(Node::Define(Define {
+        let node = Node::Define(Define {
             name,
             value: Box::new(value),
-        }))
+        });
+
+        if is_local {
+            Ok(Node::Local(Box::new(node)))
+        } else {
+            Ok(node)
+        }
     }
 
     fn parse_copy(&mut self) -> Result<Node, Diagnostic> {
 
-        // 1️⃣ Verify the statement is terminated with `;` BEFORE parsing structure
-        let stmt_end = match self.tokens[self.index..]
+        match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
         {
@@ -364,21 +454,26 @@ impl<'a> Parser<'a> {
         };
 
         // 2️⃣ Optional `loc`
-        let _is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump(); // consume `loc`
+        let is_local = if self.peek_kind() == TokenKind::KwLoc {
+            self.bump();
             true
         } else {
             false
         };
 
         // 3️⃣ Left-hand identifier (single assertion)
-        let lhs_tok = self.bump().unwrap_or_else(|| {
-            Token {
-                kind: TokenKind::Eof,
-                lexeme: String::new(),
-                pos: self.current_span().start,
+        let lhs_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid copy statement", self.current_span())
+                        .with_help(
+                            "Copy statements must begin with an identifier.\n\
+                            Example: `a := b;`",
+                        ),
+                );
             }
-        });
+        };
 
         if lhs_tok.kind != TokenKind::Ident {
             return Err(
@@ -402,13 +497,18 @@ impl<'a> Parser<'a> {
         self.bump();
 
         // 5️⃣ Right-hand identifier (single assertion)
-        let rhs_tok = self.bump().unwrap_or_else(|| {
-            Token {
-                kind: TokenKind::Eof,
-                lexeme: String::new(),
-                pos: self.current_span().start,
+        let rhs_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid copy statement", self.current_span())
+                        .with_help(
+                            "Copy statements require an identifier after `:=`.\n\
+                            Example: `a := b;`",
+                        ),
+                );
             }
-        });
+        };
 
         if rhs_tok.kind != TokenKind::Ident {
             return Err(
@@ -428,50 +528,70 @@ impl<'a> Parser<'a> {
 
         let target = rhs_tok.lexeme.clone();
 
-        // 6️⃣ Disallow chaining inside the statement boundary
-        let mut i = self.index;
-        while i < stmt_end {
-            match self.tokens[i].kind {
-                TokenKind::Define
-                | TokenKind::DefineEmpty
-                | TokenKind::Copy
-                | TokenKind::Bind
-                | TokenKind::Guard => {
-                    return Err(
-                        Diagnostic::error(
-                            "invalid copy statement",
-                            Span {
-                                start: self.tokens[i].pos,
-                                end: self.tokens[i].pos + self.tokens[i].lexeme.len(),
-                            },
-                        )
+        let next_tok = match self.peek() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("unterminated copy statement", self.current_span())
                         .with_help(
-                            "Copy statements cannot be chained.\n\
-                            Split this into multiple statements.\n\
-                            Example:\n\
-                            `a := b; c := d;`",
+                            "Druim expected a semicolon `;` after the copy target.\n\
+                            Example: `a := b;`",
                         ),
-                    );
-                }
-                _ => {}
+                );
             }
-            i += 1;
-        }
+        };
 
+        if next_tok.kind != TokenKind::Semicolon {
+            let is_chained = matches!(
+                next_tok.kind,
+                TokenKind::Define
+                    | TokenKind::DefineEmpty
+                    | TokenKind::Copy
+                    | TokenKind::Bind
+                    | TokenKind::Guard
+            );
+
+            let diagnostic = Diagnostic::error(
+                "invalid copy statement",
+                Span {
+                    start: next_tok.pos,
+                    end: next_tok.pos + next_tok.lexeme.len(),
+                },
+            );
+
+            return if is_chained {
+                Err(diagnostic.with_help(
+                    "Copy statements cannot be chained.\n\
+                    Split this into multiple statements.\n\
+                    Example:\n\
+                    `a := b; c := d;`",
+                ))
+            } else {
+                Err(diagnostic.with_help(
+                    "Copy statements must end immediately after the target identifier.\n\
+                    Druim expected `;` after `b`.\n\
+                    Example: `a := b;`",
+                ))
+            };
+        }
         // 7️⃣ Consume `;`
         self.bump();
 
-        Ok(Node::Copy(Copy { name, target }))
+        let node = Node::Copy(Copy { name, target });
+
+        if is_local {
+            Ok(Node::Local(Box::new(node)))
+        } else {
+            Ok(node)
+        }
     }
 
     fn parse_bind(&mut self) -> Result<Node, Diagnostic> {
-
-        // 1️⃣ Verify the statement is terminated with `;` BEFORE parsing structure
-        let stmt_end = match self.tokens[self.index..]
+        match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
         {
-            Some(off) => self.index + off,
+            Some(_) => {}
             None => {
                 return Err(
                     Diagnostic::error("unterminated bind statement", self.current_span())
@@ -481,24 +601,29 @@ impl<'a> Parser<'a> {
                         ),
                 );
             }
-        };
+        }
 
-        // 2️⃣ Optional `loc`
-        let _is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump(); // consume `loc`
+        // Optional `loc`
+        let is_local = if self.peek_kind() == TokenKind::KwLoc {
+            self.bump();
             true
         } else {
             false
         };
 
-        // 3️⃣ Left-hand identifier (single assertion)
-        let lhs_tok = self.bump().unwrap_or_else(|| {
-            Token {
-                kind: TokenKind::Eof,
-                lexeme: String::new(),
-                pos: self.current_span().start,
+        // Left-hand identifier
+        let lhs_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid bind statement", self.current_span())
+                        .with_help(
+                            "Bind statements must begin with an identifier.\n\
+                            Example: `a :> b;`",
+                        ),
+                );
             }
-        });
+        };
 
         if lhs_tok.kind != TokenKind::Ident {
             return Err(
@@ -518,17 +643,22 @@ impl<'a> Parser<'a> {
 
         let name = lhs_tok.lexeme.clone();
 
-        // 4️⃣ Consume `:>` (operator already identified by entry function)
+        // consume `:>`
         self.bump();
 
-        // 5️⃣ Right-hand identifier (single assertion)
-        let rhs_tok = self.bump().unwrap_or_else(|| {
-            Token {
-                kind: TokenKind::Eof,
-                lexeme: String::new(),
-                pos: self.current_span().start,
+        // Right-hand identifier
+        let rhs_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid bind statement", self.current_span())
+                        .with_help(
+                            "Bind statements require an identifier after `:>`.\n\
+                            Example: `a :> b;`",
+                        ),
+                );
             }
-        });
+        };
 
         if rhs_tok.kind != TokenKind::Ident {
             return Err(
@@ -548,45 +678,67 @@ impl<'a> Parser<'a> {
 
         let target = rhs_tok.lexeme.clone();
 
-        // 6️⃣ Disallow chaining inside the statement boundary
-        let mut i = self.index;
-        while i < stmt_end {
-            match self.tokens[i].kind {
-                TokenKind::Define
-                | TokenKind::DefineEmpty
-                | TokenKind::Copy
-                | TokenKind::Bind
-                | TokenKind::Guard => {
-                    return Err(
-                        Diagnostic::error(
-                            "invalid bind statement",
-                            Span {
-                                start: self.tokens[i].pos,
-                                end: self.tokens[i].pos + self.tokens[i].lexeme.len(),
-                            },
-                        )
+        // After the RHS identifier, only `;` is valid
+        let next_tok = match self.peek() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("unterminated bind statement", self.current_span())
                         .with_help(
-                            "Bind statements cannot be chained.\n\
-                            Split this into multiple statements.\n\
-                            Example:\n\
-                            `a :> b; c :> d;`",
+                            "Druim expected a semicolon `;` after the bind target.\n\
+                            Example: `a :> b;`",
                         ),
-                    );
-                }
-                _ => {}
+                );
             }
-            i += 1;
+        };
+
+        if next_tok.kind != TokenKind::Semicolon {
+            let is_chained = matches!(
+                next_tok.kind,
+                TokenKind::Define
+                    | TokenKind::DefineEmpty
+                    | TokenKind::Copy
+                    | TokenKind::Bind
+                    | TokenKind::Guard
+            );
+
+            let diagnostic = Diagnostic::error(
+                "invalid bind statement",
+                Span {
+                    start: next_tok.pos,
+                    end: next_tok.pos + next_tok.lexeme.len(),
+                },
+            );
+
+            return if is_chained {
+                Err(diagnostic.with_help(
+                    "Bind statements cannot be chained.\n\
+                    Split this into multiple statements.\n\
+                    Example:\n\
+                    `a :> b; c :> d;`",
+                ))
+            } else {
+                Err(diagnostic.with_help(
+                    "Bind statements must end immediately after the target identifier.\n\
+                    Example: `a :> b;`",
+                ))
+            };
         }
 
-        // 7️⃣ Consume `;`
+        // Consume `;`
         self.bump();
 
-        Ok(Node::Bind(Bind { name, target }))
+        let node = Node::Bind(Bind { name, target });
+
+        if is_local {
+            Ok(Node::Local(Box::new(node)))
+        } else {
+            Ok(node)
+        }
     }
 
     fn parse_guard(&mut self) -> Result<Node, Diagnostic> {
-
-        // 1️⃣ Find statement terminator FIRST
+        // Find statement terminator FIRST
         let stmt_end = match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
@@ -603,22 +755,27 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // 2️⃣ Optional `loc` (structure only — no semantics)
-        let _is_local = if self.peek_kind() == TokenKind::KwLoc {
+        // Optional `loc`
+        let is_local = if self.peek_kind() == TokenKind::KwLoc {
             self.bump();
             true
         } else {
             false
         };
 
-        // 3️⃣ Identifier (REQUIRED, checked ONCE)
-        let ident_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error("invalid guard statement", self.current_span())
-                .with_help(
-                    "A guard statement must begin with an identifier.\n\
-                    Example: `x ?= y;`",
-                )
-        })?;
+        // Identifier (single assertion)
+        let ident_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("invalid guard statement", self.current_span())
+                        .with_help(
+                            "Druim guard statements must begin with an identifier.\n\
+                            Example: `x ?= y;`",
+                        ),
+                );
+            }
+        };
 
         if ident_tok.kind != TokenKind::Ident {
             return Err(
@@ -630,7 +787,7 @@ impl<'a> Parser<'a> {
                     },
                 )
                 .with_help(
-                    "Guard statements must begin with an identifier.\n\
+                    "Druim guard statements must begin with an identifier.\n\
                     Example: `x ?= y;`",
                 ),
             );
@@ -638,25 +795,25 @@ impl<'a> Parser<'a> {
 
         let name = ident_tok.lexeme.clone();
 
-        // 4️⃣ Consume `?=` (we are here because entry already matched it)
-        self.bump(); // consume `?=`
+        // Consume `?=` (entry routing guarantees it)
+        self.bump();
 
-        // 5️⃣ First branch MUST exist
+        // First branch must exist
         match self.peek_kind() {
             TokenKind::Semicolon | TokenKind::Colon => {
                 return Err(
                     Diagnostic::error("invalid guard statement", self.current_span())
                         .with_help(
-                            "A guard statement requires a value after `?=`.\n\
-                            Did you mean to use an empty define?\n\
+                            "A Druim guard statement requires a value after `?=`.\n\
+                            Did you mean to use the DefineEmpty operator?\n\
                             Example: `x =;`",
-                        ),
+                        )
                 );
             }
             _ => {}
         }
 
-        // 6️⃣ Scan for illegal statement operators inside guard
+        // Structural scan: no statement operators inside guard
         let mut i = self.index;
         while i < stmt_end {
             match self.tokens[i].kind {
@@ -674,7 +831,7 @@ impl<'a> Parser<'a> {
                             },
                         )
                         .with_help(
-                            "Guard branches must be values, not statements.\n\
+                            "Druim guard branches must be values, not statements.\n\
                             Split this into separate statements.",
                         ),
                     );
@@ -684,13 +841,13 @@ impl<'a> Parser<'a> {
             i += 1;
         }
 
-        // 7️⃣ Parse branches (value parsing LAST)
+        // Parse branches LAST
         let mut branches = Vec::new();
 
-        // first branch
-        branches.push(self.parse_rhs()?);
+        branches.push(GuardBranch {
+            expr: self.parse_expr()?,
+        });
 
-        // fallback branches
         while self.peek_kind() == TokenKind::Colon {
             self.bump(); // consume `:`
 
@@ -698,293 +855,364 @@ impl<'a> Parser<'a> {
                 return Err(
                     Diagnostic::error("invalid guard statement", self.current_span())
                         .with_help(
-                            "Expected a value after `:` in guard statement.\n\
+                            "Druim expected a value after `:` in guard statement.\n\
                             Example: `x ?= y : z;`",
                         ),
                 );
             }
 
-            branches.push(self.parse_rhs()?);
+            branches.push(GuardBranch {
+                expr: self.parse_expr()?,
+            });
         }
 
-        // 8️⃣ Consume terminator
-        self.bump(); // consume `;`
+        // The final branch must consume the complete guard RHS.
+        // Only the terminating semicolon may remain.
+        let next_tok = match self.peek() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error("unterminated guard statement", self.current_span())
+                        .with_help(
+                            "Druim expected a semicolon `;` after the final guard branch.\n\
+                            Example: `x ?= y : z;`",
+                        ),
+                );
+            }
+        };
 
-        Ok(Node::Guard(Guard {
+        if next_tok.kind != TokenKind::Semicolon {
+            return Err(
+                Diagnostic::error(
+                    "invalid guard statement",
+                    Span {
+                        start: next_tok.pos,
+                        end: next_tok.pos + next_tok.lexeme.len(),
+                    },
+                )
+                .with_help(
+                    "Each Druim guard branch must contain exactly one complete expression.\n\
+                    Unexpected tokens remain after the final branch.\n\
+                    Example: `x ?= 12 : 13;`",
+                ),
+            );
+        }
+
+        // Consume `;`
+        self.bump();
+
+        let node = Node::Guard(Guard {
             target: name,
             branches,
-        }))
+        });
+
+        if is_local {
+            Ok(Node::Local(Box::new(node)))
+        } else {
+            Ok(node)
+        }
     }
 
     fn parse_block(&mut self) -> Result<Node, Diagnostic> {
+        if self.in_func {
+            return Err(
+                Diagnostic::error("block not allowed in function body", self.current_span())
+                    .with_help(
+                        "Blocks cannot appear inside function bodies.\n\
+                        Use chained blocks at the top level instead.",
+                    ),
+            );
+        }
 
-        // 2️⃣ Consume block start
+        if self.in_block {
+            return Err(
+                Diagnostic::error("nested block not allowed", self.current_span())
+                    .with_help(
+                        "Druim blocks may be chained but not nested.\n\
+                        Use `}{` to create a new block at the same level.",
+                    ),
+            );
+        }
+
+        // Consume block start
         self.bump(); // `:{`
 
-        // 3️⃣ Verify closure BEFORE parsing anything inside
+        // Enter block context
+        let prev = self.in_block;
+        self.in_block = true;
+
+        // Verify block can close before parsing contents
         let has_end = self.tokens[self.index..]
             .iter()
             .any(|t| t.kind == TokenKind::BlockEnd);
 
         if !has_end {
+            self.in_block = prev;
+
             return Err(
                 Diagnostic::error("unterminated block structure", self.current_span())
-                    .with_help(
-                        "Druim expected a closing block delimiter `}:`.",
-                    ),
+                    .with_help("Druim expected a closing block delimiter `}:`."),
             );
         }
 
-        // 4️⃣ Parse statements inside the validated block
+        // Parse block-chain segments
+        let mut segments = Vec::new();
         let mut nodes = Vec::new();
 
         while self.peek_kind() != TokenKind::BlockEnd {
             if self.peek_kind() == TokenKind::BlockChain {
                 self.bump(); // `}{`
+
+                segments.push(BlockSegment { nodes });
+                nodes = Vec::new();
+
                 continue;
             }
 
             nodes.push(self.parse_statement_entry()?);
         }
 
-        // 5️⃣ Consume closing delimiter
+        // Store the final segment
+        segments.push(BlockSegment { nodes });
+
+        // Consume closing delimiter
         self.bump(); // `}:`
 
-        Ok(Node::Block(Block { nodes }))
+        // Exit block context
+        self.in_block = prev;
+
+        Ok(Node::Block(Block { segments }))
     }
 
     fn parse_func(&mut self) -> Result<Node, Diagnostic> {
-        // ─────────────────────────────────────────────
-        //  Consume `fn`
-        // ─────────────────────────────────────────────
-        self.bump(); // `fn`
-
-        // ─────────────────────────────────────────────
-        //  Verify function CAN close (structure-first)
-        // ─────────────────────────────────────────────
-        let has_end = self.tokens[self.index..]
-            .iter()
-            .any(|t| t.kind == TokenKind::FuncEnd);
-
-        if !has_end {
+        if self.in_func {
             return Err(
-                Diagnostic::error("unterminated function structure", self.current_span())
+                Diagnostic::error("nested function not allowed", self.current_span())
                     .with_help(
-                        "Druim expected a closing function delimiter `):`.",
+                        "Functions cannot be defined inside other functions.\n\
+                        Define functions at the top level and call them instead.",
                     ),
             );
         }
 
-        // ─────────────────────────────────────────────
-        //  Function name (REQUIRED)
-        // ─────────────────────────────────────────────
-        let name_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error("invalid function structure", self.current_span())
-                .with_help("Druim expected a function name after the `fn` keyword.")
-        })?;
+        let prev_in_func = self.in_func;
+        self.in_func = true;
 
-        if name_tok.kind != TokenKind::Ident {
-            return Err(
-                Diagnostic::error(
-                    "invalid function structure",
-                    Span {
-                        start: name_tok.pos,
-                        end: name_tok.pos + name_tok.lexeme.len(),
-                    },
-                )
-                .with_help("Druim expected a function name after the `fn` keyword."),
-            );
-        }
+        let result = (|| {
+            // Consume `fn`
+            self.bump();
 
-        let name = name_tok.lexeme.clone();
-
-        if !is_snake_case(&name) {
-            return Err(
-                Diagnostic::error(
-                    "invalid function name",
-                    Span {
-                        start: name_tok.pos,
-                        end: name_tok.pos + name_tok.lexeme.len(),
-                    },
-                )
-                .with_help(
-                    "Function names in Druim must use snake_case (lowercase letters and underscores).",
-                ),
-            );
-        }
-
-        // ─────────────────────────────────────────────
-        //  Parameter block MUST exist
-        // ─────────────────────────────────────────────
-        if self.peek_kind() != TokenKind::FuncStart {
-            return Err(
-                Diagnostic::error("invalid function structure", self.current_span())
-                    .with_help(
-                        "Druim expected a parameter block starting with `:(` after the function name.",
-                    ),
-            );
-        }
-
-        self.bump(); // consume `:(`
-
-        // ─────────────────────────────────────────────
-        //  Verify AT LEAST ONE BODY EXISTS (structure only)
-        // ─────────────────────────────────────────────
-        {
-            let mut i = self.index;
-
-            // Skip parameter tokens until first `)(`
-            while i < self.tokens.len() && self.tokens[i].kind != TokenKind::FuncChain {
-                i += 1;
-            }
-
-            if i >= self.tokens.len() {
-                unreachable!("FuncEnd existence was already verified");
-            }
-
-            // Move past first `)(`
-            i += 1;
-
-            if self.tokens[i].kind == TokenKind::FuncEnd {
+            // Verify function can close
+            if !self.tokens[self.index..]
+                .iter()
+                .any(|t| t.kind == TokenKind::FuncEnd)
+            {
                 return Err(
-                    Diagnostic::error("incomplete function definition", self.current_span())
+                    Diagnostic::error("unterminated function structure", self.current_span())
+                        .with_help("Druim expected a closing function delimiter `):`."),
+                );
+            }
+
+            // Function name
+            let name_tok = match self.bump() {
+                Some(tok) => tok,
+                None => {
+                    return Err(
+                        Diagnostic::error("invalid function structure", self.current_span())
+                            .with_help("Druim expected a function name after the `fn` keyword."),
+                    );
+                }
+            };
+
+            if name_tok.kind != TokenKind::Ident {
+                return Err(
+                    Diagnostic::error(
+                        "invalid function structure",
+                        Span {
+                            start: name_tok.pos,
+                            end: name_tok.pos + name_tok.lexeme.len(),
+                        },
+                    )
+                    .with_help("Druim expected a function name after the `fn` keyword."),
+                );
+            }
+
+            let name = name_tok.lexeme.clone();
+
+            if !is_snake_case(&name) {
+                return Err(
+                    Diagnostic::error(
+                        "invalid function name",
+                        Span {
+                            start: name_tok.pos,
+                            end: name_tok.pos + name_tok.lexeme.len(),
+                        },
+                    )
+                    .with_help(
+                        "Function names in Druim must use snake_case (lowercase letters and underscores).",
+                    ),
+                );
+            }
+
+            // Parameter block must start
+            if self.peek_kind() != TokenKind::FuncStart {
+                return Err(
+                    Diagnostic::error("invalid function structure", self.current_span())
                         .with_help(
-                            "Druim requires at least one function body before the closing `):`.",
+                            "Druim expected a parameter block starting with `:(` after the function name.",
                         ),
                 );
             }
-        }
 
-        // ─────────────────────────────────────────────
-        //  Parse PARAMETERS (now allowed)
-        // ─────────────────────────────────────────────
-        let mut params = Vec::new();
+            self.bump(); // consume `:(`
 
-        if self.peek_kind() != TokenKind::FuncChain {
-            loop {
-                if self.peek_kind() == TokenKind::KwLoc {
-                    return Err(
-                        Diagnostic::error("invalid function parameter", self.current_span())
-                            .with_help("`loc` is not allowed in function parameter declarations."),
-                    );
+            // Verify at least one body delimiter exists
+            let mut i = self.index;
+            let mut saw_body = false;
+
+            while i < self.tokens.len() {
+                match self.tokens[i].kind {
+                    TokenKind::FuncChain => {
+                        saw_body = true;
+                        break;
+                    }
+                    TokenKind::FuncEnd => break,
+                    _ => {}
                 }
+                i += 1;
+            }
 
-                let ident_tok = self.bump().ok_or_else(|| {
-                    Diagnostic::error("invalid function parameter", self.current_span())
-                        .with_help("Druim expected a parameter name.")
-                })?;
-
-                if ident_tok.kind != TokenKind::Ident {
-                    return Err(
-                        Diagnostic::error(
-                            "invalid function parameter",
-                            Span {
-                                start: ident_tok.pos,
-                                end: ident_tok.pos + ident_tok.lexeme.len(),
-                            },
-                        )
+            if !saw_body {
+                return Err(
+                    Diagnostic::error("incomplete function definition", self.current_span())
                         .with_help(
-                            "Function parameters must begin with an identifier.\n\
-                            Examples: `x`, `x = 10`",
+                            "Druim functions must consist of a parameter list and at least one body.\n\
+                            An empty list and empty body is allowed, but a body delimiter `)(` is required.\n\
+                            Example: `fn f :()():`",
                         ),
-                    );
-                }
+                );
+            }
 
-                let param_name = ident_tok.lexeme.clone();
+            // Parse parameters
+            let mut params = Vec::new();
 
-                // Default value
-                if self.peek_kind() == TokenKind::Define {
-                    self.bump(); // `=`
-
-                    if self.peek_kind() == TokenKind::Comma
-                        || self.peek_kind() == TokenKind::FuncChain
-                    {
+            if self.peek_kind() != TokenKind::FuncChain {
+                loop {
+                    if self.peek_kind() == TokenKind::KwLoc {
                         return Err(
-                            Diagnostic::error("invalid default parameter", self.current_span())
-                                .with_help(
-                                    "Default parameters require a value.\n\
-                                    Example: `x = 10`",
-                                ),
+                            Diagnostic::error("invalid function parameter", self.current_span())
+                                .with_help("`loc` is not allowed in Druim function parameter declarations."),
                         );
                     }
 
-                    let value = self.parse_rhs()?;
+                    let ident_tok = match self.bump() {
+                        Some(tok) => tok,
+                        None => {
+                            return Err(
+                                Diagnostic::error("invalid function parameter", self.current_span())
+                                    .with_help("Druim expected a parameter name."),
+                            );
+                        }
+                    };
 
-                    params.push(Param {
-                        name: param_name,
-                        default: Some(value),
-                    });
-                } else {
-                    params.push(Param {
-                        name: param_name,
-                        default: None,
-                    });
-                }
+                    if ident_tok.kind != TokenKind::Ident {
+                        return Err(
+                            Diagnostic::error(
+                                "invalid function parameter",
+                                Span {
+                                    start: ident_tok.pos,
+                                    end: ident_tok.pos + ident_tok.lexeme.len(),
+                                },
+                            )
+                            .with_help(
+                                "Druim function parameters must begin with an identifier.\n\
+                                Examples: `x`, `x = 10`",
+                            ),
+                        );
+                    }
 
-                match self.peek_kind() {
-                    TokenKind::Comma => {
+                    let param_name = ident_tok.lexeme.clone();
+
+                    if self.peek_kind() == TokenKind::Define {
                         self.bump();
-                        continue;
+
+                        if self.peek_kind() == TokenKind::Comma
+                            || self.peek_kind() == TokenKind::FuncChain
+                        {
+                            return Err(
+                                Diagnostic::error("invalid default parameter", self.current_span())
+                                    .with_help(
+                                        "Druim default parameters require a value.\n\
+                                        Example: `x = 10`",
+                                    ),
+                            );
+                        }
+
+                        let value = self.parse_rhs()?;
+
+                        params.push(Param {
+                            name: param_name,
+                            default: Some(value),
+                        });
+                    } else {
+                        params.push(Param {
+                            name: param_name,
+                            default: None,
+                        });
                     }
-                    TokenKind::FuncChain => break,
-                    _ => {
-                        return Err(
-                            Diagnostic::error("invalid function parameter list", self.current_span())
-                                .with_help(
-                                    "Parameters must be separated by commas and terminated with `)(`.",
-                                ),
-                        );
+
+                    match self.peek_kind() {
+                        TokenKind::Comma => {
+                            self.bump();
+                        }
+                        TokenKind::FuncChain => break,
+                        _ => {
+                            return Err(
+                                Diagnostic::error("invalid function parameter list", self.current_span())
+                                    .with_help(
+                                        "Druim parameters must be separated by commas and terminated with `)(`.",
+                                    ),
+                            );
+                        }
                     }
                 }
             }
-        }
 
-        self.bump(); // consume `)(`
+            self.bump(); // consume `)(`
 
-        // ─────────────────────────────────────────────
-        //  Parse FUNCTION BODIES (statements allowed now)
-        // ─────────────────────────────────────────────
-        let mut bodies = Vec::new();
+            // Reject function chaining
+            if self.peek_kind() == TokenKind::FuncChain {
+                return Err(
+                    Diagnostic::error("function chaining not allowed", self.current_span())
+                        .with_help(
+                            "Functions may only define a single body.\n\
+                            Function chaining is not supported.",
+                        ),
+                );
+            }
 
-        loop {
+            // Parse exactly one body
             let mut nodes = Vec::new();
 
-            while self.peek_kind() != TokenKind::FuncChain
-                && self.peek_kind() != TokenKind::FuncEnd
-            {
+            while self.peek_kind() != TokenKind::FuncEnd {
                 nodes.push(self.parse_statement_entry()?);
             }
 
-            bodies.push(Node::Block(Block { nodes }));
+            self.bump(); // consume `):`
 
-            if self.peek_kind() == TokenKind::FuncChain {
-                self.bump(); // `)(`
-                continue;
-            }
+            Ok(Node::Func(Func {
+                name,
+                params,
+                body: nodes,
+            }))
+        })();
 
-            break;
-        }
-
-        self.bump(); // consume `):`
-
-        Ok(Node::Func(Func {
-            name,
-            params,
-            bodies,
-        }))
+        self.in_func = prev_in_func;
+        result
     }
 
     fn parse_rhs(&mut self) -> Result<Node, Diagnostic> {
         let start_span = self.current_span();
-
-        // Explicit call detection
-        if self.peek_kind() == TokenKind::Ident {
-            if let Some(next) = self.tokens.get(self.index + 1) {
-                if next.kind == TokenKind::LParen {
-                    return self.parse_call();
-                }
-            }
-        }
 
         let value = self.parse_expr()?;
 
@@ -1002,89 +1230,8 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_call(&mut self) -> Result<Node, Diagnostic> {
-        // ─────────────────────────────────────────────
-        // 1️⃣ Callee (identifier only, for now)
-        // ─────────────────────────────────────────────
-        let callee_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error("unexpected end of input", self.current_span())
-                .with_help("Druim expected a function call.")
-        })?;
-
-        let callee = match callee_tok.kind {
-            TokenKind::Ident => callee_tok.lexeme.clone(),
-            _ => {
-                return Err(
-                    Diagnostic::error(
-                        "invalid function call",
-                        Span {
-                            start: callee_tok.pos,
-                            end: callee_tok.pos + callee_tok.lexeme.len(),
-                        },
-                    )
-                    .with_help(
-                        "Druim expected a function name before the call parentheses.\n\
-                        Example: `foo(1, 2)`",
-                    ),
-                );
-            }
-        };
-
-        // ─────────────────────────────────────────────
-        // 2️⃣ Require opening parenthesis
-        // ─────────────────────────────────────────────
-        if self.peek_kind() != TokenKind::LParen {
-            return Err(
-                Diagnostic::error("invalid function call", self.current_span())
-                    .with_help(
-                        "Druim expected `(` after the function name.\n\
-                        Example: `foo(1)`",
-                    ),
-            );
-        }
-
-        self.bump(); // consume '('
-
-        // ─────────────────────────────────────────────
-        // 3️⃣ Arguments (value-only)
-        // ─────────────────────────────────────────────
-        let mut args = Vec::new();
-
-        if self.peek_kind() != TokenKind::RParen {
-            loop {
-                args.push(self.parse_rhs()?);
-
-                match self.peek_kind() {
-                    TokenKind::Comma => {
-                        self.bump();
-                    }
-                    TokenKind::RParen => break,
-                    _ => {
-                        let span = self.current_span();
-                        return Err(
-                            Diagnostic::error("invalid function call", span)
-                                .with_help(
-                                    "Function arguments must be separated by commas and closed with `)`.",
-                                ),
-                        );
-                    }
-                }
-            }
-        }
-
-        // ─────────────────────────────────────────────
-        // 4️⃣ Closing parenthesis
-        // ─────────────────────────────────────────────
-        self.bump(); // consume ')'
-
-        Ok(Node::Call(Call {
-            callee: Box::new(Node::Ident(callee)),
-            args,
-        }))
-    }
-
     fn parse_call_statement(&mut self) -> Result<Node, Diagnostic> {
-        // 1️⃣ REQUIRED: verify statement terminates
+        // Verify statement terminates
         let stmt_end = match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
@@ -1104,51 +1251,9 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // 2️⃣ Must start with identifier
-        let ident_tok = self.bump().ok_or_else(|| {
-            Diagnostic::error(
-                "invalid function call statement",
-                self.current_span(),
-            )
-            .with_help(
-                "A function call statement must begin with a function name.\n\
-                Example: `do_work();`",
-            )
-        })?;
-
-        if ident_tok.kind != TokenKind::Ident {
-            return Err(
-                Diagnostic::error(
-                    "invalid function call statement",
-                    Span {
-                        start: ident_tok.pos,
-                        end: ident_tok.pos + ident_tok.lexeme.len(),
-                    },
-                )
-                .with_help(
-                    "Function call statements must begin with an identifier.\n\
-                    Example: `do_work();`",
-                ),
-            );
-        }
-
-        // 3️⃣ Must be immediately followed by `(`
-        if self.peek_kind() != TokenKind::LParen {
-            return Err(
-                Diagnostic::error(
-                    "invalid function call statement",
-                    self.current_span(),
-                )
-                .with_help(
-                    "A bare identifier is not a valid statement.\n\
-                    Did you mean to call a function?\n\
-                    Example: `do_work();`",
-                ),
-            );
-        }
-
-        // 4️⃣ Scan for illegal chaining BEFORE parsing call
+        // Scan for illegal statement operators before parsing
         let mut i = self.index;
+
         while i < stmt_end {
             match self.tokens[i].kind {
                 TokenKind::Define
@@ -1165,21 +1270,50 @@ impl<'a> Parser<'a> {
                             },
                         )
                         .with_help(
-                            "Function call statements cannot be chained with other statement operators.\n\
+                            "Druim function call statements cannot be chained with other statement operators.\n\
                             Split this into multiple statements.",
                         ),
                     );
                 }
+
                 _ => {}
             }
+
             i += 1;
         }
 
-        // 5️⃣ Now it is safe to parse the call
-        let call = self.parse_call()?; // produces Node::Call
+        // Parse the complete call expression
+        let call = self.parse_expr()?;
 
-        // 6️⃣ Consume semicolon
-        self.bump();
+        // A standalone expression must structurally be a function call
+        if !matches!(call, Node::Call(_)) {
+            return Err(
+                Diagnostic::error(
+                    "invalid function call statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Only function calls may appear as standalone expressions.\n\
+                    Example: `do_work();`",
+                ),
+            );
+        }
+
+        // Ensure the entire statement was consumed
+        if self.index != stmt_end {
+            return Err(
+                Diagnostic::error(
+                    "invalid function call statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "A standalone function call cannot be followed by another expression.\n\
+                    Split this into separate statements.",
+                ),
+            );
+        }
+
+        self.bump(); // consume `;`
 
         Ok(call)
     }
@@ -1191,9 +1325,68 @@ impl<'a> Parser<'a> {
     // ===== Pratt parser =====
 
     fn parse_bp(&mut self, min_bp: u8) -> Result<Node, Diagnostic> {
-        let mut lhs = self.parse_prefix()?; // now returns Node
+        let mut lhs = self.parse_prefix()?;
 
         loop {
+            // Postfix function call: lhs(...)
+            if self.peek_kind() == TokenKind::LParen {
+                let call_bp = 95;
+
+                if call_bp < min_bp {
+                    break;
+                }
+
+                self.bump(); // consume `(`
+
+                let mut args = Vec::new();
+
+                if self.peek_kind() != TokenKind::RParen {
+                    loop {
+                        args.push(self.parse_expr()?);
+
+                        match self.peek_kind() {
+                            TokenKind::Comma => {
+                                self.bump();
+                            }
+
+                            TokenKind::RParen => break,
+
+                            _ => {
+                                return Err(
+                                    Diagnostic::error(
+                                        "invalid function call",
+                                        self.current_span(),
+                                    )
+                                    .with_help(
+                                        "Druim function arguments must be separated by commas and closed with `)`.",
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+
+                self.bump(); // consume `)`
+
+                lhs = Node::Call(Call {
+                    callee: Box::new(lhs),
+                    args,
+                });
+
+                continue;
+            }
+
+            if self.peek_kind() == TokenKind::LParen {
+                const CALL_BP: u8 = 95;
+
+                if CALL_BP < min_bp {
+                    break;
+                }
+
+                lhs = self.parse_call_suffix(lhs)?;
+                continue;
+            }
+
             let op = self.peek_kind();
 
             let Some((l_bp, r_bp, infix_kind)) = infix_binding_power(op) else {
@@ -1204,11 +1397,10 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // consume operator
             self.bump();
 
             let rhs = self.parse_bp(r_bp)?;
-            lhs = build_infix(infix_kind, lhs, rhs); // returns Node
+            lhs = build_infix(infix_kind, lhs, rhs);
         }
 
         Ok(lhs)
@@ -1312,6 +1504,45 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_call_suffix(&mut self, callee: Node) -> Result<Node, Diagnostic> {
+        self.bump(); // consume `(`
+
+        let mut args = Vec::new();
+
+        if self.peek_kind() != TokenKind::RParen {
+            loop {
+                args.push(self.parse_expr()?);
+
+                match self.peek_kind() {
+                    TokenKind::Comma => {
+                        self.bump();
+                    }
+
+                    TokenKind::RParen => break,
+
+                    _ => {
+                        return Err(
+                            Diagnostic::error(
+                                "invalid function call",
+                                self.current_span(),
+                            )
+                            .with_help(
+                                "Druim function arguments must be separated by commas and closed with `)`.",
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        self.bump(); // consume `)`
+
+        Ok(Node::Call(Call {
+            callee: Box::new(callee),
+            args,
+        }))
+    }
+
     fn expect(&mut self, kind: TokenKind, expected: &'static str) -> Result<(), Diagnostic> {
         let span_start = self.current_span().start;
         let tok = self.bump().ok_or_else(|| {
@@ -1392,8 +1623,6 @@ const PREFIX_BP: u8 = 90;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Infix {
-    // Call
-    Call,
 
     // Arithmetic
     Add,
@@ -1426,8 +1655,6 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
     use Infix::*;
 
     Some(match op {
-        // call binds tight: f(x)
-        TokenKind::LParen => (95, 96, Call),
 
         // arithmetic
         TokenKind::Mul => (70, 71, Mul),
@@ -1485,7 +1712,5 @@ fn build_infix(kind: Infix, lhs: Node, rhs: Node) -> Node {
         Present => Node::Present(Box::new(lhs), Box::new(rhs)),
 
         Pipe => Node::Pipe(Box::new(lhs), Box::new(rhs)),
-
-        Call => unreachable!("Call is handled in parse_bp"),
     }
 }

@@ -6,40 +6,38 @@
 
 Druim is a deterministic, explicitly structured programming language under active development.
 
-Its design prioritizes:
+Its design favors:
 
 - Explicit structure over implicit behavior
 - Deterministic parsing over convenience
 - Clear token boundaries over inferred meaning
-- Absence as data, not as an error
 - Early, loud diagnostics over silent coercion
+- Absence represented as data, not as error state
 
-This repository contains the reference compiler implementation and the canonical definition of the language as it exists today.
+This repository contains the reference compiler implementation.
+
+The authoritative definition of the language lives in `docs/druim-canon.md`.
+When conflicts arise, the canon is authoritative.
 
 ---
 
 ## Status
 
-Druim is not stable and not complete.
+Druim is under active development.
 
-What is stable:
+The language is governed by the canonical definition in `docs/druim-canon.md`.
 
-- Core lexical rules
-- Token atomicity guarantees
-- Block syntax and chaining semantics
-- Scope rules
+The canon defines:
+
+- Structural and lexical invariants
+- Operator semantics
+- Scope and block guarantees
 - Truth evaluation rules
-- Core operators (`=`, `:=`, `?=`, `::`, logical and arithmetic operators)
+- Language-level constraints
 
-What is not yet defined:
+Any behavior not explicitly defined in the canon should be treated as disallowed.
 
-- Full runtime semantics
-- Type checking rules
-- Mutation semantics
-- Control-flow sugar
-- Standard library
-
-If something is not explicitly documented, it should be assumed disallowed.
+Runtime semantics, type system rules, and library design are still evolving and are not yet considered stable.
 
 ---
 
@@ -47,287 +45,159 @@ If something is not explicitly documented, it should be assumed disallowed.
 
 The authoritative language definition lives in:
 
-[druim-canon.md](./docs/druim-canon.md)
+[docs/druim-canon.md](./docs/druim-canon.md)
 
-When conflicts arise between code, tests, comments, or recollection, the canon wins.
+The canon is versioned and revision-controlled.
+Each revision supersedes prior informal discussion, implementation drift, tests, comments, or recollection.
 
-This README summarizes the canon but does not replace it.
+When conflicts arise, the canon is authoritative.
+
+This README summarizes the language but does not define it.
 
 ---
 
 ## Design Principles
 
-Druim enforces the following principles at the language level:
+Druim is designed around explicit structure and deterministic behavior.
 
-- No implicit truthiness
-- No undefined values
-- No silent fallbacks
-- No ambiguous parsing
-- No scope leakage
+At the language level, Druim rejects:
 
-Every construct must be:
+- Implicit truthiness
+- Undefined values
+- Silent fallbacks
+- Ambiguous parsing
+- Implicit scope behavior
+
+All constructs are intended to be:
+
 - Lexically unambiguous
 - Semantically explicit
 - Deterministically evaluable
+
+The detailed guarantees behind these principles are defined in the canon.
 
 ---
 
 ## Lexical Overview
 
+Druim’s lexer guarantees:
+
+- Lexically atomic tokens
+- Longest-match operator resolution
+- Deterministic left-to-right token emission
+- Immediate diagnostics on unexpected characters
+
 ### Identifiers
+
+Identifiers:
 
 - Consist of ASCII letters, digits, and `_`
 - May begin with a digit
 - Must contain at least one non-digit character
 
-Valid identifiers:
-
-```druim
-abc
-1a
-123abc
-_foo
-```
-
-Invalid identifiers:
-
-```druim
-1
-123
-000
-```
-
 All-digit sequences are numeric literals.
 
----
+Full lexical invariants are defined in the canon.
 
 ### Numeric Literals
 
 Druim supports:
 
-- Integer literals (`num`)
-- Decimal literals (`dec`)
+- Integer literals
+- Decimal literals
 
-```druim
-42
-0
-123
-1.0
-12.34
-```
+Decimal literals must contain digits on both sides of the dot.
 
-Invalid numeric forms cause a lexical error:
+Invalid numeric forms produce lexical diagnostics.
 
-```druim
-.
-1.
-.5
-1..2
-```
-
----
+See the canon for complete lexical guarantees.
 
 ### Text Literals
 
-- Enclosed in double quotes
-- Unterminated strings are lexical errors
+Text literals:
 
-```druim
-"hello"
-""
-```
+- Are enclosed in double quotes
+- Must be terminated
 
+Unterminated text literals produce diagnostics.
 ---
 
-## Block Syntax (Core Concept)
+## Block Syntax
 
-Druim uses explicit block operators.  
+Druim uses explicit block operators.
 Blocks are not inferred by indentation or keywords.
 
-### Blocks (Scope-Bearing)
+A block chain uses the following delimiters:
 
-```druim
-:{
-    a = 2;
-    fn my_func :(x, y)(ret x * y):
-    b = my_func(a, 12);
-}{
-    b = a + 1;
-}:
-```
+- `:{` — begins a new lexical scope
+- `}{` — continues the same lexical scope
+- `}:` — ends the lexical scope
 
-Rules:
+A block chain creates exactly one lexical scope.
 
-- `:{` starts a new scope
-- `}{` continues the same scope
-- `}:` ends the scope
+Blocks:
 
-This behavior is locked.
+- Do not evaluate to a value
+- Exist solely to control name visibility and lifetime
+- Do not implicitly introduce nested scope during chaining
+
+Visibility within block chains may be further restricted using the `loc` keyword, as defined in the canon.
+
+Complete scope guarantees are defined in the canon.
 
 ---
 
 ## Functions
 
-### Function Definitions
-
 A function definition in Druim is an expression that produces a callable value.
 
-A valid function definition must satisfy all of the following:
+A valid function definition must:
 
-- Uses the fn keyword
-- Uses a snake_case identifier
-- Contains exactly one parameter block
-- Contains at least one function body block
+- Use the `fn` keyword
+- Use a snake_case identifier
+- Contain exactly one parameter block
+- Contain exactly one body block
 
 Syntax:
 
 ```druim
-fn my_function :( param1, param2 )( body1 )( body2 ):
-```
-
----
-
-### Parameters
-
-- Parameters are declared inside the single parameter block `:(`
-- Each parameter must be a plain identifier
-- Default parameter values exist in the AST but are not enabled in the grammar yet
-
-Example:
-
-```druim
-fn add :(a, b)(
-    ret a + b;
+fn my_function :(param1, param2)(
+    // body
 ):
 ```
 
----
+Parameters are plain identifiers defined in the function scope when the function is invoked.
 
-### Function Bodies
+The function body executes within a function-local scope.
 
-- Function bodies are introduced with **`)(`**
-- A function may contain one or more body blocks
-- Body blocks are evaluated sequentially, in order
-- All body blocks share the same function-local scope
-
-Example with multiple bodies:
-
-```druim
-fn example :(x)(
-    y = x * 2;
-)(
-    ret y + 1;
-):
-```
-
----
-
-### Return Semantics
-
-Return is controlled by the ret statement.
-
-Forms:
-
-```druim
-ret;
-ret expr;
-```
-
-Rules:
-
-- ret; returns void
-- ret expr; returns the evaluated value of expr
-- If no ret statement is executed, the function returns void
-- ret is a statement, not an expression
-
----
-
-### Functions as Expressions
-
-Because function definitions are expressions, they may be used anywhere an expression is allowed.
-
-Example:
-
-```druim
-my_func = fn multiply :(a, b)(
-    ret a * b;
-):
-result = my_func(2, 12);
-```
+The complete function grammar and scope guarantees are defined in the canon.
 
 ---
 
 ## Function Scope
 
-A function call always introduces its own scope.
+A function call introduces a function-local scope.
 
-This scope is created when the function is entered and exists for the entire lifetime of that call.
+When a function is invoked:
 
-What this means:
+- Parameters are defined in the function scope at call entry
+- The function body executes within that scope
+- `ret` exits the function and returns a value
+- If no `ret` is executed, the function returns `void`
 
-- Parameters are defined in the function scope
-- All chained function bodies share the same function scope
-- Names defined in one body are visible to later bodies by default
-- ret exits the function and returns a value
-- If no ret is executed, the function returns void
+Functions defined inside a block have access to names visible in that block,
+subject to `loc` visibility restrictions as defined in the canon.
 
-Example:
-
-```druim
-fn add :(a, b)(
-    c = a + b;
-)(
-    ret c;
-):
-```
+The detailed scope model — including block chains, scope boundaries,
+and `loc` behavior — is defined in the canon.
 
 ---
 
-### Body-Local Scope with loc
-
-Druim allows explicit restriction of scope inside a function body or individual block within a chain using the loc keyword.
-
-- loc introduces a body-local or individual block-local sub-scope
-- Names defined with loc exist only within that body or individual block
-- loc does not create a new function
-- loc does not affect other bodies or blocks in the chain
-
-Example:
-
-```druim
-fn example :(x)(
-    loc y = x * 2;
-)(
-    ret x;
-):
-```
-
-In this example:
-- x exists in the function scope
-- y exists only in the first body
-- the second body cannot access y
-- attempting to do so woulod produce an error
-
----
-
-### Scope Model Summary
-
-- Every function call has exactly one function scope
-- Function scope spans all chained bodies
-- Body-local scope is opt-in via loc
-- Expression blocks do not create scope
-- Block statements create their own scope
-- Functions create their own scope when called
-
-This behavior is locked and canonical.
-
----
-
-## Definitions and Assignment
+## Definitions
 
 ### Define (`=`)
 
-Defines a value by evaluating an expression.
+Defines a value by evaluating an expression and binding it to an identifier.
 
 ```druim
 a = 10;
@@ -336,33 +206,41 @@ b = a + 2;
 
 ### Define Empty (`=;`)
 
-Explicitly defines a value as empty.
+Explicitly defines an identifier as `void`.
 
 ```druim
 x =;
 ```
 
-Equivalent to:
+This is equivalent to:
 
 ```druim
 x = void;
 ```
 
+`=;` is a lexically atomic form.
+
+The semantics of definition and value binding are defined in the canon.
+
 ---
 
-## `void` (Empty Value)
+## `void`
 
-- Represents intentional absence
-- Is not `null` or `undefined`
-- Always evaluates to `false` as a `flag`
+`void` represents intentional absence.
 
-There is no undefined state in Druim.
+It is a defined value in Druim and is not an error state.
+
+When evaluated as a `flag`, `void` resolves to `false`.
+
+Druim has no undefined value. Any reference to an undeclared or uninitialized identifier produces a diagnostic.
+
+The complete semantics of `void` are defined in the canon.
 
 ---
 
 ## Copy (`:=`)
 
-Copies the current value of an existing identifier.
+The `:=` operator copies the current value of an existing identifier.
 
 ```druim
 a := b;
@@ -370,63 +248,82 @@ a := b;
 
 Rules:
 
-- `b` must already exist
-- No expressions allowed on the right
-- The value is copied, not linked
-- Future changes to `b` do not affect `a`
+- The right-hand side must be an identifier.
+- The identifier must already be defined.
+- No expressions are evaluated.
+- The value is copied, not linked.
+- Future changes to the source identifier do not affect the copy.
+
+`:=` performs value snapshotting at copy time.
+
+The full semantics of Copy are defined in the canon.
+
+---
+
+## Bind (`:>`)
+
+Creates a live identity binding between two identifiers.
+
+```druim
+a :> b;
+```
+
+Rules:
+
+- The right-hand side must be an existing identifier.
+- No expressions are evaluated.
+- No new value is created.
+- Both identifiers refer to the same underlying value.
+- Future changes through either name are visible to the other.
+
+Bind creates shared identity, not a copy.
+
+See the canon for full semantic guarantees.
 
 ---
 
 ## Guard (`?=`)
 
-Conditional definition without statements or blocks.
+Performs conditional definition without introducing control-flow statements.
 
 ```druim
 x ?= y : z;
 ```
 
-Evaluation:
+Rules:
 
-- If `flag(y)` is true → `x = y`
-- Otherwise → `x = z`
-- If all branches fail → `x void`
+- `?=` appears once, immediately after the target identifier.
+- Each segment after `?=` is an expression.
+- `:` separates fallback expressions.
+- Evaluation proceeds left-to-right.
+- The first truthy expression (under explicit `flag` evaluation) is selected.
+- If no expression evaluates to true, the result is `void`.
 
-Guards are expressions, not control flow.
+Guards always resolve to a defined value and never produce undefined.
 
----
-
-## Truth Evaluation
-
-Truth is explicit and total.
-
-- `flag(true)` → true
-- `flag(false)` → false
-- `0`, `0.0` → false
-- Non-zero numbers → true
-- Non-empty text → true
-- `void` → false
-
-There is no third state.
+See the canon for full semantic guarantees.
 
 ---
 
-## Has Operator (`::`)
+## Has (`::`)
 
-Safe access operator.
+Performs safe access on container-like values.
 
 ```druim
-user::profile::email
+a = user::profile::email;
 ```
 
-Semantics:
+Rules:
 
-- If every step exists → evaluates to the final value
-- If any step is missing → evaluates void`
-- Never throws
-- Never creates scope
-- Fully chainable
+- Evaluates left-to-right.
+- If the left-hand value contains the requested member, that value is returned.
+- If not, the expression evaluates to `void`.
+- No errors are thrown for missing members.
+- No implicit truthiness is introduced.
 
-Absence is data, not an error.
+`::` always produces a value and never results in undefined.
+
+See the canon for full semantic guarantees.
 
 ---
 
@@ -434,22 +331,23 @@ Absence is data, not an error.
 
 Logical operators are compound tokens only:
 
-- `&?` → AND
-- `|?` → OR
-- `!?` → NOT
+- `&&` → AND
+- `||` → OR
+- `!`  → NOT
 
-Single-character `&`, `|`, and `!` are invalid.
+Single-character `&` and `|` are invalid.
 
 ---
 
 ## Diagnostics
 
-Druim favors early, loud diagnostics.
+Druim favors early, explicit diagnostics.
 
-- Unexpected characters are lexical errors
-- Unterminated literals are errors
-- Undefined identifiers are errors
-- No silent coercion or fallback occurs
+- Unexpected characters are lexical errors.
+- Unterminated literals are lexical errors.
+- Referencing undeclared or uninitialized identifiers produces a diagnostic.
+- There is no undefined value.
+- No silent coercion or implicit fallback occurs.
 
 ---
 
@@ -463,9 +361,9 @@ token → lexer → parser → AST → diagnostics
 
 Each stage:
 
-- Has a single responsibility
-- Produces deterministic output
-- Does not leak concerns into adjacent stages
+- Has a single responsibility.
+- Produces deterministic output.
+- Does not introduce semantic behavior outside its defined scope.
 
 ---
 
@@ -473,17 +371,17 @@ Each stage:
 
 Changes to the language must occur in this order:
 
-1. Update tokens and lexer rules
-2. Update parser behavior
-3. Update `druim-canon.md`
-4. Update tests
+1. Update tokens and lexer rules.
+2. Update parser behavior.
+3. Update the canon.
+4. Update tests.
 
-Code may temporarily diverge, but intent must not.
+The canon is authoritative. Implementation may temporarily diverge during development, but the canonical specification defines intended behavior.
 
 ---
 
 ## Final Note
 
-Druim is not trying to be clever.
+Druim favors explicit structure over cleverness.
 
-It is trying to be honest.
+It is designed for determinism, clarity, and intentional behavior.

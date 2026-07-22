@@ -44,7 +44,7 @@ impl Evaluator {
                 let value = Value::Func(crate::compiler::semantics::value::Func {
                     name: func.name.clone(),
                     params: func.params.clone(),
-                    bodies: func.bodies.clone(),
+                    body: func.body.clone(),
                 });
 
                 self.env.define(func.name.clone(), value.clone());
@@ -55,8 +55,11 @@ impl Evaluator {
                 self.env.push_scope();
 
                 let mut last = Value::Void;
-                for n in &block.nodes {
-                    last = self.eval_value(n);
+
+                for segment in &block.segments {
+                    for n in &segment.nodes {
+                        last = self.eval_value(n);
+                    }
                 }
 
                 self.env.pop_scope();
@@ -111,7 +114,7 @@ impl Evaluator {
                 let mut result = Value::Void;
 
                 for branch in &guard.branches {
-                    let v = self.eval_value(branch);
+                    let v = self.eval_value(&branch.expr);
                     if truth_of(&v) == Truth::True {
                         result = v;
                         break;
@@ -133,11 +136,13 @@ impl Evaluator {
             Node::Block(block) => {
                 self.env.push_scope();
 
-                for n in &block.nodes {
-                    let ctl = self.eval_node_ctrl(n);
-                    if let Control::Return(v) = ctl {
-                        self.env.pop_scope();
-                        return Control::Return(v);
+                for segment in &block.segments {
+                    for n in &segment.nodes {
+                        let ctl = self.eval_node_ctrl(n);
+                        if let Control::Return(v) = ctl {
+                            self.env.pop_scope();
+                            return Control::Return(v);
+                        }
                     }
                 }
 
@@ -149,7 +154,7 @@ impl Evaluator {
                 let value = Value::Func(crate::compiler::semantics::value::Func {
                     name: func.name.clone(),
                     params: func.params.clone(),
-                    bodies: func.bodies.clone(),
+                    body: func.body.clone(),
                 });
 
                 self.env.define(func.name.clone(), value.clone());

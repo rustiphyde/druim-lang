@@ -51,7 +51,7 @@ pub enum Value {
 pub struct Func {
     pub name: String,
     pub params: Vec<Param>,
-    pub bodies: Vec<Node>,
+    pub body: Vec<Node>,
 }
 
 

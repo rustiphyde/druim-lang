@@ -55,6 +55,7 @@ pub enum Node {
     // ===== Flow =====
     Pipe(Box<Node>, Box<Node>),      // |>
     Block(Block),
+    Local(Box<Node>),
     Ret(Ret),
     Define(Define),
     DefineEmpty(DefineEmpty),
@@ -69,7 +70,7 @@ pub enum Node {
 pub struct Func {
     pub name: String,
     pub params: Vec<Param>,
-    pub bodies: Vec<Node>,
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +81,11 @@ pub struct Call {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
+    pub segments: Vec<BlockSegment>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockSegment {
     pub nodes: Vec<Node>,
 }
 
@@ -125,7 +131,12 @@ pub struct Bind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Guard {
     pub target: String,
-    pub branches: Vec<Node>,
+    pub branches: Vec<GuardBranch>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuardBranch {
+    pub expr: Node
 }
 
 
