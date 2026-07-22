@@ -631,19 +631,19 @@ Compound comparison operators are always matched before single-character < or >.
 
 ## Arithmetic Operators
 
-- + → Add
-- - → Sub
-- * → Mul
-- / → Div
-- % → Mod
+- `+` → Add
+- `-` → Sub
+- `*` → Mul
+- `/` → Div
+- `%` → Mod
 
 ---
 
 ## Flow and Direction Operators
 
-- |> → Pipe
-- -> → ArrowR
-- <- → ArrowL
+- `|>` → Pipe
+- `->` → ArrowR
+- `<-` → ArrowL
 
 ---
 
@@ -651,11 +651,11 @@ Compound comparison operators are always matched before single-character < or >.
 
 The colon (:) introduces multiple structural operators. Longest matches are always preferred.
 
-- :: → Has
-- := → Copy
-- :? → Present
-- :> → Bind
-- :  → Colon
+- `::` → Has
+- `:=` → Copy
+- `:?` → Present
+- `:>` → Bind
+- `:`  → Colon
 
 ## The :: Has Operator
 
