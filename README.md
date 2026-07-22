@@ -193,6 +193,30 @@ and `loc` behavior — is defined in the canon.
 
 ---
 
+## Statement Operators
+
+Druim uses distinct operators for distinct value relationships.
+
+| Operator | Name | Purpose |
+|---|---|---|
+| `=` | Define | Evaluates one complete expression and defines a value |
+| `=;` | DefineEmpty | Defines a value as `void` |
+| `:=` | Copy | Copies the current value of an existing identifier |
+| `:>` | Bind | Creates a live identity binding to an existing identifier |
+| `?=` | Guard | Selects the first truthy branch or defines `void` |
+
+Examples:
+
+```druim
+value = 12 + 13;
+empty =;
+snapshot := value;
+alias :> value;
+selected ?= primary : secondary;
+```
+
+Statement operators are standalone forms. They cannot be chained, and no unexpected tokens may appear before the statement terminator.
+
 ## Definitions
 
 ### Define (`=`)
