@@ -904,5 +904,115 @@ fn parses_function_call_with_multiple_arguments() {
     }
 }
 
+#[test]
+fn parses_function_call_with_expression_arguments() {
+    let src = "f(a + b, c * d)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
 
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse function call");
 
+    match expr {
+        Node::Call(Call { callee, args }) => {
+            assert!(matches!(
+                callee.as_ref(),
+                Node::Ident(name) if name == "f"
+            ));
+
+            assert_eq!(args.len(), 2);
+
+            assert!(matches!(&args[0], Node::Add(_, _)));
+            assert!(matches!(&args[1], Node::Mul(_, _)));
+        }
+
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn function_calls_bind_tighter_than_addition() {
+    let src = "f(a) + g(b)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse expression");
+
+    match expr {
+        Node::Add(lhs, rhs) => {
+            assert!(matches!(lhs.as_ref(), Node::Call(_)));
+            assert!(matches!(rhs.as_ref(), Node::Call(_)));
+        }
+
+        other => panic!("expected Add node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_nested_function_call_argument() {
+    let src = "f(g(a))";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse nested function call");
+
+    match expr {
+        Node::Call(Call { callee, args }) => {
+            assert!(matches!(
+                callee.as_ref(),
+                Node::Ident(name) if name == "f"
+            ));
+
+            assert_eq!(args.len(), 1);
+
+            match &args[0] {
+                Node::Call(Call {
+                    callee: inner_callee,
+                    args: inner_args,
+                }) => {
+                    assert!(matches!(
+                        inner_callee.as_ref(),
+                        Node::Ident(name) if name == "g"
+                    ));
+
+                    assert_eq!(inner_args.len(), 1);
+                    assert!(matches!(
+                        &inner_args[0],
+                        Node::Ident(name) if name == "a"
+                    ));
+                }
+
+                other => panic!("expected nested Call argument, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected outer Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn function_call_trailing_comma_is_error() {
+    let src = "f(a,)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected trailing comma to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("argument")
+            || rendered.contains("expression")
+            || rendered.contains(")"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
