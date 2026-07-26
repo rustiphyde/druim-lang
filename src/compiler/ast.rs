@@ -49,8 +49,8 @@ pub enum Node {
     And(Box<Node>, Box<Node>),
     Or(Box<Node>, Box<Node>),
 
-    Has(Box<Node>, Box<Node>),     // ::
-    Present(Box<Node>, Box<Node>),   // :?
+    Get(Box<Node>, Box<Node>),     // ::
+    Has(Box<Node>, Box<Node>),   // :?
 
     // ===== Flow =====
     Pipe(Box<Node>, Box<Node>),      // |>

@@ -329,7 +329,7 @@ See the canon for full semantic guarantees.
 
 ---
 
-## Has (`::`)
+## Get (`::`)
 
 Performs safe access on container-like values.
 

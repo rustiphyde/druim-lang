@@ -1016,3 +1016,120 @@ fn function_call_trailing_comma_is_error() {
         rendered
     );
 }
+
+#[test]
+fn function_call_requires_commas_between_arguments() {
+    let src = "f(a b)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected missing comma to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("comma")
+            || rendered.contains("separated")
+            || rendered.contains("invalid function call"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_call_rejects_empty_first_argument() {
+    let src = "f(, a)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected empty first argument to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("expression")
+            || rendered.contains("argument")
+            || rendered.contains("invalid function call"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_call_rejects_empty_middle_argument() {
+    let src = "f(a,, b)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected empty middle argument to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("expression")
+            || rendered.contains("argument")
+            || rendered.contains("invalid function call"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_call_requires_closing_parenthesis() {
+    let src = "f(a";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected missing closing parenthesis to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains(")")
+            || rendered.contains("closed")
+            || rendered.contains("invalid function call"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn parses_function_call_with_single_argument() {
+    let src = "f(a)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { callee, args }) => {
+            assert!(matches!(
+                callee.as_ref(),
+                Node::Ident(name) if name == "f"
+            ));
+
+            assert_eq!(args.len(), 1);
+
+            assert!(matches!(
+                &args[0],
+                Node::Ident(name) if name == "a"
+            ));
+        }
+
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}

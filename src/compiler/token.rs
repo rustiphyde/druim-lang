@@ -24,8 +24,8 @@ pub enum TokenKind {
 
     // ===== Colon family =====
     Colon,         // :
-    Has,           // ::
-    Present,       // :?
+    Get,           // ::
+    Has,           // :?
     Bind,          // :>
 
     // ===== Arithmetic =====

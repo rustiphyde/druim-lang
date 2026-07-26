@@ -676,157 +676,167 @@ The colon (:) introduces multiple structural operators. Longest matches are alwa
 - `:>` → Bind
 - `:`  → Colon
 
-## The :: Has Operator
+# Canon
 
-The :: operator in Druim is called the **Has operator**.
+## Get (::)
+
+The `::` operator in Druim is called the **Get operator**.
 
 It answers a simple, human question:
 
-> “Does this thing contain that thing — and if so, give it to me.”
+> **"Does this thing have that? If so, get it."**
 
-It is **not assignment**, **not mutation**, and **not scope creation**.  
-It is a **safe access and propagation operator** that always evaluates to a value.
+It is **not assignment**, **not mutation**, and **not scope creation**. It is a **safe access and propagation operator** that always evaluates to a value.
 
 ---
 
 ### Core Meaning
 
-A :: B means:
+`A :: B` means:
 
-> If **A has B**, evaluate to **B**.  
+> If **A has B**, evaluate to **B**.
+>
 > If **A does not have B**, evaluate to **void**.
 
-There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator.  
-Failure is represented explicitly as void.
+There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator. Failure is represented explicitly as **void**.
 
 ---
 
 ### Why This Exists
 
-In many languages, accessing something that doesn’t exist:
+In many languages, accessing something that doesn't exist:
 
 - Throws an error
-- Returns undefined
+- Returns `undefined`
 - Requires special syntax or keywords
 - Forces defensive boilerplate
 
 Druim does none of that.
 
-The Has operator lets you **ask for something without assuming it exists**.
+The Get operator allows code to safely retrieve values without first proving they exist. The containment check is built into the operation itself.
 
 ---
 
-### Basic Example (Real-World)
+### Basic Example
 
-Imagine a user container that *may or may not* have a profile.
-
-```druim
-user::profile
-```
-
-- If user has a profile, the expression evaluates to that profile
-- If not, the expression evaluates to void
-
-No crash. No undefined. No branching required.
-
----
-
-### Definition via Expression
-
-Because :: is an **expression**, it can be used anywhere a value is expected.
+Imagine a user container that may or may not have a profile.
 
 ```druim
 a = user::profile;
 ```
 
-This means:
+If `user` has a `profile`, the expression evaluates to that profile.
 
-- If user has profile, define a as that profile
-- Otherwise, define a as void
+If `user` does not have a `profile`, the expression evaluates to `void`.
 
-This is **definition**, not assignment (<-).
+No crash.
+No `undefined`.
+No branching required.
 
 ---
 
-### Chaining Behavior (Critical)
+### Expression Behavior
 
-The Has operator is **chainable**.
+Because `::` is an expression, it can be used anywhere a value is expected.
 
-```druim
-a = user::profile::email;
+```
+profile = user::profile;
 ```
 
-This evaluates left to right:
+This means:
 
-1. If user has profile
-2. And profile has email
-3. Then define a as email
-4. Otherwise, define a as void
+- If `user` has `profile`, define `profile` as that value.
+- Otherwise, define `profile` as `void`.
 
-At **any point** in the chain, failure collapses the entire expression to void.
-
-This makes deep access safe by default.
+This is **definition**, not assignment.
 
 ---
 
-### Use in Conditionals (Without New Keywords)
+### Chaining
 
-Because :: evaluates to a value, and because truth is explicit in Druim, it can be used directly in guards and conditionals.
+The Get operator is fully chainable.
 
-```druim
+```
+email = user::profile::email;
+```
+
+Evaluation proceeds from left to right.
+
+1. Check whether `user` has `profile`.
+2. If so, retrieve `profile`.
+3. Check whether `profile` has `email`.
+4. If so, retrieve `email`.
+5. Otherwise, evaluate to `void`.
+
+At any point in the chain, if a requested member does not exist, the entire expression immediately evaluates to `void`.
+
+This makes arbitrarily deep access safe by default.
+
+---
+
+### Use in Conditional Definitions
+
+Because `::` evaluates to a value, it naturally composes with Druim's other operators.
+
+```
 x ?= user::profile::email;
 ```
 
 This means:
 
-- If user::profile::email evaluates to a truthy value, assign it to x
-- Otherwise, x becomes void
+- Retrieve `user::profile::email`.
+- If the resulting value is truthy, define `x` as that value.
+- Otherwise, define `x` as `void`.
 
 No temporary variables.
-No special syntax.
-No extra keywords.
+No defensive checks.
+No special keywords.
 
 ---
 
-### What :: Works With
+### Supported Targets
 
-The Has operator works uniformly with any **container-like structure**, including:
+The Get operator works uniformly with any container-like value, including:
 
-- Functions
+- Objects and structured values
 - Arrays
-- Any named or structured value
+- Functions
+- Any future type capable of containing named or indexed members
 
-If the left side can *contain named values*, :: can query it.
+If the left-hand value can contain members, `::` can safely retrieve them.
 
 ---
 
 ### What :: Is Not
 
-- It is **not assignment**
-- It is **not mutation**
-- It does **not create scope**
-- It does **not throw errors**
-- It does **not imply truth**
+The Get operator is **not**:
 
-It only answers:
+- Assignment
+- Mutation
+- Scope creation
+- Exception handling
+- A truth operator
 
-> “Does this have that — yes or void.”
+It performs one operation only:
+
+> **"Does this thing have that? If so, get it. Otherwise, return void."**
 
 ---
 
 ### Design Philosophy
 
-The Has operator exists to:
+The Get operator exists to:
 
-- Eliminate undefined
+- Eliminate `undefined`
 - Make absence explicit
 - Allow safe deep access
-- Reduce boilerplate
-- Preserve composability
+- Reduce defensive boilerplate
+- Preserve expression composability
 - Keep failure non-fatal and inspectable
 
-In Druim, **absence is data**, and :: is how you ask for it safely.
+In Druim, **absence is data**.
 
+The Get operator embodies that philosophy by safely retrieving values when they exist and explicitly producing `void` when they do not.
 
 ## Copy (:=)
 
