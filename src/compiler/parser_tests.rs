@@ -1,6 +1,6 @@
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
-use crate::compiler::ast::{Node, Block, Define, DefineEmpty, Copy, Bind, Guard, Ret, Program, Func, Literal};
+use crate::compiler::ast::{Node, Block, Define, DefineEmpty, Copy, Bind, Guard, Ret, Program, Func, Literal, Call};
 use crate::compiler::diagnostic::render;
 use crate::compiler::error::{Diagnostic, Source};
 
@@ -798,7 +798,6 @@ fn guard_rejects_empty_later_branch() {
 }
 
 // Function Tests
-
 #[test]
 fn parses_function_with_single_param_and_body() {
     let src = "fn f :(x)(ret x;):";
@@ -853,6 +852,57 @@ fn function_missing_body_block_is_error() {
     );
 }
 
+#[test]
+fn parses_function_call_with_no_arguments() {
+    let src = "f()";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { callee, args }) => {
+            assert!(matches!(
+                callee.as_ref(),
+                Node::Ident(name) if name == "f"
+            ));
+
+            assert!(args.is_empty());
+        }
+
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_function_call_with_multiple_arguments() {
+    let src = "f(a, b, c)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { callee, args }) => {
+            assert!(matches!(
+                callee.as_ref(),
+                Node::Ident(name) if name == "f"
+            ));
+
+            assert_eq!(args.len(), 3);
+
+            assert!(matches!(&args[0], Node::Ident(name) if name == "a"));
+            assert!(matches!(&args[1], Node::Ident(name) if name == "b"));
+            assert!(matches!(&args[2], Node::Ident(name) if name == "c"));
+        }
+
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
 
 
 

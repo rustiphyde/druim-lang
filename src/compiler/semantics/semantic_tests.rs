@@ -32,6 +32,13 @@ fn decimal_truth_rules() {
 #[test]
 fn text_truth_rules() {
     assert_eq!(truth_of(&Value::Text("".into())), Truth::False);
+    assert_eq!(truth_of(&Value::Text(" ".into())), Truth::False);
+    assert_eq!(truth_of(&Value::Text("   ".into())), Truth::False);
+    assert_eq!(truth_of(&Value::Text("\t".into())), Truth::False);
+    assert_eq!(truth_of(&Value::Text("\n".into())), Truth::False);
+    assert_eq!(truth_of(&Value::Text(" \t\n ".into())), Truth::False);
+
     assert_eq!(truth_of(&Value::Text("a".into())), Truth::True);
     assert_eq!(truth_of(&Value::Text("0".into())), Truth::True);
+    assert_eq!(truth_of(&Value::Text(" hello ".into())), Truth::True);
 }

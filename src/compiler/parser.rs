@@ -1328,57 +1328,10 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_prefix()?;
 
         loop {
+            const CALL_BP: u8 = 95;
+
             // Postfix function call: lhs(...)
             if self.peek_kind() == TokenKind::LParen {
-                let call_bp = 95;
-
-                if call_bp < min_bp {
-                    break;
-                }
-
-                self.bump(); // consume `(`
-
-                let mut args = Vec::new();
-
-                if self.peek_kind() != TokenKind::RParen {
-                    loop {
-                        args.push(self.parse_expr()?);
-
-                        match self.peek_kind() {
-                            TokenKind::Comma => {
-                                self.bump();
-                            }
-
-                            TokenKind::RParen => break,
-
-                            _ => {
-                                return Err(
-                                    Diagnostic::error(
-                                        "invalid function call",
-                                        self.current_span(),
-                                    )
-                                    .with_help(
-                                        "Druim function arguments must be separated by commas and closed with `)`.",
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                }
-
-                self.bump(); // consume `)`
-
-                lhs = Node::Call(Call {
-                    callee: Box::new(lhs),
-                    args,
-                });
-
-                continue;
-            }
-
-            if self.peek_kind() == TokenKind::LParen {
-                const CALL_BP: u8 = 95;
-
                 if CALL_BP < min_bp {
                     break;
                 }
@@ -1397,7 +1350,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            self.bump();
+            self.bump(); // consume infix operator
 
             let rhs = self.parse_bp(r_bp)?;
             lhs = build_infix(infix_kind, lhs, rhs);

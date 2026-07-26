@@ -430,7 +430,8 @@ When a value is *explicitly evaluated* as a flag, the following rules apply:
 - 0.0 → false
 - Any non-zero num → true
 - Any non-zero dec → true
-- Any text value → true
+- Empty or whitespace-only text → false
+- Any other text value → true
 - void → false
 
 No other values are permitted to participate in truth evaluation.
@@ -569,6 +570,24 @@ Example with a default parameter:
 ```druim
 fn my_func :(w, x = 12;)(ret w * x;):
 ```
+### Function Calls
+
+A function call applies a callable expression to zero or more argument expressions.
+
+```druim
+my_function()
+my_function(value)
+my_function(a + b, other_function(x))
+```
+
+#### Rules
+
+- A function call consists of a callable expression followed by `(` and `)`.
+- Arguments are separated by commas.
+- Each argument must contain exactly one complete expression.
+- A function call may contain zero or more arguments.
+- Arguments are evaluated in source order.
+- A trailing comma is not permitted.
 
 ### Function Scope
 

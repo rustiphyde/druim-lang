@@ -26,8 +26,8 @@ impl Truth {
 /// - `num(!0)`     → true
 /// - `dec(0.0)`    → false
 /// - `dec(!0.0)`   → true
-/// - `text("")`    → false
-/// - `text(any)`   → true
+/// - `text(empty or whitespace-only)` → false
+/// - `text(any other value)`          → true
 ///
 /// Any future value kinds MUST be handled explicitly.
 pub fn truth_of(value: &Value) -> Truth {
@@ -52,7 +52,11 @@ pub fn truth_of(value: &Value) -> Truth {
         }
 
         Value::Text(t) => {
-            if t.is_empty() { Truth::False } else { Truth::True }
+            if t.trim().is_empty() {
+                Truth::False
+            } else {
+                Truth::True
+            }
         }
 
         Value::Func(_) => {
