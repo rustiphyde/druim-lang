@@ -1258,7 +1258,7 @@ Guard uses Druim's canonical explicit truth-conversion rules.
 | **flag** | **true** remains true; **false** remains false |
 | **num**  | **0** is false; every non-zero value is true |
 | **dec**  | **0.0** is false, every non-zero value is true |
-| **text** | Empty text is false; every non-empty text value is true |
+| **text** | Empty or whitespace-only text is false; every non-empty text value is true |
 | **void**  | Always false |
 
 There is no undefined value in Druim.
