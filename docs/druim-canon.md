@@ -711,7 +711,7 @@ In many languages, accessing something that doesn't exist:
 
 Druim does none of that.
 
-The Get operator allows code to safely retrieve values without first proving they exist. The containment check is built into the operation itself.
+The Get operator allows code to safely retrieve values without first checking whether they exist. The containment check is built into the operation itself.
 
 ---
 
@@ -752,7 +752,7 @@ This is **definition**, not assignment.
 
 ### Chaining
 
-The Get operator is fully chainable.
+The Get operator is a traversal operator and may be chained indefinitely while each retrieved value remains a valid container.
 
 ```druim
 email = user::profile::email;
@@ -769,6 +769,8 @@ Evaluation proceeds from left to right.
 At any point in the chain, if a requested member does not exist, the entire expression immediately evaluates to `void`.
 
 This makes arbitrarily deep access safe by default.
+
+Because the Get operator returns the retrieved value rather than a flag, traversal may continue indefinitely until a member is missing or the desired value is reached.
 
 ---
 
@@ -910,9 +912,9 @@ Imagine a user container that may or may not have a profile.
 user:?profile
 ```
 
-If `user` has a `profile`, the expression evaluates to `true`.
+If `user` has a `profile`, the expression evaluates to a `flag` whose value is `true`.
 
-If `user` does not have a `profile`, the expression evaluates to `false`.
+If `user` does not have a `profile`, the expression evaluates to a `flag` whose value is `false`.
 
 No retrieval occurs.
 
@@ -1027,7 +1029,7 @@ The Has operator exists to:
 
 In Druim, checking whether something exists is a first-class operation.
 
-The Has operator provides that capability directly by evaluating to either `true` or `false`.
+The Has operator provides that capability directly by evaluating to a `flag` with a value of either `true` or `false`.
 
 ## Copy (:=)
 
