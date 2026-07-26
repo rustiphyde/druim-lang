@@ -670,13 +670,11 @@ Compound comparison operators are always matched before single-character < or >.
 
 The colon (:) introduces multiple structural operators. Longest matches are always preferred.
 
-- `::` → Has
+- `::` → Get
+- `:?` → Has
 - `:=` → Copy
-- `:?` → Present
 - `:>` → Bind
 - `:`  → Colon
-
-# Canon
 
 ## Get (::)
 
@@ -739,7 +737,7 @@ No branching required.
 
 Because `::` is an expression, it can be used anywhere a value is expected.
 
-```
+```druim
 profile = user::profile;
 ```
 
@@ -756,7 +754,7 @@ This is **definition**, not assignment.
 
 The Get operator is fully chainable.
 
-```
+```druim
 email = user::profile::email;
 ```
 
@@ -778,7 +776,7 @@ This makes arbitrarily deep access safe by default.
 
 Because `::` evaluates to a value, it naturally composes with Druim's other operators.
 
-```
+```druim
 x ?= user::profile::email;
 ```
 
@@ -823,6 +821,34 @@ It performs one operation only:
 
 ---
 
+### Relationship to Has
+
+The Get and Has operators are complementary.
+
+The Get operator answers:
+
+> **"Does this thing have that? If so, get it."**
+
+The Has operator answers:
+
+> **"Does this thing have that?"**
+
+Use **Get (`::`)** when the value itself is needed.
+
+Use **Has (`:?`)** when only the existence of the value matters.
+
+Because the Get operator returns the retrieved value, traversal may continue.
+
+```druim
+user::profile::email
+```
+
+The Has operator returns a `flag`, terminating traversal.
+
+```druim
+user::profile:?email
+```
+
 ### Design Philosophy
 
 The Get operator exists to:
@@ -837,6 +863,171 @@ The Get operator exists to:
 In Druim, **absence is data**.
 
 The Get operator embodies that philosophy by safely retrieving values when they exist and explicitly producing `void` when they do not.
+
+## Has (:?)
+
+The `:?` operator in Druim is called the **Has operator**.
+
+It answers a simple, human question:
+
+> **"Does this thing have that?"**
+
+Unlike the Get operator, the Has operator **never retrieves a value**. It performs only an existence check and always evaluates to a **flag**.
+
+It is **not assignment**, **not mutation**, **not scope creation**, and **not retrieval**.
+
+---
+
+### Core Meaning
+
+`A :? B` means:
+
+> If **A has B**, evaluate to **true**.
+>
+> If **A does not have B**, evaluate to **false**.
+
+The Has operator never returns `void`.
+
+Its purpose is to determine whether a member exists, not to access it.
+
+---
+
+### Why This Exists
+
+Frequently, code only needs to know whether something exists.
+
+Without a dedicated existence operator, code often retrieves a value only to discard it after checking whether it exists.
+
+The Has operator separates **existence** from **retrieval**, making intent explicit.
+
+---
+
+### Basic Example
+
+Imagine a user container that may or may not have a profile.
+
+```
+user:?profile
+```
+
+If `user` has a `profile`, the expression evaluates to `true`.
+
+If `user` does not have a `profile`, the expression evaluates to `false`.
+
+No retrieval occurs.
+
+---
+
+### Expression Behavior
+
+Because `:?` is an expression, it can be used anywhere a flag is expected.
+
+```
+hasProfile = user:?profile;
+```
+
+This defines `hasProfile` as either `true` or `false`.
+
+---
+
+### Chaining
+
+The Has operator is a **terminal operator**.
+
+Unlike the Get operator, it does not continue traversal because it evaluates to a `flag`.
+
+This is valid:
+
+```druim
+user:?profile
+```
+
+It asks:
+
+> "Does `user` have `profile`?"
+
+The Has operator also composes naturally with the Get operator.
+
+```druim
+user::profile:?email
+```
+
+Evaluation proceeds from left to right.
+
+1. Retrieve `profile` from `user`.
+2. If `profile` does not exist, `user::profile` evaluates to `void`.
+3. Otherwise, check whether `profile` has `email`.
+4. Return `true` if `email` exists.
+5. Otherwise, return `false`.
+
+Because `:?` evaluates to a `flag`, traversal ends once the Has operator is evaluated.
+
+For this reason, expressions such as:
+
+```druim
+user:?profile:?email
+```
+
+are invalid, because the first `:?` no longer returns a container capable of further member access.
+
+### Relationship to Get
+
+The Has and Get operators are complementary.
+
+The Has operator answers:
+
+> **"Does this thing have that?"**
+
+The Get operator answers:
+
+> **"Does this thing have that? If so, get it."**
+
+This separation allows code to clearly express whether it intends to **inspect** or **retrieve**.
+
+---
+
+### Supported Targets
+
+The Has operator works uniformly with any container-like value, including:
+
+- Objects and structured values
+- Arrays
+- Functions
+- Any future type capable of containing named or indexed members
+
+If the left-hand value can contain members, `:?` can determine whether they exist.
+
+---
+
+### What :? Is Not
+
+The Has operator is **not**:
+
+- Assignment
+- Mutation
+- Scope creation
+- Retrieval
+- Exception handling
+
+It performs one operation only:
+
+> **"Does this thing have that?"**
+
+---
+
+### Design Philosophy
+
+The Has operator exists to:
+
+- Express intent clearly
+- Separate existence from retrieval
+- Eliminate unnecessary value access
+- Improve readability
+- Preserve expression composability
+
+In Druim, checking whether something exists is a first-class operation.
+
+The Has operator provides that capability directly by evaluating to either `true` or `false`.
 
 ## Copy (:=)
 
