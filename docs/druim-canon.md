@@ -768,9 +768,9 @@ Evaluation proceeds from left to right.
 
 At any point in the chain, if a requested member does not exist, the entire expression immediately evaluates to `void`.
 
-This makes arbitrarily deep access safe by default.
-
 Because the Get operator returns the retrieved value rather than a flag, traversal may continue indefinitely until a member is missing or the desired value is reached.
+
+This makes arbitrarily deep access safe by default.
 
 ---
 
