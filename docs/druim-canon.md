@@ -1548,35 +1548,36 @@ There is no undefined value in Druim.
 
 ---
 
-## Ordex (:[]:)
+## Box (:[]:)
 
-An **Ordex** is an ordered, indexable collection of values.
+A **Box** is an ordered, indexable collection of values.
 
 It preserves insertion order, assigns every contained value a positional index, and supports safe traversal through the Get (`::`) and Has (`:?`) operators.
 
-Ordex is the canonical ordered collection type in Druim.
+Box is the canonical ordered collection type in Druim.
 
 ---
 
 ### Core Properties
 
-An Ordex:
+A Box:
 
 - Preserves the order of its contained values.
 - Assigns each contained value a zero-based positional index.
 - Is traversable using indexed selectors.
 - May contain duplicate values.
 - May contain values of different runtime types.
-- May contain other Ordex values.
-- May contain any future Druim value type.
+- May contain other Box values.
+- May contain Bag values.
+- May contain any Druim value type.
 
-An Ordex is a container-like value.
+A Box is a container-like value.
 
 ---
 
 ### Declaration
 
-Ordex values are declared using the Ordex delimiters.
+Box values are declared using the Box delimiters.
 
 ```druim
 :[
@@ -1586,13 +1587,13 @@ Ordex values are declared using the Ordex delimiters.
 ]:
 ```
 
-The delimiters define a new Ordex containing its enclosed values in declaration order.
+The delimiters define a new Box containing its enclosed values in declaration order.
 
 ---
 
 ### Indexes
 
-Every value contained within an Ordex is assigned a zero-based index.
+Every value contained within an Box is assigned a zero-based index.
 
 ```druim
 :[
@@ -1673,56 +1674,241 @@ Traversal cannot continue after a Has operation because it evaluates to a `flag`
 
 ---
 
-### Nested Ordex Values
+### Nested Collections
 
-An Ordex may contain one or more Ordex values.
+A Box may contain one or more Box and/or Bag values.
 
-Each nested Ordex is an independent ordered collection with its own indexes.
+Each nested collection is an independent value. Nested Boxes maintain their own ordered indexes, while nested Bags maintain their own named entries.
 
 ```druim
 :[
     "A"
-][
+
     :[
         "B"
-    ][
         "C"
     ]:
-][
+
+    :|
+        name: "Rusty"
+    |:
+
     "D"
 ]:
 ```
 
-Nested Ordex values behave identically to any other Ordex.
+Nested collection values behave identically to any other Box or Bag.
 
 ### Nested Traversal
 
-Nested Ordex values may be traversed by chaining indexed selectors.
+Nested collection values may be traversed by chaining Get and Has operators.
 
 ```druim
 grid::[1]::[0]
+
+player::inventory::[2]
+
+world::player::name
 ```
 
-Evaluation proceeds from left to right.
+Evaluation always proceeds from left to right.
 
-1. Retrieve the Ordex at index `[1]` from `grid`.
-2. Retrieve the value at index `[0]` from the retrieved Ordex.
+1. Retrieve the first collection.
+2. Continue traversal against the retrieved value.
+3. Repeat until the final value is reached.
 
-If either index does not exist, the expression evaluates to `void`.
+If any traversal step fails, the expression evaluates to `void`.
 
-Likewise, the Has operator may be used to check for the existence of nested indexes.
+Likewise, the Has operator may be used to test the existence of nested indexes or named entries.
 
 ```druim
 grid::[1]:?[0]
+
+player::inventory:?weapon
+
+world:?player
 ```
 
-This expression evaluates to `true` if the nested Ordex contains index `[0]`, otherwise `false`.
+Each `:?` operator evaluates the existence of the immediately following index or named entry within the current collection and returns `true` or `false`.
+
+---
+
+## Bag (:||:)
+
+A Bag is Druim's named collection type.
+
+Unlike a Box, which stores values by numeric position, a Bag stores values by unique names.
+
+A Bag preserves insertion order while providing direct access through named entries.
+
+---
+
+### Core Properties
+
+A Bag:
+
+- Stores values using unique names.
+- Preserves insertion order.
+- Allows constant-time lookup by name (implementation-dependent).
+- May contain any Druim value.
+- May contain one or more Box and/or Bag values.
+- Is traversed using the Get (`::`) and Has (`:?`) operators.
+
+Every value contained within a Bag is independent of every other value.
+
+---
+
+### Declaration
+
+A Bag is declared using the `:|` and `|:` delimiters.
+
+```druim
+player : Bag = :|
+    name: "Rusty"
+    level: 42
+    health: 100
+|:
+```
+
+Each entry consists of a unique name followed by a colon and a value.
+
+---
+
+### Names
+
+Each entry within a Bag is identified by a unique name.
+
+```druim
+settings : Bag = :|
+    theme: "dark"
+    volume: 75
+    fullscreen: true
+|:
+```
+
+Names are unique within a Bag.
+
+Attempting to declare duplicate names is an error.
+
+---
+
+### Get
+
+Named values are retrieved using the Get operator (`::`).
+
+```druim
+player::name
+
+settings::theme
+```
+
+If the requested name does not exist, the expression evaluates to `void`.
+
+---
+
+### Has
+
+The Has operator (`:?`) determines whether a named entry exists.
+
+```druim
+player:?health
+
+settings:?language
+```
+
+The expression evaluates to `true` if the name exists within the Bag; otherwise it evaluates to `false`.
+
+---
+
+### Traversal
+
+Named traversal is performed using the Get and Has operators.
+
+```druim
+player::name
+
+player:?level
+```
+
+Traversal always evaluates from left to right.
+
+---
+
+### Nested Collections
+
+A Bag may contain one or more Box and/or Bag values.
+
+Each nested collection is an independent value. Nested Boxes maintain their own ordered indexes, while nested Bags maintain their own named entries.
+
+```druim
+world : Bag = :|
+    player: :|
+        name: "Rusty"
+    |:
+
+    inventory: :[
+        "Sword"
+        "Shield"
+    ]:
+|:
+```
+
+Nested collection values behave identically to any other Box or Bag.
+
+### Nested Traversal
+
+Nested collection values may be traversed by chaining Get and Has operators.
+
+```druim
+world::player::name
+
+world::inventory::[0]
+
+world::inventory:?[1]
+
+world:?player
+```
+
+Evaluation always proceeds from left to right.
+
+1. Retrieve the first collection.
+2. Continue traversal against the retrieved value.
+3. Repeat until the final value is reached.
+
+If any traversal step fails, the expression evaluates to `void`.
+
+Likewise, the Has operator may be used to test the existence of nested indexes or named entries.
+
+```druim
+world:?player
+
+world::inventory:?[0]
+
+world::player:?level
+```
+
+Each `:?` operator evaluates the existence of the immediately following name or index within the current collection and returns `true` or `false`.
 
 ---
 
 ### Design Philosophy
 
-Ordex exists to provide a predictable, ordered collection that integrates directly with Druim's traversal system.
+Bag intentionally describes how the collection is used rather than how it is implemented.
+
+The name avoids implementation-specific terminology such as Dictionary, Map, HashMap, or Associative Array.
+
+The distinction between Druim's two primary collection types is simple:
+
+- **Box** stores values by position.
+- **Bag** stores values by name.
+
+Both collection types support arbitrary nesting and together form Druim's canonical collection model.
+
+---
+
+### Design Philosophy
+
+Box exists to provide a predictable, ordered collection that integrates directly with Druim's traversal system.
 
 Indexed access is not a separate language feature.
 

@@ -71,9 +71,10 @@ pub enum TokenKind {
     BlockStart, // :{
     BlockEnd,   // }:
     BlockChain, // }{
-    ArrayStart, // :[
-    ArrayEnd,   // ]:
-    ArrayChain, // ][
+    BoxStart, // :[
+    BoxEnd,   // ]:
+    BagStart, // :|
+    BagEnd,   // |:
     FuncStart, // :(
     FuncEnd,   // ):
     FuncChain, // )(

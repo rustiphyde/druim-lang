@@ -131,18 +131,21 @@ impl<'a> Lexer<'a> {
 
             // ===== Block delimiters (must be before single ':') =====
             if self.match_str(":[") {
-                tokens.push(tok(TokenKind::ArrayStart, ":[", start));
+                tokens.push(tok(TokenKind::BoxStart, ":[", start));
                 continue;
             }
             if self.match_str("]:") {
-                tokens.push(tok(TokenKind::ArrayEnd, "]:", start));
+                tokens.push(tok(TokenKind::BoxEnd, "]:", start));
                 continue;
             }
-            if self.match_str("][") {
-                tokens.push(tok(TokenKind::ArrayChain, "][", start));
+            if self.match_str(":|") {
+                tokens.push(tok(TokenKind::BagStart, ":|", start));
                 continue;
             }
-
+            if self.match_str("|:") {
+                tokens.push(tok(TokenKind::BagEnd, "|:", start));
+                continue;
+            }
             if self.match_str(":{") {
                 tokens.push(tok(TokenKind::BlockStart, ":{", start));
                 continue;
