@@ -221,15 +221,15 @@ impl<'a> Lexer<'a> {
 
             // ===== Colon-family operators (longest first) =====
             if self.match_str("::") {
-                tokens.push(tok(TokenKind::Has, "::", start));
+                tokens.push(tok(TokenKind::Get, "::", start));
+                continue;
+            }
+            if self.match_str(":?") {
+                tokens.push(tok(TokenKind::Has, ":?", start));
                 continue;
             }
             if self.match_str(":=") {
                 tokens.push(tok(TokenKind::Copy, ":=", start));
-                continue;
-            }
-            if self.match_str(":?") {
-                tokens.push(tok(TokenKind::Present, ":?", start));
                 continue;
             }
             if self.match_str(":>") {

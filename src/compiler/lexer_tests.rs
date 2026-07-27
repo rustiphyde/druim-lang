@@ -16,11 +16,18 @@ mod tests {
     #[test]
     fn colon_family_tokens() {
         let ks = kinds("a:b a::b a:=b a:?b a:>b");
-        assert!(ks.contains(&Colon));
-        assert!(ks.contains(&Has));
-        assert!(ks.contains(&Copy));
-        assert!(ks.contains(&Present));
-        assert!(ks.contains(&Bind));
+
+        assert_eq!(
+            ks,
+            vec![
+                Ident, Colon, Ident,
+                Ident, Get, Ident,
+                Ident, Copy, Ident,
+                Ident, Has, Ident,
+                Ident, Bind, Ident,
+                Eof,
+            ]
+        );
     }
 
     #[test]

@@ -67,213 +67,231 @@ impl Evaluator {
             }
 
             Node::Call(call) => {
-            // Resolve the callable before entering the function scope.
-            let callee = self.eval_value(call.callee.as_ref());
+                // Resolve the callable before entering the function scope.
+                let callee = self.eval_value(call.callee.as_ref());
 
-            let Value::Func(func) = callee else {
-                panic!("attempted to call a non-function value");
-            };
-
-            // Explicit arguments are evaluated in source order in the caller's scope.
-            let argument_values: Vec<Value> = call
-                .args
-                .iter()
-                .map(|argument| self.eval_value(argument))
-                .collect();
-
-            if argument_values.len() > func.params.len() {
-                panic!(
-                    "function `{}` expected at most {} arguments but received {}",
-                    func.name,
-                    func.params.len(),
-                    argument_values.len()
-                );
-            }
-
-            self.env.push_scope();
-
-            // Bind parameters from left to right.
-            for (index, param) in func.params.iter().enumerate() {
-                let value = match argument_values.get(index) {
-                    Some(value) => value.clone(),
-
-                    None => match &param.default {
-                        Some(default) => self.eval_value(default),
-
-                        None => {
-                            self.env.pop_scope();
-
-                            panic!(
-                                "function `{}` is missing required argument `{}`",
-                                func.name,
-                                param.name
-                            );
-                        }
-                    },
+                let Value::Func(func) = callee else {
+                    panic!("attempted to call a non-function value");
                 };
 
-                self.env.define(param.name.clone(), value);
+                // Explicit arguments are evaluated in source order in the caller's scope.
+                let argument_values: Vec<Value> = call
+                    .args
+                    .iter()
+                    .map(|argument| self.eval_value(argument))
+                    .collect();
+
+                if argument_values.len() > func.params.len() {
+                    panic!(
+                        "function `{}` expected at most {} arguments but received {}",
+                        func.name,
+                        func.params.len(),
+                        argument_values.len()
+                    );
+                }
+
+                self.env.push_scope();
+
+                // Bind parameters from left to right.
+                for (index, param) in func.params.iter().enumerate() {
+                    let value = match argument_values.get(index) {
+                        Some(value) => value.clone(),
+
+                        None => match &param.default {
+                            Some(default) => self.eval_value(default),
+
+                            None => {
+                                self.env.pop_scope();
+
+                                panic!(
+                                    "function `{}` is missing required argument `{}`",
+                                    func.name,
+                                    param.name
+                                );
+                            }
+                        },
+                    };
+
+                    self.env.define(param.name.clone(), value);
+                }
+
+                let mut result = Value::Void;
+
+                for node in &func.body {
+                    match self.eval_node_ctrl(node) {
+                        Control::Continue => {}
+
+                        Control::Return(value) => {
+                            result = value;
+                            break;
+                        }
+                    }
+                }
+
+                self.env.pop_scope();
+                result
             }
 
-            let mut result = Value::Void;
+            Node::Add(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
 
-            for node in &func.body {
-                match self.eval_node_ctrl(node) {
-                    Control::Continue => {}
-
-                    Control::Return(value) => {
-                        result = value;
-                        break;
-                    }
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
+                    _ => panic!("addition requires two numbers"),
                 }
             }
 
-            self.env.pop_scope();
-            result
-        }
-
-        Node::Add(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
-                _ => panic!("addition requires two numbers"),
-            }
-        }
-
-        Node::Sub(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Num(a - b),
-                _ => panic!("subtraction requires two numbers"),
-            }
-        }
-
-        Node::Mul(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Num(a * b),
-                _ => panic!("multiplication requires two numbers"),
-            }
-        }
-
-        Node::Div(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(_), Value::Num(0)) => panic!("division by zero"),
-                (Value::Num(a), Value::Num(b)) => Value::Num(a / b),
-                _ => panic!("division requires two numbers"),
-            }
-        }
-
-        Node::Mod(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(_), Value::Num(0)) => panic!("modulo by zero"),
-                (Value::Num(a), Value::Num(b)) => Value::Num(a % b),
-                _ => panic!("modulo requires two numbers"),
-            }
-        }
-
-        Node::Eq(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            Value::Flag(lhs == rhs)
-        }
-
-        Node::Ne(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            Value::Flag(lhs != rhs)
-        }
-
-        Node::Lt(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Flag(a < b),
-                _ => panic!("less-than comparison requires two numbers"),
-            }
-        }
-
-        Node::Le(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Flag(a <= b),
-                _ => panic!("less-than-or-equal comparison requires two numbers"),
-            }
-        }
-
-        Node::Gt(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Flag(a > b),
-                _ => panic!("greater-than comparison requires two numbers"),
-            }
-        }
-
-        Node::Ge(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-            let rhs = self.eval_value(rhs);
-
-            match (lhs, rhs) {
-                (Value::Num(a), Value::Num(b)) => Value::Flag(a >= b),
-                _ => panic!("greater-than-or-equal comparison requires two numbers"),
-            }
-        }
-
-        Node::And(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-
-            if truth_of(&lhs) == Truth::False {
-                Value::Flag(false)
-            } else {
+            Node::Sub(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
                 let rhs = self.eval_value(rhs);
-                Value::Flag(truth_of(&rhs) == Truth::True)
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a - b),
+                    _ => panic!("subtraction requires two numbers"),
+                }
             }
-        }
 
-        Node::Or(lhs, rhs) => {
-            let lhs = self.eval_value(lhs);
-
-            if truth_of(&lhs) == Truth::True {
-                Value::Flag(true)
-            } else {
+            Node::Mul(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
                 let rhs = self.eval_value(rhs);
-                Value::Flag(truth_of(&rhs) == Truth::True)
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a * b),
+                    _ => panic!("multiplication requires two numbers"),
+                }
             }
-        }
 
-        Node::Not(value) => {
-            let value = self.eval_value(value);
+            Node::Div(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
 
-            Value::Flag(truth_of(&value) == Truth::False)
-        }
-
-        Node::Neg(value) => {
-            let value = self.eval_value(value);
-
-            match value {
-                Value::Num(number) => Value::Num(-number),
-                _ => panic!("numeric negation requires a number"),
+                match (lhs, rhs) {
+                    (Value::Num(_), Value::Num(0)) => panic!("division by zero"),
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a / b),
+                    _ => panic!("division requires two numbers"),
+                }
             }
-        }
+
+            Node::Mod(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                match (lhs, rhs) {
+                    (Value::Num(_), Value::Num(0)) => panic!("modulo by zero"),
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a % b),
+                    _ => panic!("modulo requires two numbers"),
+                }
+            }
+
+            Node::Eq(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                Value::Flag(lhs == rhs)
+            }
+
+            Node::Ne(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                Value::Flag(lhs != rhs)
+            }
+
+            Node::Lt(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Flag(a < b),
+                    _ => panic!("less-than comparison requires two numbers"),
+                }
+            }
+
+            Node::Le(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Flag(a <= b),
+                    _ => panic!("less-than-or-equal comparison requires two numbers"),
+                }
+            }
+
+            Node::Gt(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Flag(a > b),
+                    _ => panic!("greater-than comparison requires two numbers"),
+                }
+            }
+
+            Node::Ge(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+                let rhs = self.eval_value(rhs);
+
+                match (lhs, rhs) {
+                    (Value::Num(a), Value::Num(b)) => Value::Flag(a >= b),
+                    _ => panic!("greater-than-or-equal comparison requires two numbers"),
+                }
+            }
+
+            Node::And(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+
+                if truth_of(&lhs) == Truth::False {
+                    Value::Flag(false)
+                } else {
+                    let rhs = self.eval_value(rhs);
+                    Value::Flag(truth_of(&rhs) == Truth::True)
+                }
+            }
+
+            Node::Or(lhs, rhs) => {
+                let lhs = self.eval_value(lhs);
+
+                if truth_of(&lhs) == Truth::True {
+                    Value::Flag(true)
+                } else {
+                    let rhs = self.eval_value(rhs);
+                    Value::Flag(truth_of(&rhs) == Truth::True)
+                }
+            }
+
+            Node::Not(value) => {
+                let value = self.eval_value(value);
+
+                Value::Flag(truth_of(&value) == Truth::False)
+            }
+
+            Node::Neg(value) => {
+                let value = self.eval_value(value);
+
+                match value {
+                    Value::Num(number) => Value::Num(-number),
+                    _ => panic!("numeric negation requires a number"),
+                }
+            }
+
+            Node::Get(lhs, _) => {
+                let lhs = self.eval_value(lhs);
+
+                match lhs {
+                    Value::Void => Value::Void,
+                    _ => Value::Void,
+                }
+            }
+
+            Node::Has(lhs, _) => {
+                let lhs = self.eval_value(lhs);
+
+                match lhs {
+                    Value::Void => Value::Flag(false),
+                    _ => Value::Flag(false),
+                }
+            }
 
             _ => Value::Void,
         }

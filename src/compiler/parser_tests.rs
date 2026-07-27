@@ -1133,3 +1133,111 @@ fn parses_function_call_with_single_argument() {
         other => panic!("expected Call node, got {:?}", other),
     }
 }
+
+#[test]
+fn parses_get_expression() {
+    let node = parse_node("x = user::profile;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Ident("user".into())),
+                Box::new(Node::Ident("profile".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_chained_get_expression() {
+    let node = parse_node("x = user::profile::email;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("user".into())),
+                    Box::new(Node::Ident("profile".into())),
+                )),
+                Box::new(Node::Ident("email".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_has_expression() {
+    let node = parse_node("x = user:?profile;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Ident("user".into())),
+                Box::new(Node::Ident("profile".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_has_at_end_of_get_chain() {
+    let node = parse_node("x = user::profile:?email;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("user".into())),
+                    Box::new(Node::Ident("profile".into())),
+                )),
+                Box::new(Node::Ident("email".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn rejects_get_after_has() {
+    let src = "x = user:?profile::email;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected Get-after-Has error");
+
+    let source = Source::new(src.to_string());
+    let msg = render(&err, &source);
+
+    assert!(
+        msg.contains("cannot continue traversal after `:?`"),
+        "expected Get-after-Has error, got:\n{msg}"
+    );
+}
+
+#[test]
+fn rejects_has_after_has() {
+    let src = "x = user:?profile:?email;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected Has-after-Has error");
+
+    let source = Source::new(src.to_string());
+    let msg = render(&err, &source);
+
+    assert!(
+        msg.contains("cannot continue traversal after `:?`"),
+        "expected Has-after-Has error, got:\n{msg}"
+    );
+}

@@ -1350,6 +1350,18 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            if matches!(lhs, Node::Has(_, _))
+                && matches!(infix_kind, Infix::Get | Infix::Has)
+            {
+                 return Err(
+                    Diagnostic::error(
+                        "Druim cannot continue traversal after `:?`",
+                        self.current_span(),
+                    )
+                    .with_help("`:?` terminates a Druim traversal chain. Use `::` before the final `:?`."),
+                );
+            }
+
             self.bump(); // consume infix operator
 
             let rhs = self.parse_bp(r_bp)?;
@@ -1597,8 +1609,8 @@ enum Infix {
     Or,
 
     // Colon semantics
+    Get,
     Has,
-    Present,
 
     // Flow
     Pipe,
@@ -1631,8 +1643,8 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
         TokenKind::Or => (25, 26, Or),
 
         // colon family
+        TokenKind::Get => (22, 23, Get),
         TokenKind::Has => (22, 23, Has),
-        TokenKind::Present => (22, 23, Present),
 
         // pipe
         TokenKind::Pipe => (20, 21, Pipe),
@@ -1661,8 +1673,8 @@ fn build_infix(kind: Infix, lhs: Node, rhs: Node) -> Node {
         And => Node::And(Box::new(lhs), Box::new(rhs)),
         Or => Node::Or(Box::new(lhs), Box::new(rhs)),
 
+        Get => Node::Get(Box::new(lhs), Box::new(rhs)),
         Has => Node::Has(Box::new(lhs), Box::new(rhs)),
-        Present => Node::Present(Box::new(lhs), Box::new(rhs)),
 
         Pipe => Node::Pipe(Box::new(lhs), Box::new(rhs)),
     }

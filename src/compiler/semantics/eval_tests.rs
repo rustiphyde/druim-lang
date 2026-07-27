@@ -1592,3 +1592,257 @@ fn function_can_return_numeric_negation() {
         Some(Value::Num(-42)),
     );
 }
+
+#[test]
+fn get_on_void_returns_void() {
+    use crate::compiler::ast::{Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Lit(crate::compiler::ast::Literal::Void)),
+                    Box::new(Node::Ident("anything".to_string())),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}
+
+#[test]
+fn has_on_void_returns_false() {
+    use crate::compiler::ast::{Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Has(
+                    Box::new(Node::Lit(crate::compiler::ast::Literal::Void)),
+                    Box::new(Node::Ident("anything".to_string())),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn get_on_flag_returns_void() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Lit(Literal::Flag(true))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}
+
+#[test]
+fn has_on_flag_returns_false() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Lit(Literal::Flag(true))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn get_on_num_returns_void() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Lit(Literal::Num(123))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}
+
+#[test]
+fn has_on_num_returns_false() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Lit(Literal::Num(123))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn get_on_text_returns_void() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Lit(Literal::Text("hello".to_string()))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}
+
+#[test]
+fn has_on_text_returns_false() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Lit(Literal::Text("hello".to_string()))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn get_on_dec_returns_void() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Lit(Literal::Dec("12.34".to_string()))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}
+
+#[test]
+fn has_on_dec_returns_false() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::Define(Define {
+            name: "result".to_string(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Lit(Literal::Dec("12.34".to_string()))),
+                Box::new(Node::Ident("anything".to_string())),
+            )),
+        })],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
