@@ -1846,3 +1846,34 @@ fn has_on_dec_returns_false() {
         Some(Value::Flag(false)),
     );
 }
+
+#[test]
+fn get_on_void_identifier_returns_void() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "x".to_string(),
+                value: Box::new(Node::Lit(Literal::Void)),
+            }),
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("x".to_string())),
+                    Box::new(Node::Ident("anything".to_string())),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator.eval_program(&program);
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+}

@@ -1031,6 +1031,56 @@ In Druim, checking whether something exists is a first-class operation.
 
 The Has operator provides that capability directly by evaluating to a `flag` with a value of either `true` or `false`.
 
+## Traversal Members
+
+A traversal member is not limited to a named member.
+
+Container-like values may expose members through one or more selector forms, including:
+
+- **Named selectors**, used by structured values and other named containers.
+- **Indexed selectors**, used by ordered, indexable containers.
+- Any future selector form explicitly supported by a traversable type.
+
+The right-hand expression of `::` or `:?` provides the selector used by the left-hand value.
+
+Each traversable type defines which selector forms it supports.
+
+Therefore:
+
+```druim
+container::member
+container:?member
+
+container::[index]
+container:?[index]
+```
+
+may represent either named traversal or indexed traversal, depending on the type of `container` and the evaluated selector.
+
+Named traversal uses an identifier as the selector.
+
+Indexed traversal uses an index selector enclosed in square brackets.
+
+The traversal operators remain uniform regardless of selector type.
+
+- `A :: B` retrieves the member selected by `B`, or evaluates to `void` when no such member exists.
+- `A :? B` evaluates to `true` when the member selected by `B` exists, otherwise `false`.
+
+Examples:
+
+```druim
+user::profile
+user:?profile
+
+users::[0]
+users:?[0]
+
+users::[0]::email
+users::[0]:?email
+```
+
+Indexed traversal does not introduce a new traversal operator. It uses the existing Get (`::`) and Has (`:?`) operators with an index selector enclosed in square brackets.
+
 ## Copy (:=)
 
 The := operator performs a **value copy** between two identifiers.
@@ -1498,17 +1548,187 @@ There is no undefined value in Druim.
 
 ---
 
-### Reserved Structural Delimiters
+## Ordex (:[]:)
 
-The following delimiter families are recognized at the lexical level but do not yet have defined semantic behavior:
+An **Ordex** is an ordered, indexable collection of values.
 
-- :[   → ArrayStart
-- ]:   → ArrayEnd
-- ][   → ArrayChain
+It preserves insertion order, assigns every contained value a positional index, and supports safe traversal through the Get (`::`) and Has (`:?`) operators.
 
-These tokens are reserved for future structural constructs.
+Ordex is the canonical ordered collection type in Druim.
 
-Until formally defined in a canon revision, they have no guaranteed semantics.
+---
+
+### Core Properties
+
+An Ordex:
+
+- Preserves the order of its contained values.
+- Assigns each contained value a zero-based positional index.
+- Is traversable using indexed selectors.
+- May contain duplicate values.
+- May contain values of different runtime types.
+- May contain other Ordex values.
+- May contain any future Druim value type.
+
+An Ordex is a container-like value.
+
+---
+
+### Declaration
+
+Ordex values are declared using the Ordex delimiters.
+
+```druim
+:[
+    value
+    value
+    value
+]:
+```
+
+The delimiters define a new Ordex containing its enclosed values in declaration order.
+
+---
+
+### Indexes
+
+Every value contained within an Ordex is assigned a zero-based index.
+
+```druim
+:[
+    "A"
+    "B"
+    "C"
+]:
+```
+
+Produces the following index mapping:
+
+- `[0]` → `"A"`
+- `[1]` → `"B"`
+- `[2]` → `"C"`
+
+Indexes are determined solely by position.
+
+---
+
+### Get
+
+Indexed retrieval uses the existing Get operator together with an indexed selector.
+
+```druim
+letters::[0]
+letters::[2]
+```
+
+If the requested index exists, the expression evaluates to the contained value.
+
+If the requested index does not exist, the expression evaluates to `void`.
+
+No exception is generated.
+
+---
+
+### Has
+
+Indexed existence checks use the existing Has operator together with an indexed selector.
+
+```druim
+letters:?[0]
+letters:?[5]
+```
+
+If the requested index exists, the expression evaluates to `true`.
+
+Otherwise, it evaluates to `false`.
+
+No value is retrieved.
+
+---
+
+### Traversal
+
+Because Get returns the retrieved value, traversal may continue indefinitely while each retrieved value remains traversable.
+
+```druim
+users::[0]::profile::email
+```
+
+Evaluation proceeds from left to right.
+
+1. Retrieve the value at index `[0]`.
+2. Retrieve its `profile`.
+3. Retrieve its `email`.
+4. If any member or index does not exist, the entire expression evaluates to `void`.
+
+The Has operator remains terminal.
+
+```druim
+users::[0]::profile:?email
+```
+
+This expression evaluates to either `true` or `false`.
+
+Traversal cannot continue after a Has operation because it evaluates to a `flag`.
+
+---
+
+### Nested Ordex Values
+
+An Ordex may contain one or more Ordex values.
+
+Each nested Ordex is an independent ordered collection with its own indexes.
+
+```druim
+:[
+    "A"
+][
+    :[
+        "B"
+    ][
+        "C"
+    ]:
+][
+    "D"
+]:
+```
+
+Nested Ordex values behave identically to any other Ordex.
+
+### Nested Traversal
+
+Nested Ordex values may be traversed by chaining indexed selectors.
+
+```druim
+grid::[1]::[0]
+```
+
+Evaluation proceeds from left to right.
+
+1. Retrieve the Ordex at index `[1]` from `grid`.
+2. Retrieve the value at index `[0]` from the retrieved Ordex.
+
+If either index does not exist, the expression evaluates to `void`.
+
+Likewise, the Has operator may be used to check for the existence of nested indexes.
+
+```druim
+grid::[1]:?[0]
+```
+
+This expression evaluates to `true` if the nested Ordex contains index `[0]`, otherwise `false`.
+
+---
+
+### Design Philosophy
+
+Ordex exists to provide a predictable, ordered collection that integrates directly with Druim's traversal system.
+
+Indexed access is not a separate language feature.
+
+It is simply another selector form supported by the existing Get (`::`) and Has (`:?`) operators.
+
+This allows named traversal and indexed traversal to share identical semantics while preserving a single, consistent traversal model throughout the language.
 
 ## Punctuation
 
