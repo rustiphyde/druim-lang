@@ -3227,3 +3227,197 @@ fn get_evaluates_identifier_box_index() {
         Some(Value::Text("one".to_string())),
     );
 }
+
+#[test]
+fn undeclared_identifier_produces_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Ident(
+                    "missing_value".to_string(),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn indexed_get_propagates_undeclared_index_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                    ],
+                })),
+            }),
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Ident("missing_index".to_string()),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared index identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_index`",
+    );
+}
+
+#[test]
+fn indexed_has_propagates_undeclared_index_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                    ],
+                })),
+            }),
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Has(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Ident("missing_index".to_string()),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared index identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_index`",
+    );
+}
+
+#[test]
+fn get_propagates_undeclared_target_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident(
+                        "missing_container".to_string(),
+                    )),
+                    Box::new(Node::Ident(
+                        "name".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared traversal target should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_container`",
+    );
+}
+
+#[test]
+fn has_propagates_undeclared_target_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Has(
+                    Box::new(Node::Ident(
+                        "missing_container".to_string(),
+                    )),
+                    Box::new(Node::Ident(
+                        "name".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared traversal target should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_container`",
+    );
+}

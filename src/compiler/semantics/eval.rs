@@ -75,11 +75,12 @@ impl Evaluator {
             }
 
             Node::Ident(name) => {
-                Ok(
-                    self.env
-                        .get_value(name)
-                        .unwrap_or(Value::Void),
-                )
+                self.get(name).ok_or_else(|| {
+                    Diagnostic::error(
+                        format!("undeclared identifier `{name}`"),
+                        runtime_span(),
+                    )
+                })
             }
 
             Node::Func(func) => {

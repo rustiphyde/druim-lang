@@ -1,12 +1,12 @@
 # Druim Canon (Living Document)
 
 ## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R003
+- Revision ID: DRUIM-CANON-R004
 - Status: Current
-- Effective Date: 2026-07-22
+- Effective Date: 2026-07-28
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R002
-- Notes: This revision formalizes statement-boundary invariants for Define, DefineEmpty, Copy, Bind, and Guard; clarifies complete-expression requirements; and resolves inconsistencies in the documented truth and Guard rules.
+- Supersedes: DRUIM-CANON-R003
+- Notes: This revision corrects and finalizes Box, Bag, indexed traversal, collection truth evaluation, selector diagnostics, and collection syntax rules.
 
 
 ## Purpose
@@ -433,8 +433,12 @@ When a value is *explicitly evaluated* as a flag, the following rules apply:
 - Empty or whitespace-only text → false
 - Any other text value → true
 - void → false
+- Empty Box → false
+- Non-empty Box → true
+- Empty Bag → false
+- Non-empty Bag → true
 
-No other values are permitted to participate in truth evaluation.
+Only values with explicitly defined truth-conversion rules may participate in truth evaluation.
 
 ### Undefined Values
 - **Undefined does not exist in Druim.**
@@ -696,7 +700,9 @@ It is **not assignment**, **not mutation**, and **not scope creation**. It is a 
 >
 > If **A does not have B**, evaluate to **void**.
 
-There are **no errors**, **no exceptions**, and **no implicit truthiness** introduced by this operator. Failure is represented explicitly as **void**.
+A valid selector that does not identify an existing member evaluates to `void`.
+
+An invalid selector form or invalid selector value produces a diagnostic according to the traversed type’s rules.
 
 ---
 
@@ -890,6 +896,10 @@ It is **not assignment**, **not mutation**, **not scope creation**, and **not re
 
 The Has operator never returns `void`.
 
+A valid selector that does not identify an existing member evaluates to `false`.
+
+An invalid selector form or invalid selector value produces a diagnostic according to the traversed type’s rules.
+
 Its purpose is to determine whether a member exists, not to access it.
 
 ---
@@ -1063,8 +1073,9 @@ Indexed traversal uses an index selector enclosed in square brackets.
 
 The traversal operators remain uniform regardless of selector type.
 
-- `A :: B` retrieves the member selected by `B`, or evaluates to `void` when no such member exists.
-- `A :? B` evaluates to `true` when the member selected by `B` exists, otherwise `false`.
+- `A :: B` retrieves the member selected by `B`. A valid selector with no matching member evaluates to `void`.
+- `A :? B` evaluates to `true` when the selected member exists and `false` when a valid selector has no matching member.
+- A selector form or selector value that is invalid for the traversed type produces a diagnostic.
 
 Examples:
 
@@ -1078,6 +1089,18 @@ users:?[0]
 users::[0]::email
 users::[0]:?email
 ```
+
+### Missing Members and Invalid Traversal
+
+Traversal distinguishes between absence and invalid access.
+
+- A valid selector applied to a supported container type may fail to find a member.
+  - Get evaluates to `void`.
+  - Has evaluates to `false`.
+- A selector form that the container type does not support produces a diagnostic.
+- A selector value that violates the container type’s rules produces a diagnostic.
+- Missing data is non-fatal.
+- Invalid traversal is not silently converted to absence.
 
 Indexed traversal does not introduce a new traversal operator. It uses the existing Get (`::`) and Has (`:?`) operators with an index selector enclosed in square brackets.
 
@@ -1531,6 +1554,8 @@ Guard uses Druim's canonical explicit truth-conversion rules.
 | **num**  | **0** is false; every non-zero value is true |
 | **dec**  | **0.0** is false, every non-zero value is true |
 | **text** | Empty or whitespace-only text is false; every non-empty text value is true |
+| **Box**  | Empty is false; non-empty is true |
+| **Bag**  | Empty is false; non-empty is true |
 | **void**  | Always false |
 
 There is no undefined value in Druim.
@@ -1577,30 +1602,35 @@ A Box is a container-like value.
 
 ### Declaration
 
-Box values are declared using the Box delimiters.
+Box values are declared using the `:[` and `]:` delimiters.
 
 ```druim
-:[
+example = :[
+    value,
+    value,
     value
-    value
-    value
-]:
+]:;
 ```
 
-The delimiters define a new Box containing its enclosed values in declaration order.
+### Entry Separation
+
+- Box values are separated by commas.
+- A Box may contain zero or more values.
+- A trailing comma is not permitted.
+- Each value must be one complete expression.
 
 ---
 
 ### Indexes
 
-Every value contained within an Box is assigned a zero-based index.
+Every value contained within a Box is assigned a zero-based index.
 
 ```druim
-:[
-    "A"
-    "B"
+box = :[
+    "A",
+    "B",
     "C"
-]:
+]:;
 ```
 
 Produces the following index mapping:
@@ -1626,7 +1656,14 @@ If the requested index exists, the expression evaluates to the contained value.
 
 If the requested index does not exist, the expression evaluates to `void`.
 
-No exception is generated.
+### Indexed Selector Validity
+
+- A Box selector must use indexed syntax: `[expression]`.
+- The index expression must evaluate to a non-negative `num`.
+- A negative index produces a diagnostic.
+- A non-numeric index produces a diagnostic.
+- A valid index that is outside the Box bounds evaluates to `void`.
+- A named selector used against a Box produces a diagnostic.
 
 ---
 
@@ -1644,6 +1681,15 @@ If the requested index exists, the expression evaluates to `true`.
 Otherwise, it evaluates to `false`.
 
 No value is retrieved.
+
+### Indexed Selector Validity
+
+- A Box selector must use indexed syntax: `[expression]`.
+- The index expression must evaluate to a non-negative `num`.
+- A negative index produces a diagnostic.
+- A non-numeric index produces a diagnostic.
+- A valid index that is outside the Box bounds evaluates to `false`.
+- A named selector used against a Box produces a diagnostic.
 
 ---
 
@@ -1681,20 +1727,20 @@ A Box may contain one or more Box and/or Bag values.
 Each nested collection is an independent value. Nested Boxes maintain their own ordered indexes, while nested Bags maintain their own named entries.
 
 ```druim
-:[
-    "A"
+nested = :[
+    "A",
 
     :[
-        "B"
+        "B",
         "C"
-    ]:
+    ]:,
 
     :|
         name: "Rusty"
-    |:
+    |:,
 
     "D"
-]:
+]:;
 ```
 
 Nested collection values behave identically to any other Box or Bag.
@@ -1731,6 +1777,17 @@ world:?player
 
 Each `:?` operator evaluates the existence of the immediately following index or named entry within the current collection and returns `true` or `false`.
 
+### Design Philosophy
+
+Box exists to provide a predictable, ordered collection that integrates directly with Druim's traversal system.
+
+Indexed access is not a separate language feature.
+
+It is simply another selector form supported by the existing Get (`::`) and Has (`:?`) operators.
+
+This allows named traversal and indexed traversal to share identical semantics while preserving a single, consistent traversal model throughout the language.
+
+
 ---
 
 ## Bag (:||:)
@@ -1739,7 +1796,7 @@ A Bag is Druim's named collection type.
 
 Unlike a Box, which stores values by numeric position, a Bag stores values by unique names.
 
-A Bag preserves insertion order while providing direct access through named entries.
+A Bag provides direct access through named entries and does not expose positional ordering.
 
 ---
 
@@ -1748,7 +1805,7 @@ A Bag preserves insertion order while providing direct access through named entr
 A Bag:
 
 - Stores values using unique names.
-- Preserves insertion order.
+- Does not preserve or expose entry order.
 - Allows constant-time lookup by name (implementation-dependent).
 - May contain any Druim value.
 - May contain one or more Box and/or Bag values.
@@ -1763,14 +1820,20 @@ Every value contained within a Bag is independent of every other value.
 A Bag is declared using the `:|` and `|:` delimiters.
 
 ```druim
-player : Bag = :|
-    name: "Rusty"
-    level: 42
+player = :|
+    name: "Rusty",
+    level: 42,
     health: 100
-|:
+|:;
 ```
 
-Each entry consists of a unique name followed by a colon and a value.
+### Entry Separation
+
+- Bag entries are separated by commas.
+- A Bag may contain zero or more entries.
+- A trailing comma is not permitted.
+- Each entry must contain one identifier name, followed by `:`, followed by one complete expression.
+- Entry names must be unique within the Bag.
 
 ---
 
@@ -1779,11 +1842,11 @@ Each entry consists of a unique name followed by a colon and a value.
 Each entry within a Bag is identified by a unique name.
 
 ```druim
-settings : Bag = :|
-    theme: "dark"
-    volume: 75
+settings = :|
+    theme: "dark",
+    volume: 75,
     fullscreen: true
-|:
+|:;
 ```
 
 Names are unique within a Bag.
@@ -1804,6 +1867,12 @@ settings::theme
 
 If the requested name does not exist, the expression evaluates to `void`.
 
+### Named Selector Validity
+
+- A Bag selector must be a named identifier.
+- If the named entry does not exist, Get evaluates to `void`.
+- An indexed selector used against a Bag produces a diagnostic.
+
 ---
 
 ### Has
@@ -1817,6 +1886,12 @@ settings:?language
 ```
 
 The expression evaluates to `true` if the name exists within the Bag; otherwise it evaluates to `false`.
+
+### Named Selector Validity
+
+- A Bag selector must be a named identifier.
+- If the named entry does not exist, Has evaluates to `false`.
+- An indexed selector used against a Bag produces a diagnostic.
 
 ---
 
@@ -1841,16 +1916,16 @@ A Bag may contain one or more Box and/or Bag values.
 Each nested collection is an independent value. Nested Boxes maintain their own ordered indexes, while nested Bags maintain their own named entries.
 
 ```druim
-world : Bag = :|
+world = :|
     player: :|
         name: "Rusty"
-    |:
+    |:,
 
     inventory: :[
-        "Sword"
+        "Sword",
         "Shield"
     ]:
-|:
+|:;
 ```
 
 Nested collection values behave identically to any other Box or Bag.
@@ -1906,20 +1981,12 @@ Both collection types support arbitrary nesting and together form Druim's canoni
 
 ---
 
-### Design Philosophy
-
-Box exists to provide a predictable, ordered collection that integrates directly with Druim's traversal system.
-
-Indexed access is not a separate language feature.
-
-It is simply another selector form supported by the existing Get (`::`) and Has (`:?`) operators.
-
-This allows named traversal and indexed traversal to share identical semantics while preserving a single, consistent traversal model throughout the language.
-
 ## Punctuation
 
 - ( → LParen
 - ) → RParen
+- [ → LBracket
+- ] → RBracket
 - , → Comma
 - ; → Semicolon
 
