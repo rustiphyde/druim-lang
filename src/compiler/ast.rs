@@ -1,5 +1,3 @@
-use crate::compiler::error::Span;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     /// Integer number.
@@ -19,18 +17,6 @@ pub enum Literal {
     /// `void` always evaluates to a false flag.
     /// There is no `undefined` in Druim.
     Void,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Spanned<T> {
-    pub value: T,
-    pub span: Span,
-}
-
-impl<T> Spanned<T> {
-    pub fn new(value: T, span: Span) -> Self {
-        Self { value, span }
-    }
 }
 
 

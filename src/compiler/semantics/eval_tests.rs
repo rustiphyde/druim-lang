@@ -2465,6 +2465,65 @@ fn get_traverses_from_box_into_nested_bag() {
     );
 }
 
+
+#[test]
+fn get_traverses_nested_boxes_by_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "matrix".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Box(BoxLiteral {
+                            values: vec![
+                                Node::Lit(Literal::Num(1)),
+                                Node::Lit(Literal::Num(2)),
+                            ],
+                        }),
+                        Node::Box(BoxLiteral {
+                            values: vec![
+                                Node::Lit(Literal::Num(3)),
+                                Node::Lit(Literal::Num(4)),
+                            ],
+                        }),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Get(
+                        Box::new(Node::Ident("matrix".to_string())),
+                        Box::new(Node::Index(Box::new(
+                            Node::Lit(Literal::Num(1)),
+                        ))),
+                    )),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(0)),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(3)),
+    );
+}
+
 #[test]
 fn get_traverses_from_bag_into_nested_box() {
     use crate::compiler::ast::{
@@ -2757,6 +2816,53 @@ fn has_rejects_named_selector_on_box() {
 }
 
 #[test]
+fn has_evaluates_computed_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Num(10)),
+                        Node::Lit(Literal::Num(20)),
+                        Node::Lit(Literal::Num(30)),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Has(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Add(
+                            Box::new(Node::Lit(Literal::Num(1))),
+                            Box::new(Node::Lit(Literal::Num(1))),
+                        ),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
 fn has_rejects_indexed_selector_on_bag() {
     use crate::compiler::ast::{
         BagEntry, BagLiteral, Define, Literal, Node, Program,
@@ -3024,5 +3130,100 @@ fn has_rejects_non_numeric_box_index() {
     assert_eq!(
         err.message,
         "Box index must evaluate to a number",
+    );
+}
+
+#[test]
+fn get_evaluates_computed_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                        Node::Lit(Literal::Text("two".to_string())),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Add(
+                            Box::new(Node::Lit(Literal::Num(1))),
+                            Box::new(Node::Lit(Literal::Num(1))),
+                        ),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("two".to_string())),
+    );
+}
+
+#[test]
+fn get_evaluates_identifier_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "index".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(1))),
+            }),
+
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Ident("index".to_string()),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("one".to_string())),
     );
 }
