@@ -3421,3 +3421,621 @@ fn has_propagates_undeclared_target_identifier_diagnostic() {
         "undeclared identifier `missing_container`",
     );
 }
+
+#[test]
+fn guard_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Guard, GuardBranch, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Guard(Guard {
+                target: "result".to_string(),
+                branches: vec![
+                    GuardBranch {
+                        expr: Node::Ident(
+                            "missing_value".to_string(),
+                        ),
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared Guard branch should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn function_return_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Call, Define, Func, Node, Program, Ret,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Func(Func {
+                name: "read_missing".to_string(),
+                params: vec![],
+                body: vec![
+                    Node::Ret(Ret {
+                        value: Some(Box::new(Node::Ident(
+                            "missing_value".to_string(),
+                        ))),
+                    }),
+                ],
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(Call {
+                    callee: Box::new(Node::Ident(
+                        "read_missing".to_string(),
+                    )),
+                    args: vec![],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared return value should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn function_argument_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Call, Define, Func, Node, Param, Program, Ret,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Func(Func {
+                name: "identity".to_string(),
+                params: vec![
+                    Param {
+                        name: "value".to_string(),
+                        default: None,
+                    },
+                ],
+                body: vec![
+                    Node::Ret(Ret {
+                        value: Some(Box::new(Node::Ident(
+                            "value".to_string(),
+                        ))),
+                    }),
+                ],
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(Call {
+                    callee: Box::new(Node::Ident(
+                        "identity".to_string(),
+                    )),
+                    args: vec![
+                        Node::Ident(
+                            "missing_argument".to_string(),
+                        ),
+                    ],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared function argument should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_argument`",
+    );
+}
+
+#[test]
+fn default_parameter_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Call, Define, Func, Node, Param, Program, Ret,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Func(Func {
+                name: "read_default".to_string(),
+                params: vec![
+                    Param {
+                        name: "value".to_string(),
+                        default: Some(Node::Ident(
+                            "missing_default".to_string(),
+                        )),
+                    },
+                ],
+                body: vec![
+                    Node::Ret(Ret {
+                        value: Some(Box::new(Node::Ident(
+                            "value".to_string(),
+                        ))),
+                    }),
+                ],
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(Call {
+                    callee: Box::new(Node::Ident(
+                        "read_default".to_string(),
+                    )),
+                    args: vec![],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared default parameter value should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_default`",
+    );
+}
+
+#[test]
+fn box_literal_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Ident(
+                            "missing_value".to_string(),
+                        ),
+                    ],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared Box value should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn bag_literal_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        BagEntry, BagLiteral, Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Bag(BagLiteral {
+                    entries: vec![
+                        BagEntry {
+                            name: "value".to_string(),
+                            value: Node::Ident(
+                                "missing_value".to_string(),
+                            ),
+                        },
+                    ],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared Bag value should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn function_call_propagates_undeclared_callee_diagnostic() {
+    use crate::compiler::ast::{
+        Call, Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(Call {
+                    callee: Box::new(Node::Ident(
+                        "missing_function".to_string(),
+                    )),
+                    args: vec![],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared function callee should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_function`",
+    );
+}
+
+#[test]
+fn arithmetic_expression_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Add(
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                    Box::new(Node::Lit(Literal::Num(1))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared arithmetic operand should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn equality_comparison_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Eq(
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                    Box::new(Node::Lit(Literal::Num(1))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared comparison operand should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn logical_and_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::And(
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                    Box::new(Node::Lit(Literal::Flag(true))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared logical operand should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn logical_not_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Not(
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared logical operand should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn numeric_negation_propagates_undeclared_identifier_diagnostic() {
+    use crate::compiler::ast::{
+        Define, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Neg(
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "undeclared numeric operand should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn logical_and_short_circuits_false_left_operand() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::And(
+                    Box::new(Node::Lit(Literal::Flag(false))),
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect(
+            "false AND should not evaluate the right-hand operand",
+        );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn logical_or_short_circuits_true_left_operand() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Or(
+                    Box::new(Node::Lit(Literal::Flag(true))),
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect(
+            "true OR should not evaluate the right-hand operand",
+        );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn logical_or_evaluates_right_operand_when_left_is_false() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Or(
+                    Box::new(Node::Lit(Literal::Flag(false))),
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "false OR should evaluate the right-hand operand",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
+
+#[test]
+fn logical_and_evaluates_right_operand_when_left_is_true() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::And(
+                    Box::new(Node::Lit(Literal::Flag(true))),
+                    Box::new(Node::Ident(
+                        "missing_value".to_string(),
+                    )),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "true AND should evaluate the right-hand operand",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_value`",
+    );
+}
