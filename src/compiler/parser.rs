@@ -1,6 +1,6 @@
 use crate::compiler::ast::{
-    Bind, Block, BlockSegment, Call, Copy, Define, DefineEmpty, Func,
-    Guard, GuardBranch, Literal, Node, Param, Program, Ret,
+    BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
+    DefineEmpty, Func, Guard, GuardBranch, Literal, Node, Param, Program, Ret,
 };
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
@@ -1364,7 +1364,30 @@ impl<'a> Parser<'a> {
 
             self.bump(); // consume infix operator
 
-            let rhs = self.parse_bp(r_bp)?;
+            let rhs = if matches!(infix_kind, Infix::Get | Infix::Has)
+                && self.peek_kind() == TokenKind::LBracket
+            {
+                self.bump(); // consume `[`
+
+                let index = self.parse_bp(0)?;
+
+                if self.peek_kind() != TokenKind::RBracket {
+                    return Err(
+                        Diagnostic::error(
+                            "expected `]` after Box index",
+                            self.current_span(),
+                        )
+                        .with_help("Close the indexed selector with `]`."),
+                    );
+                }
+
+                self.bump(); // consume `]`
+
+                Node::Index(Box::new(index))
+            } else {
+                self.parse_bp(r_bp)?
+            };
+
             lhs = build_infix(infix_kind, lhs, rhs);
         }
 
@@ -1374,10 +1397,13 @@ impl<'a> Parser<'a> {
     fn parse_prefix(&mut self) -> Result<Node, Diagnostic> {
         let span_start = self.current_span().start;
 
-        let tok = self.bump().ok_or_else(|| {
+        let tok = self.bump().cloned().ok_or_else(|| {
             Diagnostic::error(
                 "unexpected end of input",
-                Span { start: span_start, end: span_start },
+                Span {
+                    start: span_start,
+                    end: span_start,
+                },
             )
             .with_help("Druim expected a value expression here.")
         })?;
@@ -1395,7 +1421,35 @@ impl<'a> Parser<'a> {
 
             TokenKind::TextLit => Ok(Node::Lit(Literal::Text(tok.lexeme.clone()))),
 
+            TokenKind::FlagLit => {
+                let value = match tok.lexeme.as_str() {
+                    "true" => true,
+                    "false" => false,
+                    _ => {
+                        return Err(
+                            Diagnostic::error(
+                                "invalid flag literal",
+                                Span {
+                                    start: tok.pos,
+                                    end: tok.pos + tok.lexeme.len(),
+                                },
+                            )
+                            .with_help(
+                                "Druim flag literals must be either `true` or `false`.",
+                            ),
+                        );
+                    }
+                };
+
+                Ok(Node::Lit(Literal::Flag(value)))
+            }
+
             TokenKind::KwVoid => Ok(Node::Lit(Literal::Void)),
+
+            // ─── Collection literals ───────────────
+            TokenKind::BoxStart => self.parse_box_literal(),
+
+            TokenKind::BagStart => self.parse_bag_literal(),
 
             // ─── Unary operators ────────────────────
             TokenKind::Not => {
@@ -1412,6 +1466,23 @@ impl<'a> Parser<'a> {
             TokenKind::LParen => {
                 let expr = self.parse_bp(0)?;
                 self.expect(TokenKind::RParen, "`)`")?;
+
+                if !is_math_expression(&expr) {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid parenthesized expression",
+                            Span {
+                                start: tok.pos,
+                                end: tok.pos + tok.lexeme.len(),
+                            },
+                        )
+                        .with_help(
+                            "Parentheses may only group mathematical expressions.\n\
+                            They are not general-purpose value delimiters.",
+                        ),
+                    );
+                }
+
                 Ok(expr)
             }
 
@@ -1466,6 +1537,364 @@ impl<'a> Parser<'a> {
                 )
                 .with_help("Druim expected a value here."),
             ),
+        }
+    }
+
+    fn parse_box_literal(&mut self) -> Result<Node, Diagnostic> {
+        let mut values = Vec::new();
+
+        // Empty Box: `:[]:`
+        if self.peek_kind() == TokenKind::BoxEnd {
+            self.bump(); // consume `]:`
+            return Ok(Node::Box(BoxLiteral { values }));
+        }
+
+        loop {
+            // A value must appear here.
+            match self.peek_kind() {
+                TokenKind::Comma => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing Box value",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a Box value before this comma.\n\
+                            Example: `:[1, 2, 3]:`",
+                        ),
+                    );
+                }
+
+                TokenKind::Semicolon => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid separator in Box literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Box values must be separated by commas, not semicolons.\n\
+                            Example: `:[1, 2, 3]:`",
+                        ),
+                    );
+                }
+
+                TokenKind::BoxEnd => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing Box value",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a value after the previous comma.\n\
+                            Trailing commas are not allowed in Box literals.",
+                        ),
+                    );
+                }
+
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated Box literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a closing Box delimiter `]:`.\n\
+                            Example: `:[1, 2, 3]:`",
+                        ),
+                    );
+                }
+
+                _ => {}
+            }
+
+            values.push(self.parse_expr()?);
+
+            // After a complete value, only `,` or `]:` is valid.
+            match self.peek_kind() {
+                TokenKind::Comma => {
+                    self.bump(); // consume `,`
+
+                    // Reject trailing comma immediately.
+                    if self.peek_kind() == TokenKind::BoxEnd {
+                        return Err(
+                            Diagnostic::error(
+                                "trailing comma in Box literal",
+                                self.current_span(),
+                            )
+                            .with_help(
+                                "Druim Box literals do not allow trailing commas.\n\
+                                Remove the comma before `]:`.",
+                            ),
+                        );
+                    }
+                }
+
+                TokenKind::BoxEnd => {
+                    self.bump(); // consume `]:`
+                    return Ok(Node::Box(BoxLiteral { values }));
+                }
+
+                TokenKind::Semicolon => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid separator in Box literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim Box values must be separated by commas, not semicolons.\n\
+                            Example: `:[1, 2, 3]:`",
+                        ),
+                    );
+                }
+
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated Box literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a closing Box delimiter `]:`.",
+                        ),
+                    );
+                }
+
+                _ => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing comma in Box literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim box values must be separated by commas.\n\
+                            Example: `:[1, 2, 3]:`",
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    fn parse_bag_literal(&mut self) -> Result<Node, Diagnostic> {
+        use std::collections::HashSet;
+
+        let mut entries = Vec::new();
+        let mut names = HashSet::new();
+
+        // Empty Bag: `:||:`
+        if self.peek_kind() == TokenKind::BagEnd {
+            self.bump(); // consume `|:`
+            return Ok(Node::Bag(BagLiteral { entries }));
+        }
+
+        loop {
+            // An entry name must appear here.
+            match self.peek_kind() {
+                TokenKind::Comma => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing Bag entry",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a named Bag entry before this comma.\n\
+                            Example: `:| name: \"Rusty\", level: 42 |:`",
+                        ),
+                    );
+                }
+
+                TokenKind::Semicolon => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid separator in Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim Bag entries must be separated by commas, not semicolons.\n\
+                            Example: `:| name: \"Rusty\", level: 42 |:`",
+                        ),
+                    );
+                }
+
+                TokenKind::BagEnd => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing Bag entry",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected an entry after the previous comma.\n\
+                            Trailing commas are not allowed in DruimBag literals.",
+                        ),
+                    );
+                }
+
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a closing Bag delimiter `|:`.\n\
+                            Example: `:| name: \"Rusty\" |:`",
+                        ),
+                    );
+                }
+
+                _ => {}
+            }
+
+            let name_tok = match self.bump() {
+                Some(tok) => tok.clone(),
+
+                None => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a named Bag entry or the closing delimiter `|:`.",
+                        ),
+                    );
+                }
+            };
+
+            if name_tok.kind != TokenKind::Ident {
+                return Err(
+                    Diagnostic::error(
+                        "invalid Bag entry name",
+                        Span {
+                            start: name_tok.pos,
+                            end: name_tok.pos + name_tok.lexeme.len(),
+                        },
+                    )
+                    .with_help(
+                        "Each Druim Bag entry must begin with an identifier followed by `:`.\n\
+                        Example: `name: \"Rusty\"`",
+                    ),
+                );
+            }
+
+            let name = name_tok.lexeme.clone();
+
+            if !names.insert(name.clone()) {
+                return Err(
+                    Diagnostic::error(
+                        "duplicate Bag entry name",
+                        Span {
+                            start: name_tok.pos,
+                            end: name_tok.pos + name_tok.lexeme.len(),
+                        },
+                    )
+                    .with_help(
+                        "Druim Bag entry names must be unique within the same Bag literal.",
+                    ),
+                );
+            }
+
+            self.expect(
+                TokenKind::Colon,
+                "Druim expected `:` after the Bag entry name.",
+            )?;
+
+            // An entry value must appear here.
+            match self.peek_kind() {
+                TokenKind::Comma | TokenKind::BagEnd | TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing Bag entry value",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Each Druim Bag entry requires a value after `:`.\n\
+                            Example: `name: \"Rusty\"`",
+                        ),
+                    );
+                }
+
+                TokenKind::Semicolon => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid separator in Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim Bag entries must be separated by commas, not semicolons.",
+                        ),
+                    );
+                }
+
+                _ => {}
+            }
+
+            let value = self.parse_expr()?;
+
+            entries.push(BagEntry { name, value });
+
+            // After a complete entry, only `,` or `|:` is valid.
+            match self.peek_kind() {
+                TokenKind::Comma => {
+                    self.bump(); // consume `,`
+
+                    if self.peek_kind() == TokenKind::BagEnd {
+                        return Err(
+                            Diagnostic::error(
+                                "trailing comma in Bag literal",
+                                self.current_span(),
+                            )
+                            .with_help(
+                                "Druim Bag literals do not allow trailing commas.\n\
+                                Remove the comma before `|:`.",
+                            ),
+                        );
+                    }
+                }
+
+                TokenKind::BagEnd => {
+                    self.bump(); // consume `|:`
+                    return Ok(Node::Bag(BagLiteral { entries }));
+                }
+
+                TokenKind::Semicolon => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid separator in Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim Bag entries must be separated by commas, not semicolons.\n\
+                            Example: `:| name: \"Rusty\", level: 42 |:`",
+                        ),
+                    );
+                }
+
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a closing Bag delimiter `|:`.",
+                        ),
+                    );
+                }
+
+                _ => {
+                    return Err(
+                        Diagnostic::error(
+                            "missing comma in Bag literal",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim Bag entries must be separated by commas.\n\
+                            Example: `:| name: \"Rusty\", level: 42 |:`",
+                        ),
+                    );
+                }
+            }
         }
     }
 
@@ -1582,6 +2011,18 @@ fn is_snake_case(name: &str) -> bool {
     }
 
     !name.starts_with('_') && !name.ends_with('_')
+}
+
+fn is_math_expression(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Add(_, _)
+            | Node::Sub(_, _)
+            | Node::Mul(_, _)
+            | Node::Div(_, _)
+            | Node::Mod(_, _)
+            | Node::Neg(_)
+    )
 }
 
 const PREFIX_BP: u8 = 90;

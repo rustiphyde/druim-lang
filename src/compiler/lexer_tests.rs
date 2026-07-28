@@ -57,14 +57,15 @@ mod tests {
 
     #[test]
     fn block_tokens() {
-        let src = ":[ 1, 2, 3 ][ \"carrots\", \"eggs\", \"milk\" ]: :{ a = 16; }{ d := a; }: fn my_function :( b )( a = b; ):";
+        let src = ":[ \"carrots\", \"eggs\", \"milk\" ]: :| name: \"Rusty\", age: 47 |: :{ a = 16; }{ d := a; }: fn my_function :( b )( a = b; ):";
         let tokens = Lexer::new(src).tokenize().unwrap();
 
         let kinds: Vec<_> = tokens.iter().map(|t| t.kind).collect();
 
-        assert!(kinds.contains(&TokenKind::ArrayStart));
-        assert!(kinds.contains(&TokenKind::ArrayChain));
-        assert!(kinds.contains(&TokenKind::ArrayEnd));
+        assert!(kinds.contains(&TokenKind::BoxStart));
+        assert!(kinds.contains(&TokenKind::BoxEnd));
+        assert!(kinds.contains(&TokenKind::BagStart));
+        assert!(kinds.contains(&TokenKind::BagEnd));
         assert!(kinds.contains(&TokenKind::BlockStart));
         assert!(kinds.contains(&TokenKind::BlockChain));
         assert!(kinds.contains(&TokenKind::BlockEnd));
@@ -107,6 +108,103 @@ mod tests {
     fn guard_token() {
         let ks = kinds("x ?= y;");
         assert!(ks.contains(&Guard));
+    }
+
+    #[test]
+    fn lexes_left_bracket() {
+        let tokens = Lexer::new("[")
+            .tokenize()
+            .expect("left bracket should lex");
+
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::LBracket,
+        );
+    }
+
+    #[test]
+    fn lexes_right_bracket() {
+        let tokens = Lexer::new("]")
+            .tokenize()
+            .expect("right bracket should lex");
+
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::RBracket,
+        );
+    }
+
+    #[test]
+    fn box_delimiters_remain_distinct_from_index_brackets() {
+        let tokens = Lexer::new(":[1]: [0]")
+            .tokenize()
+            .expect("box and index brackets should lex");
+
+        let kinds: Vec<TokenKind> = tokens
+            .into_iter()
+            .map(|token| token.kind)
+            .collect();
+
+        assert!(kinds.contains(&TokenKind::BoxStart));
+        assert!(kinds.contains(&TokenKind::BoxEnd));
+        assert!(kinds.contains(&TokenKind::LBracket));
+        assert!(kinds.contains(&TokenKind::RBracket));
+    }
+
+    #[test]
+    fn indexed_get_after_bracket_does_not_lex_as_box_end() {
+        let tokens = Lexer::new("items::[0]::[1]")
+            .tokenize()
+            .expect("indexed traversal should lex");
+
+        let kinds: Vec<TokenKind> = tokens
+            .into_iter()
+            .map(|token| token.kind)
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Ident,
+                TokenKind::Get,
+                TokenKind::LBracket,
+                TokenKind::NumLit,
+                TokenKind::RBracket,
+                TokenKind::Get,
+                TokenKind::LBracket,
+                TokenKind::NumLit,
+                TokenKind::RBracket,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn indexed_has_after_bracket_does_not_lex_as_box_end() {
+        let tokens = Lexer::new("items::[0]:?[1]")
+            .tokenize()
+            .expect("indexed traversal should lex");
+
+        let kinds: Vec<TokenKind> = tokens
+            .into_iter()
+            .map(|token| token.kind)
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Ident,
+                TokenKind::Get,
+                TokenKind::LBracket,
+                TokenKind::NumLit,
+                TokenKind::RBracket,
+                TokenKind::Has,
+                TokenKind::LBracket,
+                TokenKind::NumLit,
+                TokenKind::RBracket,
+                TokenKind::Eof,
+            ],
+        );
     }
 
 }

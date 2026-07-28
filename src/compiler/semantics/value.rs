@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::compiler::ast::{Literal, Node, Param};
 
 /// Runtime value representation.
@@ -27,6 +29,16 @@ pub enum Value {
     /// - is never undefined
     /// - always evaluates to false
     Void,
+
+    /// Ordered collection value.
+    ///
+    /// Preserves insertion order and allows indexed traversal.
+    Box(Vec<Value>),
+
+    /// Named collection value.
+    ///
+    /// Each entry name is unique within the Bag.
+    Bag(HashMap<String, Value>),
 
     /// User-defined function value.
     ///

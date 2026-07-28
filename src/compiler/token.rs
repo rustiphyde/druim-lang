@@ -6,6 +6,7 @@ pub enum TokenKind {
     NumLit,   // whole number literal
     DecLit,   // decimal literal
     TextLit,  // quoted text
+    FlagLit,  // true or false
 
     // ===== Keywords (types) =====
     KwNum,
@@ -64,6 +65,8 @@ pub enum TokenKind {
     // ===== Punctuation =====
     LParen,        // (
     RParen,        // )
+    LBracket,      // [
+    RBracket,      // ]
     Comma,         // ,
     Semicolon,     // ;
 

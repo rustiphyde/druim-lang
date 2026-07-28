@@ -1,3 +1,5 @@
+use crate::compiler::error::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     /// Integer number.
@@ -19,12 +21,28 @@ pub enum Literal {
     Void,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Spanned<T> {
+    pub value: T,
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    pub fn new(value: T, span: Span) -> Self {
+        Self { value, span }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     // ===== Atoms =====
     Ident(String),
     Lit(Literal),
+
+    // ===== Collections =====
+    Box(BoxLiteral),
+    Bag(BagLiteral),
 
     // ===== Unary =====
     Not(Box<Node>),
@@ -49,8 +67,10 @@ pub enum Node {
     And(Box<Node>, Box<Node>),
     Or(Box<Node>, Box<Node>),
 
-    Get(Box<Node>, Box<Node>),     // ::
-    Has(Box<Node>, Box<Node>),   // :?
+    // ===== Traversal =====
+    Get(Box<Node>, Box<Node>), // ::
+    Has(Box<Node>, Box<Node>), // :?
+    Index(Box<Node>),          // [expression]
 
     // ===== Flow =====
     Pipe(Box<Node>, Box<Node>),      // |>
@@ -63,7 +83,23 @@ pub enum Node {
     Bind(Bind),
     Guard(Guard),
     Func(Func),
-    Call(Call)
+    Call(Call),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoxLiteral {
+    pub values: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BagLiteral {
+    pub entries: Vec<BagEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BagEntry {
+    pub name: String,
+    pub value: Node,
 }
 
 #[derive(Debug, Clone, PartialEq)]

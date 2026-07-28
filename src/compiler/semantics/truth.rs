@@ -63,5 +63,21 @@ pub fn truth_of(value: &Value) -> Truth {
             panic!("Functions cannot be evaluated as a flag in Druim.");
         }
 
+        Value::Box(values) => {
+            if values.is_empty() {
+                Truth::False
+            } else {
+                Truth::True
+            }
+        }
+
+        Value::Bag(entries) => {
+            if entries.is_empty() {
+                Truth::False
+            } else {
+                Truth::True
+            }
+        }
+
     }
 }

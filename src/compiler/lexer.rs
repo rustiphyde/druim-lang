@@ -104,6 +104,7 @@ impl<'a> Lexer<'a> {
                     "fn" => TokenKind::KwFn,
                     "ret" => TokenKind::KwRet,
                     "loc" => TokenKind::KwLoc,
+                    "true" | "false" => TokenKind::FlagLit,
                     _ => TokenKind::Ident,
                 };
 
@@ -132,6 +133,21 @@ impl<'a> Lexer<'a> {
             // ===== Block delimiters (must be before single ':') =====
             if self.match_str(":[") {
                 tokens.push(tok(TokenKind::BoxStart, ":[", start));
+                continue;
+            }
+            if self.src[self.pos..].starts_with("]::")
+                || self.src[self.pos..].starts_with("]:?")
+            {
+                let start = self.pos;
+
+                self.pos += 1;
+
+                tokens.push(Token {
+                    kind: TokenKind::RBracket,
+                    lexeme: "]".to_string(),
+                    pos: start,
+                });
+
                 continue;
             }
             if self.match_str("]:") {
@@ -256,6 +272,8 @@ impl<'a> Lexer<'a> {
                 '<' => TokenKind::Lt,
                 '(' => TokenKind::LParen,
                 ')' => TokenKind::RParen,
+                '[' => TokenKind::LBracket,
+                ']' => TokenKind::RBracket,
                 ',' => TokenKind::Comma,
                 ';' => TokenKind::Semicolon,
                 '!' => TokenKind::Not,
@@ -263,7 +281,7 @@ impl<'a> Lexer<'a> {
                     return Err(LexError::UnexpectedChar {
                         ch,
                         pos: self.pos,
-                    })
+                    });
                 }
             };
 

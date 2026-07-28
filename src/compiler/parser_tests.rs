@@ -1,6 +1,9 @@
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
-use crate::compiler::ast::{Node, Block, Define, DefineEmpty, Copy, Bind, Guard, Ret, Program, Func, Literal, Call};
+use crate::compiler::ast::{
+    Bind, Block, Call, Copy, Define, DefineEmpty, Func, Guard, Literal, Node,
+    Program, Ret,
+};
 use crate::compiler::diagnostic::render;
 use crate::compiler::error::{Diagnostic, Source};
 
@@ -1239,5 +1242,1614 @@ fn rejects_has_after_has() {
     assert!(
         msg.contains("cannot continue traversal after `:?`"),
         "expected Has-after-Has error, got:\n{msg}"
+    );
+}
+
+#[test]
+fn parses_empty_box_literal() {
+    let src = "x = :[]:;";
+    let node = parse_node(src);
+
+    match node {
+        Node::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match value.as_ref() {
+                Node::Box(box_literal) => {
+                    assert!(box_literal.values.is_empty());
+                }
+                other => panic!("expected Box literal, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_literal_with_values() {
+    let src = "x = :[1, 2, 3]:;";
+    let node = parse_node(src);
+
+    match node {
+        Node::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match value.as_ref() {
+                Node::Box(box_literal) => {
+                    assert_eq!(box_literal.values.len(), 3);
+
+                    assert_eq!(
+                        box_literal.values[0],
+                        Node::Lit(Literal::Num(1))
+                    );
+
+                    assert_eq!(
+                        box_literal.values[1],
+                        Node::Lit(Literal::Num(2))
+                    );
+
+                    assert_eq!(
+                        box_literal.values[2],
+                        Node::Lit(Literal::Num(3))
+                    );
+                }
+                other => panic!("expected Box literal, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_empty_bag_literal() {
+    let src = "x = :||:;";
+    let node = parse_node(src);
+
+    match node {
+        Node::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match value.as_ref() {
+                Node::Bag(bag_literal) => {
+                    assert!(bag_literal.entries.is_empty());
+                }
+                other => panic!("expected Bag literal, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_literal_with_entries() {
+    let src = r#"x = :| name: "Rusty", level: 42 |:;"#;
+    let node = parse_node(src);
+
+    match node {
+        Node::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match value.as_ref() {
+                Node::Bag(bag_literal) => {
+                    assert_eq!(bag_literal.entries.len(), 2);
+
+                    assert_eq!(bag_literal.entries[0].name, "name");
+                    assert_eq!(
+                        bag_literal.entries[0].value,
+                        Node::Lit(Literal::Text("Rusty".into()))
+                    );
+
+                    assert_eq!(bag_literal.entries[1].name, "level");
+                    assert_eq!(
+                        bag_literal.entries[1].value,
+                        Node::Lit(Literal::Num(42))
+                    );
+                }
+                other => panic!("expected Bag literal, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_inside_box() {
+    let node = parse_node("x = :[1, :[2, 3]:, 4]:;");
+
+    match node {
+        Node::Define(Define { value, .. }) => {
+            match value.as_ref() {
+                Node::Box(outer) => {
+                    assert_eq!(outer.values.len(), 3);
+                    assert!(matches!(&outer.values[1], Node::Box(_)));
+                }
+                other => panic!("expected outer Box, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_inside_box() {
+    let node = parse_node(
+        r#"x = :[1, :| name: "Rusty" |:, 2]:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => {
+            match value.as_ref() {
+                Node::Box(outer) => {
+                    assert_eq!(outer.values.len(), 3);
+                    assert!(matches!(&outer.values[1], Node::Bag(_)));
+                }
+                other => panic!("expected outer Box, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_inside_bag() {
+    let node = parse_node(
+        "x = :| items: :[1, 2, 3]: |:;",
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => {
+            match value.as_ref() {
+                Node::Bag(bag) => {
+                    assert_eq!(bag.entries.len(), 1);
+                    assert!(matches!(&bag.entries[0].value, Node::Box(_)));
+                }
+                other => panic!("expected Bag, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_inside_bag() {
+    let node = parse_node(
+        r#"x = :| user: :| name: "Rusty" |: |:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => {
+            match value.as_ref() {
+                Node::Bag(bag) => {
+                    assert_eq!(bag.entries.len(), 1);
+                    assert!(matches!(&bag.entries[0].value, Node::Bag(_)));
+                }
+                other => panic!("expected outer Bag, got {:?}", other),
+            }
+        }
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_as_return_value() {
+    let src = "ret :[1, 2, 3]:;";
+    let node = parse_node(src);
+
+    match node {
+        Node::Ret(Ret { value: Some(value) }) => {
+            match value.as_ref() {
+                Node::Box(box_literal) => {
+                    assert_eq!(box_literal.values.len(), 3);
+                }
+                other => panic!("expected Box return value, got {:?}", other),
+            }
+        }
+        other => panic!("expected Ret node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_as_return_value() {
+    let src = r#"ret :| name: "Rusty", level: 42 |:;"#;
+    let node = parse_node(src);
+
+    match node {
+        Node::Ret(Ret { value: Some(value) }) => {
+            match value.as_ref() {
+                Node::Bag(bag_literal) => {
+                    assert_eq!(bag_literal.entries.len(), 2);
+                }
+                other => panic!("expected Bag return value, got {:?}", other),
+            }
+        }
+        other => panic!("expected Ret node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_as_function_argument() {
+    let src = "consume(:[1, 2, 3]:)";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser.parse_expr().expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { args, .. }) => {
+            assert_eq!(args.len(), 1);
+            assert!(matches!(&args[0], Node::Box(_)));
+        }
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_as_function_argument() {
+    let src = r#"consume(:| name: "Rusty", level: 42 |:)"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser.parse_expr().expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { args, .. }) => {
+            assert_eq!(args.len(), 1);
+            assert!(matches!(&args[0], Node::Bag(_)));
+        }
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_and_bag_as_multiple_function_arguments() {
+    let src = r#"consume(:[1, 2]:, :| name: "Rusty" |:)"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser.parse_expr().expect("failed to parse function call");
+
+    match expr {
+        Node::Call(Call { args, .. }) => {
+            assert_eq!(args.len(), 2);
+            assert!(matches!(&args[0], Node::Box(_)));
+            assert!(matches!(&args[1], Node::Bag(_)));
+        }
+        other => panic!("expected Call node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_as_default_parameter_value() {
+    let src = "fn process :(items = :[1, 2, 3]:)(ret items;):";
+    let node = parse_node(src);
+
+    match node {
+        Node::Func(Func { params, .. }) => {
+            assert_eq!(params.len(), 1);
+
+            match &params[0].default {
+                Some(Node::Box(box_literal)) => {
+                    assert_eq!(box_literal.values.len(), 3);
+                }
+                other => panic!(
+                    "expected Box default parameter value, got {:?}",
+                    other
+                ),
+            }
+        }
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_as_default_parameter_value() {
+    let src =
+        r#"fn process :(options = :| active: true, retries: 3 |:)(ret options;):"#;
+
+    let node = parse_node(src);
+
+    match node {
+        Node::Func(Func { params, .. }) => {
+            assert_eq!(params.len(), 1);
+
+            match &params[0].default {
+                Some(Node::Bag(bag_literal)) => {
+                    assert_eq!(bag_literal.entries.len(), 2);
+                }
+                other => panic!(
+                    "expected Bag default parameter value, got {:?}",
+                    other
+                ),
+            }
+        }
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_as_guard_branch() {
+    let node = parse_node("result ?= :[1, 2, 3]:;");
+
+    match node {
+        Node::Guard(Guard { branches, .. }) => {
+            assert_eq!(branches.len(), 1);
+            assert!(matches!(&branches[0].expr, Node::Box(_)));
+        }
+        other => panic!("expected Guard node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_as_guard_branch() {
+    let node = parse_node(
+        r#"result ?= :| name: "Rusty", level: 42 |:;"#,
+    );
+
+    match node {
+        Node::Guard(Guard { branches, .. }) => {
+            assert_eq!(branches.len(), 1);
+            assert!(matches!(&branches[0].expr, Node::Bag(_)));
+        }
+        other => panic!("expected Guard node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_and_bag_as_guard_fallbacks() {
+    let node = parse_node(
+        r#"result ?= load() : :[1, 2, 3]: : :| name: "Rusty" |:;"#,
+    );
+
+    match node {
+        Node::Guard(Guard { branches, .. }) => {
+            assert_eq!(branches.len(), 3);
+
+            assert!(matches!(&branches[0].expr, Node::Call(_)));
+            assert!(matches!(&branches[1].expr, Node::Box(_)));
+            assert!(matches!(&branches[2].expr, Node::Bag(_)));
+        }
+        other => panic!("expected Guard node, got {:?}", other),
+    }
+}
+
+#[test]
+fn box_rejects_missing_comma() {
+    let src = "x = :[1 2]:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected missing Box comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing comma in Box literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn box_rejects_trailing_comma() {
+    let src = "x = :[1, 2,]:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected trailing Box comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("trailing comma in Box literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn box_rejects_leading_comma() {
+    let src = "x = :[, 1]:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected leading Box comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing Box value"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn box_rejects_consecutive_commas() {
+    let src = "x = :[1,, 2]:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected consecutive Box commas to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing Box value"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn box_rejects_semicolon_separator() {
+    let src = "x = :[1; 2]:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected Box semicolon separator to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("invalid separator in Box literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_missing_comma() {
+    let src = r#"x = :| name: "Rusty" level: 42 |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected missing Bag comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing comma in Bag literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_trailing_comma() {
+    let src = r#"x = :| name: "Rusty", |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected trailing Bag comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("trailing comma in Bag literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_leading_comma() {
+    let src = r#"x = :|, name: "Rusty" |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected leading Bag comma to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing Bag entry"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_consecutive_commas() {
+    let src = r#"x = :| name: "Rusty",, level: 42 |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected consecutive Bag commas to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing Bag entry"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_semicolon_separator() {
+    let src = r#"x = :| name: "Rusty"; level: 42 |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected Bag semicolon separator to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("invalid separator in Bag literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_duplicate_entry_names() {
+    let src = r#"x = :| name: "Rusty", name: "Atlas" |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected duplicate Bag name to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("duplicate Bag entry name"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_missing_entry_value() {
+    let src = "x = :| name: |:;";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected missing Bag value to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("missing Bag entry value"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_missing_colon_after_name() {
+    let src = r#"x = :| name "Rusty" |:;"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected missing Bag colon to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("expected `:`")
+            || rendered.contains("unexpected token"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn box_rejects_missing_closing_delimiter() {
+    let src = ":[1, 2, 3";
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_expr()
+        .expect_err("expected unterminated Box to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("unterminated Box literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn bag_rejects_missing_closing_delimiter() {
+    let src = r#"x = :| name: "Rusty";"#;
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected unterminated Bag to fail");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("unterminated Bag literal")
+            || rendered.contains("invalid separator in Bag literal"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn parses_box_as_local_define_value() {
+    let node = parse_node("loc items = :[1, 2, 3]:;");
+
+    match node {
+        Node::Local(inner) => match inner.as_ref() {
+            Node::Define(Define { name, value }) => {
+                assert_eq!(name, "items");
+                assert!(matches!(value.as_ref(), Node::Box(_)));
+            }
+            other => panic!("expected Define inside Local, got {:?}", other),
+        },
+        other => panic!("expected Local node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_as_local_define_value() {
+    let node = parse_node(
+        r#"loc player = :| name: "Rusty", level: 42 |:;"#,
+    );
+
+    match node {
+        Node::Local(inner) => match inner.as_ref() {
+            Node::Define(Define { name, value }) => {
+                assert_eq!(name, "player");
+                assert!(matches!(value.as_ref(), Node::Bag(_)));
+            }
+            other => panic!("expected Define inside Local, got {:?}", other),
+        },
+        other => panic!("expected Local node, got {:?}", other),
+    }
+}
+
+#[test]
+fn box_accepts_mixed_value_types() {
+    let node = parse_node(
+        r#"x = :[
+            42,
+            3.14,
+            "Rusty",
+            void,
+            true,
+            false
+        ]:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Box(box_literal) => {
+                assert_eq!(box_literal.values.len(), 6);
+
+                assert!(matches!(
+                    &box_literal.values[0],
+                    Node::Lit(Literal::Num(42))
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[1],
+                    Node::Lit(Literal::Dec(value)) if value == "3.14"
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[2],
+                    Node::Lit(Literal::Text(value)) if value == "Rusty"
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[3],
+                    Node::Lit(Literal::Void)
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[4],
+                    Node::Lit(Literal::Flag(true))
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[5],
+                    Node::Lit(Literal::Flag(false))
+                ));
+            }
+            other => panic!("expected Box literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn bag_accepts_mixed_value_types() {
+    let node = parse_node(
+        r#"x = :|
+            count: 42,
+            ratio: 3.14,
+            name: "Rusty",
+            missing: void,
+            active: true,
+            enabled: false
+        |:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Bag(bag_literal) => {
+                assert_eq!(bag_literal.entries.len(), 6);
+
+                assert!(matches!(
+                    &bag_literal.entries[0].value,
+                    Node::Lit(Literal::Num(42))
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[1].value,
+                    Node::Lit(Literal::Dec(value)) if value == "3.14"
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[2].value,
+                    Node::Lit(Literal::Text(value)) if value == "Rusty"
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[3].value,
+                    Node::Lit(Literal::Void)
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[4].value,
+                    Node::Lit(Literal::Flag(true))
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[5].value,
+                    Node::Lit(Literal::Flag(false))
+                ));
+            }
+            other => panic!("expected Bag literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn box_accepts_expression_values() {
+    let node = parse_node(
+        r#"x = :[
+            1 + 2,
+            6 * 7,
+            load()
+        ]:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Box(box_literal) => {
+                assert_eq!(box_literal.values.len(), 3);
+
+                assert!(matches!(
+                    &box_literal.values[0],
+                    Node::Add(_, _)
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[1],
+                    Node::Mul(_, _)
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[2],
+                    Node::Call(_)
+                ));
+            }
+            other => panic!("expected Box literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn bag_accepts_expression_values() {
+    let node = parse_node(
+        r#"x = :|
+            total: 1 + 2,
+            product: 6 * 7,
+            result: load()
+        |:;"#,
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Bag(bag_literal) => {
+                assert_eq!(bag_literal.entries.len(), 3);
+
+                assert!(matches!(
+                    &bag_literal.entries[0].value,
+                    Node::Add(_, _)
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[1].value,
+                    Node::Mul(_, _)
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[2].value,
+                    Node::Call(_)
+                ));
+            }
+            other => panic!("expected Bag literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn box_accepts_identifier_values() {
+    let node = parse_node("x = :[first, second, third]:;");
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Box(box_literal) => {
+                assert_eq!(box_literal.values.len(), 3);
+
+                assert!(matches!(
+                    &box_literal.values[0],
+                    Node::Ident(name) if name == "first"
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[1],
+                    Node::Ident(name) if name == "second"
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[2],
+                    Node::Ident(name) if name == "third"
+                ));
+            }
+            other => panic!("expected Box literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn bag_accepts_identifier_values() {
+    let node = parse_node(
+        "x = :| primary: first, secondary: second |:;",
+    );
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Bag(bag_literal) => {
+                assert_eq!(bag_literal.entries.len(), 2);
+
+                assert!(matches!(
+                    &bag_literal.entries[0].value,
+                    Node::Ident(name) if name == "first"
+                ));
+
+                assert!(matches!(
+                    &bag_literal.entries[1].value,
+                    Node::Ident(name) if name == "second"
+                ));
+            }
+            other => panic!("expected Bag literal, got {:?}", other),
+        },
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_program_with_box_and_bag_definitions() {
+    let program = parse_program(
+        r#"
+            items = :[1, 2, 3]:;
+            player = :| name: "Rusty", level: 42 |:;
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 2);
+
+    assert!(matches!(
+        &program.nodes[0],
+        Node::Define(Define { value, .. })
+            if matches!(value.as_ref(), Node::Box(_))
+    ));
+
+    assert!(matches!(
+        &program.nodes[1],
+        Node::Define(Define { value, .. })
+            if matches!(value.as_ref(), Node::Bag(_))
+    ));
+}
+
+#[test]
+fn parses_program_with_nested_collections_and_following_statement() {
+    let program = parse_program(
+        r#"
+            data = :[
+                :| name: "Rusty" |:,
+                :[1, 2, 3]:
+            ]:;
+
+            next = 42;
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 2);
+
+    assert!(matches!(
+        &program.nodes[0],
+        Node::Define(Define { value, .. })
+            if matches!(value.as_ref(), Node::Box(_))
+    ));
+
+    assert!(matches!(
+        &program.nodes[1],
+        Node::Define(Define { value, .. })
+            if matches!(
+                value.as_ref(),
+                Node::Lit(Literal::Num(42))
+            )
+    ));
+}
+
+#[test]
+fn parses_box_definition_inside_block() {
+    let program = parse_program(
+        r#"
+            :{
+                items = :[1, 2, 3]:;
+            }:
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 1);
+
+    match &program.nodes[0] {
+        Node::Block(Block { segments }) => {
+            assert_eq!(segments.len(), 1);
+            assert_eq!(segments[0].nodes.len(), 1);
+
+            assert!(matches!(
+                &segments[0].nodes[0],
+                Node::Define(Define { value, .. })
+                    if matches!(value.as_ref(), Node::Box(_))
+            ));
+        }
+
+        other => panic!("expected Block node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_definition_inside_block() {
+    let program = parse_program(
+        r#"
+            :{
+                player = :|
+                    name: "Rusty",
+                    level: 42
+                |:;
+            }:
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 1);
+
+    match &program.nodes[0] {
+        Node::Block(Block { segments }) => {
+            assert_eq!(segments.len(), 1);
+            assert_eq!(segments[0].nodes.len(), 1);
+
+            assert!(matches!(
+                &segments[0].nodes[0],
+                Node::Define(Define { value, .. })
+                    if matches!(value.as_ref(), Node::Bag(_))
+            ));
+        }
+
+        other => panic!("expected Block node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_box_definition_inside_function_body() {
+    let node = parse_node(
+        r#"
+            fn build_items :()(
+                items = :[1, 2, 3]:;
+                ret items;
+            ):
+        "#,
+    );
+
+    match node {
+        Node::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 2);
+
+            assert!(matches!(
+                &body[0],
+                Node::Define(Define { value, .. })
+                    if matches!(value.as_ref(), Node::Box(_))
+            ));
+
+            assert!(matches!(
+                &body[1],
+                Node::Ret(Ret { .. })
+            ));
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_bag_definition_inside_function_body() {
+    let node = parse_node(
+        r#"
+            fn build_player :()(
+                player = :|
+                    name: "Rusty",
+                    level: 42
+                |:;
+                ret player;
+            ):
+        "#,
+    );
+
+    match node {
+        Node::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 2);
+
+            assert!(matches!(
+                &body[0],
+                Node::Define(Define { value, .. })
+                    if matches!(value.as_ref(), Node::Bag(_))
+            ));
+
+            assert!(matches!(
+                &body[1],
+                Node::Ret(Ret { .. })
+            ));
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_empty_box_and_bag_inside_box() {
+    let node = parse_node("x = :[:[]:, :||:]:;");
+
+    match node {
+        Node::Define(Define { value, .. }) => match value.as_ref() {
+            Node::Box(box_literal) => {
+                assert_eq!(box_literal.values.len(), 2);
+
+                assert!(matches!(
+                    &box_literal.values[0],
+                    Node::Box(inner) if inner.values.is_empty()
+                ));
+
+                assert!(matches!(
+                    &box_literal.values[1],
+                    Node::Bag(inner) if inner.entries.is_empty()
+                ));
+            }
+
+            other => panic!("expected outer Box literal, got {:?}", other),
+        },
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_true_flag_literal() {
+    let node = parse_node("x = true;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Lit(Literal::Flag(true))),
+        })
+    );
+}
+
+#[test]
+fn parses_false_flag_literal() {
+    let node = parse_node("x = false;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Lit(Literal::Flag(false))),
+        })
+    );
+}
+
+#[test]
+fn parses_indexed_get_expression() {
+    let node = parse_node("x = items::[1];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Ident("items".into())),
+                Box::new(Node::Index(Box::new(
+                    Node::Lit(Literal::Num(1)),
+                ))),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_indexed_has_expression() {
+    let node = parse_node("x = items:?[1];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Ident("items".into())),
+                Box::new(Node::Index(Box::new(
+                    Node::Lit(Literal::Num(1)),
+                ))),
+            )),
+        })
+    );
+}
+
+#[test]
+fn get_traverses_from_bag_into_nested_box() {
+    use crate::compiler::ast::{
+        BagEntry, BagLiteral, BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "data".to_string(),
+                value: Box::new(Node::Bag(BagLiteral {
+                    entries: vec![
+                        BagEntry {
+                            name: "items".to_string(),
+                            value: Node::Box(BoxLiteral {
+                                values: vec![
+                                    Node::Lit(Literal::Text(
+                                        "first".to_string(),
+                                    )),
+                                    Node::Lit(Literal::Text(
+                                        "second".to_string(),
+                                    )),
+                                ],
+                            }),
+                        },
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Get(
+                        Box::new(Node::Ident("data".to_string())),
+                        Box::new(Node::Ident("items".to_string())),
+                    )),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(1)),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("second".to_string())),
+    );
+}
+
+#[test]
+fn rejects_unclosed_index_selector() {
+    let src = "x = items::[0;";
+
+    let err = parse_node_err(src);
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("expected `]` after Box index"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn get_evaluates_computed_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                        Node::Lit(Literal::Text("two".to_string())),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Add(
+                            Box::new(Node::Lit(Literal::Num(1))),
+                            Box::new(Node::Lit(Literal::Num(1))),
+                        ),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("two".to_string())),
+    );
+}
+
+#[test]
+fn get_evaluates_identifier_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "index".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(1))),
+            }),
+
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Text("zero".to_string())),
+                        Node::Lit(Literal::Text("one".to_string())),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Ident("index".to_string()),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("one".to_string())),
+    );
+}
+
+#[test]
+fn has_evaluates_computed_box_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "items".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Lit(Literal::Num(10)),
+                        Node::Lit(Literal::Num(20)),
+                        Node::Lit(Literal::Num(30)),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Has(
+                    Box::new(Node::Ident("items".to_string())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Add(
+                            Box::new(Node::Lit(Literal::Num(1))),
+                            Box::new(Node::Lit(Literal::Num(1))),
+                        ),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn parses_computed_index_expression() {
+    let node = parse_node("x = items::[1 + 1];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Ident("items".into())),
+                Box::new(Node::Index(Box::new(
+                    Node::Add(
+                        Box::new(Node::Lit(Literal::Num(1))),
+                        Box::new(Node::Lit(Literal::Num(1))),
+                    ),
+                ))),
+            )),
+        })
+    );
+}
+
+#[test]
+fn get_traverses_nested_boxes_by_index() {
+    use crate::compiler::ast::{
+        BoxLiteral, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "matrix".to_string(),
+                value: Box::new(Node::Box(BoxLiteral {
+                    values: vec![
+                        Node::Box(BoxLiteral {
+                            values: vec![
+                                Node::Lit(Literal::Num(1)),
+                                Node::Lit(Literal::Num(2)),
+                            ],
+                        }),
+                        Node::Box(BoxLiteral {
+                            values: vec![
+                                Node::Lit(Literal::Num(3)),
+                                Node::Lit(Literal::Num(4)),
+                            ],
+                        }),
+                    ],
+                })),
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Get(
+                    Box::new(Node::Get(
+                        Box::new(Node::Ident("matrix".to_string())),
+                        Box::new(Node::Index(Box::new(
+                            Node::Lit(Literal::Num(1)),
+                        ))),
+                    )),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(0)),
+                    ))),
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+    evaluator
+    .eval_program(&program)
+    .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(3)),
+    );
+}
+
+#[test]
+fn parses_repeated_indexed_get_expression() {
+    let node = parse_node("x = matrix::[1]::[0];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("matrix".into())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(1)),
+                    ))),
+                )),
+                Box::new(Node::Index(Box::new(
+                    Node::Lit(Literal::Num(0)),
+                ))),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_indexed_get_followed_by_named_get() {
+    let node = parse_node("x = data::[0]::name;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("data".into())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(0)),
+                    ))),
+                )),
+                Box::new(Node::Ident("name".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_named_get_followed_by_indexed_get() {
+    let node = parse_node("x = data::items::[1];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Get(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("data".into())),
+                    Box::new(Node::Ident("items".into())),
+                )),
+                Box::new(Node::Index(Box::new(
+                    Node::Lit(Literal::Num(1)),
+                ))),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_indexed_get_followed_by_named_has() {
+    let node = parse_node("x = data::[0]:?name;");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("data".into())),
+                    Box::new(Node::Index(Box::new(
+                        Node::Lit(Literal::Num(0)),
+                    ))),
+                )),
+                Box::new(Node::Ident("name".into())),
+            )),
+        })
+    );
+}
+
+#[test]
+fn parses_named_get_followed_by_indexed_has() {
+    let node = parse_node("x = data::items:?[1];");
+
+    assert_eq!(
+        node,
+        Node::Define(Define {
+            name: "x".into(),
+            value: Box::new(Node::Has(
+                Box::new(Node::Get(
+                    Box::new(Node::Ident("data".into())),
+                    Box::new(Node::Ident("items".into())),
+                )),
+                Box::new(Node::Index(Box::new(
+                    Node::Lit(Literal::Num(1)),
+                ))),
+            )),
+        })
     );
 }
