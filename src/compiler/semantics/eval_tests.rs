@@ -4138,3 +4138,281 @@ fn bind_preserves_shared_identity_after_source_redefinition() {
         Some(Value::Num(20)),
     );
 }
+
+#[test]
+fn bind_preserves_shared_identity_after_alias_redefinition() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "alias".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(20))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+}
+
+#[test]
+fn copy_remains_independent_after_source_redefinition() {
+    use crate::compiler::ast::{
+        Copy, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Copy(Copy {
+                name: "snapshot".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(20))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+}
+
+#[test]
+fn copy_redefinition_does_not_affect_source() {
+    use crate::compiler::ast::{
+        Copy, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Copy(Copy {
+                name: "snapshot".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "snapshot".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(20))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(20)),
+    );
+}
+
+#[test]
+fn bind_preserves_transitive_shared_identity() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "a".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "b".to_string(),
+                target: "a".to_string(),
+            }),
+
+            Node::Bind(Bind {
+                name: "c".to_string(),
+                target: "b".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "c".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(30))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(evaluator.get("a"), Some(Value::Num(30)));
+    assert_eq!(evaluator.get("b"), Some(Value::Num(30)));
+    assert_eq!(evaluator.get("c"), Some(Value::Num(30)));
+}
+
+#[test]
+fn copy_from_bound_alias_remains_independent() {
+    use crate::compiler::ast::{
+        Bind, Copy, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Copy(Copy {
+                name: "snapshot".to_string(),
+                target: "alias".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(20))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(10)),
+    );
+}
+
+#[test]
+fn multiple_bind_aliases_share_identity() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias_one".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias_two".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "alias_one".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(40))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(40)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias_one"),
+        Some(Value::Num(40)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias_two"),
+        Some(Value::Num(40)),
+    );
+}
