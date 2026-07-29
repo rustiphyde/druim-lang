@@ -4039,3 +4039,102 @@ fn logical_and_evaluates_right_operand_when_left_is_true() {
         "undeclared identifier `missing_value`",
     );
 }
+
+#[test]
+fn copy_from_undeclared_identifier_produces_diagnostic() {
+    use crate::compiler::ast::{
+        Copy, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Copy(Copy {
+                name: "result".to_string(),
+                target: "missing_source".to_string(),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "Copy from an undeclared identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_source`",
+    );
+}
+
+#[test]
+fn bind_from_undeclared_identifier_produces_diagnostic() {
+    use crate::compiler::ast::{
+        Bind, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Bind(Bind {
+                name: "result".to_string(),
+                target: "missing_source".to_string(),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "Bind from an undeclared identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_source`",
+    );
+}
+
+#[test]
+fn bind_preserves_shared_identity_after_source_redefinition() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(20))),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(20)),
+    );
+}

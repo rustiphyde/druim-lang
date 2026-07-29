@@ -547,7 +547,10 @@ impl Evaluator {
                     .copy(copy.name.clone(), &copy.target)
                     .map_err(|_| {
                         Diagnostic::error(
-                            "copy target must exist",
+                            format!(
+                                "undeclared identifier `{}`",
+                                copy.target,
+                            ),
                             runtime_span(),
                         )
                     })?;
@@ -556,17 +559,17 @@ impl Evaluator {
             }
 
             Node::Bind(bind) => {
-                let value = self
-                    .env
-                    .get_value(&bind.target)
-                    .ok_or_else(|| {
+                self.env
+                    .bind(bind.name.clone(), &bind.target)
+                    .map_err(|_| {
                         Diagnostic::error(
-                            "bind target must exist",
+                            format!(
+                                "undeclared identifier `{}`",
+                                bind.target,
+                            ),
                             runtime_span(),
                         )
                     })?;
-
-                self.env.define(bind.name.clone(), value);
 
                 Ok(Control::Continue)
             }

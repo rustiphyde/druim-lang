@@ -36,14 +36,25 @@ impl Env {
         self.scopes.pop().expect("scope underflow");
     }
 
-    /// Define a new name in the current scope (creates a fresh slot).
+    /// Define a name in the current scope.
+    ///
+    /// If the name already exists in the current scope, update its
+    /// existing slot so all bound aliases observe the new value.
+    ///
+    /// Otherwise, create a fresh slot.
     pub fn define(&mut self, name: String, value: Value) {
-        let slot = Rc::new(RefCell::new(Slot { value }));
-        self.scopes
+        let scope = self
+            .scopes
             .last_mut()
-            .expect("no scope")
-            .names
-            .insert(name, slot);
+            .expect("no scope");
+
+        if let Some(slot) = scope.names.get(&name) {
+            slot.borrow_mut().value = value;
+            return;
+        }
+
+        let slot = Rc::new(RefCell::new(Slot { value }));
+        scope.names.insert(name, slot);
     }
 
     /// Lookup a name, searching from innermost to outermost scope.
@@ -54,14 +65,34 @@ impl Env {
             .find_map(|s| s.names.get(name).cloned())
     }
 
-    /// Copy a new name in the current scope to an existing slot (aliasing).
-    pub fn copy(&mut self, name: String, target: &str) -> Result<(), ()> {
+    /// Bind a new name in the current scope to an existing slot.
+    pub fn bind(
+        &mut self,
+        name: String,
+        target: &str,
+    ) -> Result<(), ()> {
         let slot = self.lookup(target).ok_or(())?;
+
         self.scopes
             .last_mut()
             .expect("no scope")
             .names
             .insert(name, slot);
+
+        Ok(())
+    }
+
+    /// Copy the current value of an existing slot into a fresh slot.
+    pub fn copy(
+        &mut self,
+        name: String,
+        target: &str,
+    ) -> Result<(), ()> {
+        let source = self.lookup(target).ok_or(())?;
+        let value = source.borrow().value.clone();
+
+        self.define(name, value);
+
         Ok(())
     }
 
