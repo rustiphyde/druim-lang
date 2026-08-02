@@ -29,13 +29,14 @@ When the README, implementation, tests, comments, or prior discussion conflict w
 
 Druim is under active development.
 
-The current canonical revision defines stable language rules for:
+The current canonical revision, **DRUIM-CANON-R005**, defines stable language rules for:
 
 - Lexical structure
 - Statement boundaries
 - Definition, copying, binding, and guarded selection
-- Blocks and scope
-- Function structure
+- Blocks and lexical scope
+- Function structure and return propagation
+- Loop structure, execution, nesting, and persistent loop scope
 - Truth evaluation
 - Box and Bag collections
 - Named and indexed traversal
@@ -169,6 +170,20 @@ Text literals are enclosed in double quotes:
 ```
 
 Unterminated text literals produce lexical diagnostics.
+
+### Loop Structural Tokens
+
+Druim loops use three lexically atomic structural tokens:
+
+| Token | Name | Purpose |
+|---|---|---|
+| `:<` | LoopStart | Begins a loop |
+| `>?<` | LoopSplit | Separates loop sections |
+| `>:` | LoopEnd | Ends a loop |
+
+A valid loop contains exactly two identical `>?<` separators. Their meaning is determined by position.
+
+These delimiters are structural tokens, not expressions or statement operators.
 
 ---
 
@@ -346,7 +361,7 @@ Blocks:
 - Cannot be nested
 - Exist only to control visibility and lifetime
 
-The `loc` modifier may restrict a binding to a single block segment where supported.
+The `loc` modifier forces a supported target operation into the current lexical scope, shadowing an outer binding with the same name rather than updating it.
 
 ---
 
@@ -386,6 +401,109 @@ scale(12, 4)
 ```
 
 If a function finishes without executing `ret`, it returns `void`.
+
+---
+
+## Loops
+
+A Druim loop is a structural statement with three ordered sections:
+
+```druim
+:< setup
+>?< condition
+>?< process
+>:
+```
+
+The sections are:
+
+- **setup** — zero or more statements or nested loops, executed once
+- **condition** — exactly one complete expression, evaluated before every iteration
+- **process** — zero or more statements or nested loops, executed while the condition evaluates to `true`
+
+Example:
+
+```druim
+:< index = 0;
+>?< index < 3
+>?< index = index + 1;
+>:
+```
+
+### Structural Rules
+
+A valid loop:
+
+- Begins with exactly one `:<`
+- Contains exactly two `>?<` separators
+- Ends with exactly one `>:`
+- Contains exactly one complete condition expression
+- Is a statement and does not evaluate to a value
+
+A loop therefore cannot appear where an expression value is required.
+
+### Execution
+
+Loop execution proceeds in this order:
+
+1. Create one loop scope.
+2. Execute setup once.
+3. Evaluate the condition using Druim's canonical truth-conversion rules.
+4. If the condition is `false`, exit the loop.
+5. If the condition is `true`, execute the process in source order.
+6. Return to condition evaluation.
+
+No process execution occurs when the first condition evaluation is false.
+
+### Persistent Loop Scope
+
+Each loop creates exactly one lexical scope for its entire execution.
+
+- The scope is created before setup runs.
+- The same scope remains active across all condition checks and iterations.
+- A binding created during one iteration remains visible in later iterations.
+- The loop does not create a new scope per iteration.
+- Loop-owned bindings disappear when the loop exits.
+
+For an unmodified Define, DefineEmpty, Copy, Bind, or Guard inside a loop:
+
+- The nearest visible target binding is updated when one exists.
+- Otherwise, a new target binding is created in the loop scope.
+
+For a statement modified by `loc`:
+
+- The target is forced into the loop scope.
+- An outer binding with the same name is shadowed.
+- The local binding persists across iterations.
+- The local binding disappears when the loop exits.
+
+Copy remains an independent snapshot operation, Bind remains a shared-identity operation, and Guard retains its ordered truth-selection behavior.
+
+### Nested Loops
+
+Loops may appear inside loop setup or process sections.
+
+Each nested loop:
+
+- Creates its own persistent child scope
+- Can read visible bindings from enclosing scopes
+- Updates the nearest visible target for ordinary operations
+- Removes its own loop-local bindings when it exits
+- Leaves the enclosing loop scope active
+
+### Loops in Functions
+
+Loops are valid statements inside function bodies.
+
+A `ret` executed inside a loop:
+
+- Stops the remaining loop process
+- Exits the loop
+- Propagates to the enclosing function
+- Returns the specified value from that function
+- Removes the loop scope before control returns to the caller
+
+A loop does not create its own return context. `ret` remains valid only within a function.
 
 ---
 
@@ -624,6 +742,10 @@ Diagnostics are required for conditions including:
 - Undeclared or uninitialized identifiers
 - Invalid Box indexes
 - Selector forms unsupported by the traversed collection
+- Missing or extra loop separators
+- Missing or invalid loop conditions
+- Missing loop closing delimiters
+- Use of a loop where an expression value is required
 
 Druim does not silently reinterpret invalid programs as missing data.
 

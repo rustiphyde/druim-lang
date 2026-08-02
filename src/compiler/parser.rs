@@ -1,6 +1,6 @@
 use crate::compiler::ast::{
     BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
-    DefineEmpty, Func, Guard, GuardBranch, Literal, Node, Param, Program, Ret,
+    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Node, Param, Program, Ret,
 };
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
@@ -43,6 +43,10 @@ impl<'a> Parser<'a> {
                 // - interior parsing
                 self.parse_block()
             }
+
+            TokenKind::LoopStart => {
+                self.parse_loop()
+            } 
 
             TokenKind::KwFn => {
                 // parse_func handles:
@@ -87,7 +91,9 @@ impl<'a> Parser<'a> {
                 // hard stop: statement boundary
                 TokenKind::Semicolon
                 | TokenKind::BlockEnd
-                | TokenKind::FuncEnd => break,
+                | TokenKind::FuncEnd
+                | TokenKind::LoopSplit
+                | TokenKind::LoopEnd => break,
 
                 _ => i += 1,
             }
@@ -984,6 +990,133 @@ impl<'a> Parser<'a> {
         Ok(Node::Block(Block { segments }))
     }
 
+    fn parse_loop(&mut self) -> Result<Node, Diagnostic> {
+        self.bump(); // consume `:<`
+
+        let mut setup = Vec::new();
+
+        // Parse setup statements until the first `>?<`.
+        while self.peek_kind() != TokenKind::LoopSplit {
+            match self.peek_kind() {
+                TokenKind::Eof | TokenKind::LoopEnd => {
+                    return Err(
+                        Diagnostic::error(
+                            "incomplete loop structure",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected the first loop separator `>?<` after the setup section.\n\
+                            Loop structure:\n\
+                            `:< setup >?< condition >?< process >:`",
+                        ),
+                    );
+                }
+
+                TokenKind::LoopStart => {
+                    setup.push(self.parse_loop()?);
+                }
+
+                _ => {
+                    setup.push(self.parse_statement_entry()?);
+                }
+            }
+        }
+
+        self.bump(); // consume first `>?<`
+
+        // The condition is required.
+        if self.peek_kind() == TokenKind::LoopSplit {
+            return Err(
+                Diagnostic::error(
+                    "missing loop condition",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim loops require one condition expression between the two `>?<` separators.",
+                ),
+            );
+        }
+
+        if matches!(
+            self.peek_kind(),
+            TokenKind::LoopEnd | TokenKind::Eof
+        ) {
+            return Err(
+                Diagnostic::error(
+                    "incomplete loop structure",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim expected a condition followed by the second loop separator `>?<`.",
+                ),
+            );
+        }
+
+        let condition = self.parse_expr()?;
+
+        // The condition must consume everything up to the second separator.
+        if self.peek_kind() != TokenKind::LoopSplit {
+            return Err(
+                Diagnostic::error(
+                    "invalid loop condition",
+                    self.current_span(),
+                )
+                .with_help(
+                    "A Druim loop condition must contain exactly one complete expression followed by `>?<`.",
+                ),
+            );
+        }
+
+        self.bump(); // consume second `>?<`
+
+        let mut process = Vec::new();
+
+        // Parse process statements until `>:`.
+        while self.peek_kind() != TokenKind::LoopEnd {
+            match self.peek_kind() {
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated loop structure",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "Druim expected a closing loop delimiter `>:`.",
+                        ),
+                    );
+                }
+
+                TokenKind::LoopSplit => {
+                    return Err(
+                        Diagnostic::error(
+                            "too many loop separators",
+                            self.current_span(),
+                        )
+                        .with_help(
+                            "A Druim loop requires exactly two `>?<` separators.",
+                        ),
+                    );
+                }
+
+                TokenKind::LoopStart => {
+                    process.push(self.parse_loop()?);
+                }
+
+                _ => {
+                    process.push(self.parse_statement_entry()?);
+                }
+            }
+        }
+
+        self.bump(); // consume `>:`
+
+        Ok(Node::Loop(Loop {
+            setup,
+            condition: Box::new(condition),
+            process,
+        }))
+    }
+
     fn parse_func(&mut self) -> Result<Node, Diagnostic> {
         if self.in_func {
             return Err(
@@ -1195,7 +1328,7 @@ impl<'a> Parser<'a> {
             let mut nodes = Vec::new();
 
             while self.peek_kind() != TokenKind::FuncEnd {
-                nodes.push(self.parse_statement_entry()?);
+                nodes.push(self.parse_node()?);
             }
 
             self.bump(); // consume `):`
@@ -1510,7 +1643,8 @@ impl<'a> Parser<'a> {
             TokenKind::KwFn
             | TokenKind::KwLoc
             | TokenKind::KwRet
-            | TokenKind::BlockStart => {
+            | TokenKind::BlockStart
+            | TokenKind::LoopStart => {
                 Err(
                     Diagnostic::error(
                         "invalid value expression",

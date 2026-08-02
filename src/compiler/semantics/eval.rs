@@ -515,6 +515,158 @@ impl Evaluator {
         }
     }
 
+    fn eval_loop_node_ctrl(
+        &mut self,
+        node: &Node,
+    ) -> Result<Control, Diagnostic> {
+        match node {
+            Node::Local(inner) => {
+                match inner.as_ref() {
+                    Node::Define(def) => {
+                        let value = self.eval_value(&def.value)?;
+                        self.env.define(def.name.clone(), value);
+                    }
+
+                    Node::DefineEmpty(def) => {
+                        self.env.define(def.name.clone(), Value::Void);
+                    }
+
+                    Node::Copy(copy) => {
+                        self.env
+                            .copy(copy.name.clone(), &copy.target)
+                            .map_err(|_| {
+                                Diagnostic::error(
+                                    format!(
+                                        "undeclared identifier `{}`",
+                                        copy.target,
+                                    ),
+                                    runtime_span(),
+                                )
+                            })?;
+                    }
+
+                    Node::Bind(bind) => {
+                        self.env
+                            .bind(bind.name.clone(), &bind.target)
+                            .map_err(|_| {
+                                Diagnostic::error(
+                                    format!(
+                                        "undeclared identifier `{}`",
+                                        bind.target,
+                                    ),
+                                    runtime_span(),
+                                )
+                            })?;
+                    }
+
+                    Node::Guard(guard) => {
+                        let mut result = Value::Void;
+
+                        for branch in &guard.branches {
+                            let value = self.eval_value(&branch.expr)?;
+
+                            if truth_of(&value) == Truth::True {
+                                result = value;
+                                break;
+                            }
+                        }
+
+                        self.env.define(guard.target.clone(), result);
+                    }
+
+                    _ => {
+                        return Err(
+                            Diagnostic::error(
+                                "`loc` cannot modify this loop statement",
+                                runtime_span(),
+                            ),
+                        );
+                    }
+                }
+
+                Ok(Control::Continue)
+            }
+
+            Node::Define(def) => {
+                let value = self.eval_value(&def.value)?;
+
+                self.env
+                    .define_nearest_or_current(def.name.clone(), value);
+
+                Ok(Control::Continue)
+            }
+
+            Node::DefineEmpty(def) => {
+                self.env.define_nearest_or_current(
+                    def.name.clone(),
+                    Value::Void,
+                );
+
+                Ok(Control::Continue)
+            }
+
+            Node::Copy(copy) => {
+                self.env
+                    .copy_nearest_or_current(
+                        copy.name.clone(),
+                        &copy.target,
+                    )
+                    .map_err(|_| {
+                        Diagnostic::error(
+                            format!(
+                                "undeclared identifier `{}`",
+                                copy.target,
+                            ),
+                            runtime_span(),
+                        )
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
+            Node::Bind(bind) => {
+                self.env
+                    .bind_nearest_or_current(
+                        bind.name.clone(),
+                        &bind.target,
+                    )
+                    .map_err(|_| {
+                        Diagnostic::error(
+                            format!(
+                                "undeclared identifier `{}`",
+                                bind.target,
+                            ),
+                            runtime_span(),
+                        )
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
+            Node::Guard(guard) => {
+                let mut result = Value::Void;
+
+                for branch in &guard.branches {
+                    let value = self.eval_value(&branch.expr)?;
+
+                    if truth_of(&value) == Truth::True {
+                        result = value;
+                        break;
+                    }
+                }
+
+                self.env.define_nearest_or_current(
+                    guard.target.clone(),
+                    result,
+                );
+
+                Ok(Control::Continue)
+            }
+
+            _ => self.eval_node_ctrl(node),
+        }
+    }
+
     fn eval_node_ctrl(
         &mut self,
         node: &Node,
@@ -589,6 +741,50 @@ impl Evaluator {
                 };
 
                 Ok(Control::Return(value))
+            }
+
+            Node::Loop(loop_node) => {
+                self.env.push_scope();
+
+                let result = (|| {
+                    // Setup executes exactly once.
+                    for node in &loop_node.setup {
+                        match self.eval_loop_node_ctrl(node)? {
+                            Control::Continue => {}
+
+                            Control::Return(value) => {
+                                return Ok(Control::Return(value));
+                            }
+                        }
+                    }
+
+                    // The same loop scope remains active for every iteration.
+                    loop {
+                        let condition = self.eval_value(
+                            loop_node.condition.as_ref(),
+                        )?;
+
+                        if truth_of(&condition) == Truth::False {
+                            break;
+                        }
+
+                        for node in &loop_node.process {
+                            match self.eval_loop_node_ctrl(node)? {
+                                Control::Continue => {}
+
+                                Control::Return(value) => {
+                                    return Ok(Control::Return(value));
+                                }
+                            }
+                        }
+                    }
+
+                    Ok(Control::Continue)
+                })();
+
+                self.env.pop_scope();
+
+                result
             }
 
             Node::Block(block) => {

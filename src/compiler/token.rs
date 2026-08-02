@@ -74,6 +74,11 @@ pub enum TokenKind {
     BlockStart, // :{
     BlockEnd,   // }:
     BlockChain, // }{
+
+    LoopStart, // :<
+    LoopSplit, // >?<
+    LoopEnd,   // >:
+
     BoxStart, // :[
     BoxEnd,   // ]:
     BagStart, // :|

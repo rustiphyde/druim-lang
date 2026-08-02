@@ -75,6 +75,30 @@ mod tests {
     }
 
     #[test]
+    fn loop_tokens() {
+        let src = ":< >?< >?< >:";
+        let tokens = Lexer::new(src)
+            .tokenize()
+            .expect("loop delimiters should lex");
+
+        let kinds: Vec<TokenKind> = tokens
+            .iter()
+            .map(|token| token.kind)
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::LoopStart,
+                TokenKind::LoopSplit,
+                TokenKind::LoopSplit,
+                TokenKind::LoopEnd,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
     fn digit_leading_identifiers() {
         let ks = kinds("1a 9lives 123abc 123_456 1_foo");
         assert_eq!(ks[0], Ident);

@@ -19,7 +19,6 @@ pub enum Literal {
     Void,
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     // ===== Atoms =====
@@ -61,6 +60,7 @@ pub enum Node {
     // ===== Flow =====
     Pipe(Box<Node>, Box<Node>),      // |>
     Block(Block),
+    Loop(Loop),
     Local(Box<Node>),
     Ret(Ret),
     Define(Define),
@@ -109,6 +109,13 @@ pub struct Block {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockSegment {
     pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Loop {
+    pub setup: Vec<Node>,
+    pub condition: Box<Node>,
+    pub process: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

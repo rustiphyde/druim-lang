@@ -57,6 +57,25 @@ impl Env {
         scope.names.insert(name, slot);
     }
 
+    /// Define through normal lexical resolution.
+    ///
+    /// If the name already exists in any visible scope, update the nearest
+    /// visible slot so existing aliases continue to observe that value.
+    ///
+    /// Otherwise, create a fresh slot in the current scope.
+    pub fn define_nearest_or_current(
+        &mut self,
+        name: String,
+        value: Value,
+    ) {
+        if let Some(slot) = self.lookup(&name) {
+            slot.borrow_mut().value = value;
+            return;
+        }
+
+        self.define(name, value);
+    }
+
     /// Lookup a name, searching from innermost to outermost scope.
     pub fn lookup(&self, name: &str) -> Option<SlotRef> {
         self.scopes
@@ -82,6 +101,38 @@ impl Env {
         Ok(())
     }
 
+    /// Bind through normal lexical resolution.
+    ///
+    /// If the destination name exists in a visible scope, replace the nearest
+    /// visible binding with the target slot.
+    ///
+    /// Otherwise, create the binding in the current scope.
+    pub fn bind_nearest_or_current(
+        &mut self,
+        name: String,
+        target: &str,
+    ) -> Result<(), ()> {
+        let target_slot = self.lookup(target).ok_or(())?;
+
+        if let Some(scope) = self
+            .scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.names.contains_key(&name))
+        {
+            scope.names.insert(name, target_slot);
+            return Ok(());
+        }
+
+        self.scopes
+            .last_mut()
+            .expect("no scope")
+            .names
+            .insert(name, target_slot);
+
+        Ok(())
+    }
+
     /// Copy the current value of an existing slot into a fresh slot.
     pub fn copy(
         &mut self,
@@ -92,6 +143,25 @@ impl Env {
         let value = source.borrow().value.clone();
 
         self.define(name, value);
+
+        Ok(())
+    }
+
+    /// Copy through normal lexical resolution.
+    ///
+    /// If the destination name exists in a visible scope, update the nearest
+    /// visible slot with an independent snapshot of the target value.
+    ///
+    /// Otherwise, create the copied value in the current scope.
+    pub fn copy_nearest_or_current(
+        &mut self,
+        name: String,
+        target: &str,
+    ) -> Result<(), ()> {
+        let source = self.lookup(target).ok_or(())?;
+        let value = source.borrow().value.clone();
+
+        self.define_nearest_or_current(name, value);
 
         Ok(())
     }

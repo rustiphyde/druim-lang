@@ -5133,3 +5133,1057 @@ fn ordinary_statement_block_binding_remains_available_across_segments() {
         None,
     );
 }
+
+#[test]
+fn loop_updates_outer_binding_until_condition_is_false() {
+    use crate::compiler::ast::{
+        Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Define(Define {
+                        name: "limit".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(3),
+                        )),
+                    }),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Ident(
+                        "limit".to_string(),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("loop evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(3)),
+    );
+
+    assert_eq!(
+        evaluator.get("limit"),
+        None,
+    );
+}
+
+#[test]
+fn loop_process_binding_persists_across_iterations() {
+    use crate::compiler::ast::{
+        Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![],
+
+                condition: Box::new(Node::Or(
+                    Box::new(Node::Eq(
+                        Box::new(Node::Ident(
+                            "count".to_string(),
+                        )),
+                        Box::new(Node::Lit(
+                            Literal::Num(0),
+                        )),
+                    )),
+                    Box::new(Node::Lt(
+                        Box::new(Node::Ident(
+                            "carried".to_string(),
+                        )),
+                        Box::new(Node::Lit(
+                            Literal::Num(3),
+                        )),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "carried".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("loop evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(3)),
+    );
+
+    assert_eq!(
+        evaluator.get("carried"),
+        None,
+    );
+}
+
+#[test]
+fn nested_loops_use_independent_persistent_scopes() {
+    use crate::compiler::ast::{
+        Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "total".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Define(Define {
+                        name: "outer_index".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(0),
+                        )),
+                    }),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "outer_index".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(2),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Loop(Loop {
+                        setup: vec![
+                            Node::Define(Define {
+                                name: "inner_index".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(0),
+                                )),
+                            }),
+                        ],
+
+                        condition: Box::new(Node::Lt(
+                            Box::new(Node::Ident(
+                                "inner_index".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(2),
+                            )),
+                        )),
+
+                        process: vec![
+                            Node::Define(Define {
+                                name: "total".to_string(),
+                                value: Box::new(Node::Add(
+                                    Box::new(Node::Ident(
+                                        "total".to_string(),
+                                    )),
+                                    Box::new(Node::Lit(
+                                        Literal::Num(1),
+                                    )),
+                                )),
+                            }),
+
+                            Node::Define(Define {
+                                name: "inner_index".to_string(),
+                                value: Box::new(Node::Add(
+                                    Box::new(Node::Ident(
+                                        "inner_index".to_string(),
+                                    )),
+                                    Box::new(Node::Lit(
+                                        Literal::Num(1),
+                                    )),
+                                )),
+                            }),
+                        ],
+                    }),
+
+                    Node::Define(Define {
+                        name: "outer_index".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "outer_index".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("nested loop evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("total"),
+        Some(Value::Num(4)),
+    );
+
+    assert_eq!(
+        evaluator.get("outer_index"),
+        None,
+    );
+
+    assert_eq!(
+        evaluator.get("inner_index"),
+        None,
+    );
+}
+
+#[test]
+fn local_loop_binding_shadows_outer_binding_until_loop_ends() {
+    use crate::compiler::ast::{
+        Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(100),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Local(Box::new(
+                        Node::Define(Define {
+                            name: "count".to_string(),
+                            value: Box::new(Node::Lit(
+                                Literal::Num(0),
+                            )),
+                        }),
+                    )),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(3),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local loop binding should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(100)),
+    );
+}
+
+#[test]
+fn return_inside_loop_exits_enclosing_function() {
+    use crate::compiler::ast::{
+        Call, Define, Func, Literal, Loop, Node, Program, Ret,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Func(Func {
+                name: "return_from_loop".to_string(),
+                params: vec![],
+                body: vec![
+                    Node::Loop(Loop {
+                        setup: vec![
+                            Node::Define(Define {
+                                name: "loop_index".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(0),
+                                )),
+                            }),
+                        ],
+
+                        condition: Box::new(Node::Lt(
+                            Box::new(Node::Ident(
+                                "loop_index".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+
+                        process: vec![
+                            Node::Ret(Ret {
+                                value: Some(Box::new(Node::Lit(
+                                    Literal::Num(9),
+                                ))),
+                            }),
+
+                            Node::Define(Define {
+                                name: "loop_index".to_string(),
+                                value: Box::new(Node::Add(
+                                    Box::new(Node::Ident(
+                                        "loop_index".to_string(),
+                                    )),
+                                    Box::new(Node::Lit(
+                                        Literal::Num(1),
+                                    )),
+                                )),
+                            }),
+                        ],
+                    }),
+
+                    Node::Ret(Ret {
+                        value: Some(Box::new(Node::Lit(
+                            Literal::Num(99),
+                        ))),
+                    }),
+                ],
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(Call {
+                    callee: Box::new(Node::Ident(
+                        "return_from_loop".to_string(),
+                    )),
+                    args: vec![],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("return should propagate out of the loop and function");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(9)),
+    );
+
+    assert_eq!(
+        evaluator.get("loop_index"),
+        None,
+    );
+}
+
+#[test]
+fn loop_copy_updates_nearest_binding_with_independent_snapshot() {
+    use crate::compiler::ast::{
+        Copy, Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(10),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "snapshot".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "snapshot".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(10),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Copy(Copy {
+                        name: "snapshot".to_string(),
+                        target: "source".to_string(),
+                    }),
+
+                    Node::Define(Define {
+                        name: "source".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("loop copy should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+}
+
+#[test]
+fn loop_bind_updates_nearest_binding_and_preserves_shared_identity() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(10),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "alias".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Bind(Bind {
+                        name: "alias".to_string(),
+                        target: "source".to_string(),
+                    }),
+
+                    Node::Define(Define {
+                        name: "source".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("loop bind should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn loop_guard_updates_nearest_visible_binding() {
+    use crate::compiler::ast::{
+        Define, Guard, GuardBranch, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Guard(Guard {
+                        target: "result".to_string(),
+                        branches: vec![
+                            GuardBranch {
+                                expr: Node::Lit(
+                                    Literal::Num(0),
+                                ),
+                            },
+                            GuardBranch {
+                                expr: Node::Lit(
+                                    Literal::Num(7),
+                                ),
+                            },
+                        ],
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("loop guard should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(7)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn local_loop_copy_uses_loop_scope_and_preserves_outer_binding() {
+    use crate::compiler::ast::{
+        Copy, Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(10),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "snapshot".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(99),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Local(Box::new(
+                        Node::Copy(Copy {
+                            name: "snapshot".to_string(),
+                            target: "source".to_string(),
+                        }),
+                    )),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "snapshot".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local loop copy should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(99)),
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn local_loop_bind_uses_loop_scope_and_preserves_outer_alias() {
+    use crate::compiler::ast::{
+        Bind, Define, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(10),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "alias".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(99),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Local(Box::new(
+                        Node::Bind(Bind {
+                            name: "alias".to_string(),
+                            target: "source".to_string(),
+                        }),
+                    )),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "alias".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local loop bind should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(99)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn local_loop_guard_uses_loop_scope_and_preserves_outer_binding() {
+    use crate::compiler::ast::{
+        Define, Guard, GuardBranch, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(99),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Local(Box::new(
+                        Node::Guard(Guard {
+                            target: "result".to_string(),
+                            branches: vec![
+                                GuardBranch {
+                                    expr: Node::Lit(
+                                        Literal::Num(0),
+                                    ),
+                                },
+                                GuardBranch {
+                                    expr: Node::Lit(
+                                        Literal::Num(7),
+                                    ),
+                                },
+                            ],
+                        }),
+                    )),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "result".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local loop guard should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(99)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn local_empty_loop_definition_uses_loop_scope_and_preserves_outer_binding() {
+    use crate::compiler::ast::{
+        Define, DefineEmpty, Literal, Loop, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "value".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(99),
+                )),
+            }),
+
+            Node::Define(Define {
+                name: "count".to_string(),
+                value: Box::new(Node::Lit(
+                    Literal::Num(0),
+                )),
+            }),
+
+            Node::Loop(Loop {
+                setup: vec![
+                    Node::Local(Box::new(
+                        Node::DefineEmpty(DefineEmpty {
+                            name: "value".to_string(),
+                        }),
+                    )),
+                ],
+
+                condition: Box::new(Node::Lt(
+                    Box::new(Node::Ident(
+                        "count".to_string(),
+                    )),
+                    Box::new(Node::Lit(
+                        Literal::Num(1),
+                    )),
+                )),
+
+                process: vec![
+                    Node::Define(Define {
+                        name: "value".to_string(),
+                        value: Box::new(Node::Lit(
+                            Literal::Num(20),
+                        )),
+                    }),
+
+                    Node::Define(Define {
+                        name: "count".to_string(),
+                        value: Box::new(Node::Add(
+                            Box::new(Node::Ident(
+                                "count".to_string(),
+                            )),
+                            Box::new(Node::Lit(
+                                Literal::Num(1),
+                            )),
+                        )),
+                    }),
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local empty loop definition should evaluate successfully");
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(99)),
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(1)),
+    );
+}

@@ -1,12 +1,12 @@
 # Druim Canon (Living Document)
 
 ## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R004
+- Revision ID: DRUIM-CANON-R005
 - Status: Current
-- Effective Date: 2026-07-28
+- Effective Date: 2026-08-02
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R003
-- Notes: This revision corrects and finalizes Box, Bag, indexed traversal, collection truth evaluation, selector diagnostics, and collection syntax rules.
+- Supersedes: DRUIM-CANON-R004
+- Notes: This revision adds and finalizes Druim loop structure, execution order, persistent loop scope, nested-loop behavior, and return propagation from loops inside functions.
 
 
 ## Purpose
@@ -138,6 +138,18 @@ The following identifiers are lexed as **control or scope keywords**:
 - loc  → KwLoc     (local scope)
 
 These keywords affect control flow or scope and are not expressions.
+
+## Loop Structural Tokens
+
+Druim loops use three lexically atomic structural tokens:
+
+- `:<` → LoopStart
+- `>?<` → LoopSplit
+- `>:` → LoopEnd
+
+The two `>?<` separators are identical tokens. Their meaning is determined by position within the loop structure.
+
+Loop delimiters are structural tokens, not expressions and not statement operators.
 
 ## Identifiers
 
@@ -567,7 +579,7 @@ fn my_function :(a, b)( body ):
 - A parameter may include a default value using the Define form.
 - Parameter defaults use `=` and must contain exactly one complete expression.
 - Copy, Bind, Guard, and DefineEmpty are not valid parameter-default forms unless a later canon revision explicitly permits them.
-- The body contains a sequence of valid statements.
+- The body contains a sequence of valid statements, including loops.
 
 Example with a default parameter:
 
@@ -617,12 +629,175 @@ The evaluator must implement scope handling with these guarantees:
 - On }{ do not push or pop; continue executing in the current lexical scope.
 - On }: pop the lexical scope created by the matching `:{`.
 - On function call, push a function scope, bind parameters, then pop the function scope.
+- On loop entry, push one persistent loop scope; pop it when the loop exits.
 
 ### Canonical Guarantee
 
 - Blocks establish lexical scope.
 - Function body establishes function scope.
 - loc restricts visibility to a single block segment within a chain.
+
+This behavior is stable and locked.
+
+## Loops
+
+A Druim loop is a structural statement with three ordered sections:
+
+```druim
+:< setup
+>?< condition
+>?< process
+>:
+```
+
+The loop uses exactly one opening delimiter, exactly two identical separators, and exactly one closing delimiter.
+
+### Structural Form
+
+- `:<` begins the loop.
+- The first `>?<` ends the setup section and begins the condition section.
+- The second `>?<` ends the condition section and begins the process section.
+- `>:` ends the loop.
+- Exactly two `>?<` separators are required.
+- The condition section must contain exactly one complete expression.
+- The loop is a statement and does not evaluate to a value.
+
+### Setup
+
+The setup section contains zero or more valid statements or nested loops.
+
+- Setup executes exactly once when the loop is entered.
+- Setup executes before the first condition evaluation.
+- Bindings created by setup participate in the loop's lexical scope.
+
+Example:
+
+```druim
+:< index = 0;
+>?< index < 3
+>?< index = index + 1;
+>:
+```
+
+### Condition
+
+The condition section contains exactly one complete expression.
+
+- The condition is evaluated before every iteration.
+- The result is converted using Druim's canonical truth-evaluation rules.
+- If the result evaluates to `false`, the loop ends immediately.
+- If the result evaluates to `true`, the process section executes.
+- No process execution occurs when the first condition evaluation is false.
+
+### Process
+
+The process section contains zero or more valid statements or nested loops.
+
+- Process statements execute in source order.
+- After the process completes, the condition is evaluated again.
+- This repeats until the condition evaluates to `false` or control exits through a function return.
+
+### Loop Scope
+
+Each loop creates exactly one lexical scope when entered.
+
+That scope is persistent for the entire execution of the loop:
+
+- It is created before setup executes.
+- It remains active across every condition evaluation and every process execution.
+- A binding created during one iteration remains visible in later iterations.
+- The scope is removed when the loop ends.
+- Bindings owned only by the loop are unavailable after loop exit.
+
+The loop does not create a new scope for each iteration.
+
+### Binding Placement Inside Loops
+
+For an unmodified Define, DefineEmpty, Copy, Bind, or Guard executed inside a loop:
+
+- If the target name already exists in any visible scope, the nearest visible binding is updated.
+- If the target name does not exist, a new binding is created in the current loop scope.
+
+For a statement modified by `loc`:
+
+- The target binding is forced into the current loop scope.
+- An outer binding with the same name is shadowed rather than updated.
+- The local binding persists across loop iterations.
+- The local binding disappears when the loop scope ends.
+
+Copy and Bind retain their canonical value and identity semantics regardless of placement:
+
+- Copy creates an independent snapshot.
+- Bind establishes shared identity.
+
+Guard evaluates its branches before storing the selected value in the binding chosen by these scope rules.
+
+### Nested Loops
+
+Loops may appear inside loop setup or process sections.
+
+- Each nested loop creates its own persistent child scope.
+- The child scope can read visible bindings from enclosing scopes.
+- Ordinary target operations update the nearest visible binding.
+- New child-loop bindings disappear when the child loop exits.
+- The enclosing loop scope remains active after the nested loop completes.
+
+### Loops in Functions
+
+Loops are valid statements inside function bodies.
+
+A `ret` executed inside a loop:
+
+- stops the remaining loop process immediately;
+- exits the loop;
+- propagates through the loop to the enclosing function;
+- causes the enclosing function to return the specified value;
+- removes the loop scope before control reaches the caller.
+
+`ret` remains a function-only statement. A loop does not independently create a return context.
+
+### Invalid Loop Structures
+
+The following are invalid:
+
+- a missing first separator;
+- a missing second separator;
+- more than two separators;
+- a missing condition expression;
+- more than one complete condition expression;
+- a missing closing delimiter;
+- using a loop where a value expression is required.
+
+Invalid value usage:
+
+```druim
+result = :<
+>?< true
+>?< value = 1;
+>:;
+```
+
+### Evaluator Scope Responsibilities
+
+The evaluator must implement loop handling with these guarantees:
+
+- Push one loop scope before setup.
+- Execute setup once.
+- Evaluate the condition before every iteration.
+- Execute the process only while the condition evaluates to true.
+- Preserve the same loop scope across all iterations.
+- Propagate function returns through the loop.
+- Pop the loop scope on normal exit, diagnostic exit, or propagated return.
+
+### Canonical Guarantee
+
+- Loops are structural statements, not values.
+- Setup executes once.
+- Condition executes before every iteration.
+- One persistent lexical scope exists per loop execution.
+- Nested loops create persistent child scopes.
+- Loop-local bindings disappear after loop exit.
+- Returns propagate from loops only through an enclosing function.
 
 This behavior is stable and locked.
 

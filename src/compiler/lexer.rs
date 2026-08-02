@@ -174,6 +174,18 @@ impl<'a> Lexer<'a> {
                 tokens.push(tok(TokenKind::BlockChain, "}{", start));
                 continue;
             }
+            if self.match_str(":<") {
+                tokens.push(tok(TokenKind::LoopStart, ":<", start));
+                continue;
+            }
+            if self.match_str(">?<") {
+                tokens.push(tok(TokenKind::LoopSplit, ">?<", start));
+                continue;
+            }
+            if self.match_str(">:") {
+                tokens.push(tok(TokenKind::LoopEnd, ">:", start));
+                continue;
+            }
 
             if self.match_str(":(") {
                 tokens.push(tok(TokenKind::FuncStart, ":(", start));

@@ -2603,3 +2603,241 @@ fn parses_named_get_followed_by_indexed_has() {
         })
     );
 }
+
+#[test]
+fn parses_basic_loop() {
+    let node = parse_node(
+        r#"
+        :<
+            index = 0;
+            limit = 3;
+        >?<
+            index < limit
+        >?<
+            index = index + 1;
+        >:
+        "#,
+    );
+
+    match node {
+        Node::Loop(loop_node) => {
+            assert_eq!(loop_node.setup.len(), 2);
+
+            assert_eq!(
+                loop_node.condition.as_ref(),
+                &Node::Lt(
+                    Box::new(Node::Ident("index".to_string())),
+                    Box::new(Node::Ident("limit".to_string())),
+                ),
+            );
+
+            assert_eq!(loop_node.process.len(), 1);
+
+            assert!(matches!(
+                &loop_node.process[0],
+                Node::Define(Define { name, value })
+                    if name == "index"
+                        && matches!(
+                            value.as_ref(),
+                            Node::Add(lhs, rhs)
+                                if lhs.as_ref() == &Node::Ident("index".to_string())
+                                    && rhs.as_ref() == &Node::Lit(Literal::Num(1))
+                        )
+            ));
+        }
+
+        other => panic!("expected loop node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_nested_loop() {
+    let node = parse_node(
+        r#"
+        :<
+            outer_index = 0;
+            outer_limit = 2;
+        >?<
+            outer_index < outer_limit
+        >?<
+            :<
+                inner_index = 0;
+                inner_limit = 3;
+            >?<
+                inner_index < inner_limit
+            >?<
+                inner_index = inner_index + 1;
+            >:
+
+            outer_index = outer_index + 1;
+        >:
+        "#,
+    );
+
+    match node {
+        Node::Loop(outer_loop) => {
+            assert_eq!(outer_loop.setup.len(), 2);
+            assert_eq!(outer_loop.process.len(), 2);
+
+            match &outer_loop.process[0] {
+                Node::Loop(inner_loop) => {
+                    assert_eq!(inner_loop.setup.len(), 2);
+                    assert_eq!(inner_loop.process.len(), 1);
+
+                    assert_eq!(
+                        inner_loop.condition.as_ref(),
+                        &Node::Lt(
+                            Box::new(Node::Ident("inner_index".to_string())),
+                            Box::new(Node::Ident("inner_limit".to_string())),
+                        ),
+                    );
+                }
+
+                other => panic!("expected nested loop node, got {:?}", other),
+            }
+
+            assert!(matches!(
+                &outer_loop.process[1],
+                Node::Define(Define { name, value })
+                    if name == "outer_index"
+                        && matches!(
+                            value.as_ref(),
+                            Node::Add(lhs, rhs)
+                                if lhs.as_ref() == &Node::Ident("outer_index".to_string())
+                                    && rhs.as_ref() == &Node::Lit(Literal::Num(1))
+                        )
+            ));
+        }
+
+        other => panic!("expected outer loop node, got {:?}", other),
+    }
+}
+
+#[test]
+fn loop_requires_first_separator() {
+    let _ = parse_node_err(
+        r#"
+        :<
+            index = 0;
+            limit = 3;
+
+            index < limit
+        >?<
+            index = index + 1;
+        >:
+        "#,
+    );
+}
+
+#[test]
+fn loop_requires_second_separator() {
+    let _ = parse_node_err(
+        r#"
+        :<
+            index = 0;
+            limit = 3;
+        >?<
+            index < limit
+
+            index = index + 1;
+        >:
+        "#,
+    );
+}
+
+#[test]
+fn loop_requires_closing_delimiter() {
+    let _ = parse_node_err(
+        r#"
+        :<
+            index = 0;
+            limit = 3;
+        >?<
+            index < limit
+        >?<
+            index = index + 1;
+        "#,
+    );
+}
+
+#[test]
+fn define_rejects_loop_rhs() {
+    let _ = parse_node_err(
+        r#"
+        result = :<
+            index = 0;
+        >?<
+            index < 3
+        >?<
+            index = index + 1;
+        >:;
+        "#,
+    );
+}
+
+#[test]
+fn parses_loop_inside_function_body() {
+    let src = r#"
+        fn repeat :()(
+            :<
+                index = 0;
+            >?< index < 3
+            >?<
+                index = index + 1;
+            >:
+
+            ret 7;
+        ):
+    "#;
+
+    let node = parse_node(src);
+
+    match node {
+        Node::Func(Func { name, params, body }) => {
+            assert_eq!(name, "repeat");
+            assert!(params.is_empty());
+            assert_eq!(body.len(), 2);
+
+            match &body[0] {
+                Node::Loop(loop_node) => {
+                    assert_eq!(loop_node.setup.len(), 1);
+                    assert_eq!(loop_node.process.len(), 1);
+
+                    assert!(matches!(
+                        loop_node.setup[0],
+                        Node::Define(_)
+                    ));
+
+                    assert!(matches!(
+                        loop_node.condition.as_ref(),
+                        Node::Lt(_, _)
+                    ));
+
+                    assert!(matches!(
+                        loop_node.process[0],
+                        Node::Define(_)
+                    ));
+                }
+
+                other => {
+                    panic!(
+                        "expected loop as first function-body node, got {:?}",
+                        other,
+                    );
+                }
+            }
+
+            assert!(matches!(
+                &body[1],
+                Node::Ret(Ret {
+                    value: Some(value),
+                }) if matches!(
+                    value.as_ref(),
+                    Node::Lit(Literal::Num(7))
+                )
+            ));
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
