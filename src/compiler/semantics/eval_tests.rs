@@ -4416,3 +4416,720 @@ fn multiple_bind_aliases_share_identity() {
         Some(Value::Num(40)),
     );
 }
+
+#[test]
+fn inner_scope_shadowing_does_not_mutate_outer_bind_identity() {
+    use crate::compiler::ast::{
+        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "source".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(10)),
+    );
+}
+
+#[test]
+fn inner_scope_alias_shadowing_does_not_mutate_outer_bind_identity() {
+    use crate::compiler::ast::{
+        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Bind(Bind {
+                name: "alias".to_string(),
+                target: "source".to_string(),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "alias".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(10)),
+    );
+}
+
+#[test]
+fn inner_scope_bind_can_update_outer_identity() {
+    use crate::compiler::ast::{
+        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Bind(Bind {
+                                name: "alias".to_string(),
+                                target: "source".to_string(),
+                            }),
+
+                            Node::Define(Define {
+                                name: "alias".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        None,
+    );
+}
+
+#[test]
+fn inner_scope_copy_does_not_mutate_outer_source() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Copy, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Copy(Copy {
+                                name: "snapshot".to_string(),
+                                target: "source".to_string(),
+                            }),
+
+                            Node::Define(Define {
+                                name: "snapshot".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        None,
+    );
+}
+
+#[test]
+fn local_binding_is_unavailable_in_later_block_segment() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Local(Box::new(
+                                Node::Define(Define {
+                                    name: "temporary".to_string(),
+                                    value: Box::new(Node::Lit(
+                                        Literal::Num(10),
+                                    )),
+                                }),
+                            )),
+                        ],
+                    },
+
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "result".to_string(),
+                                value: Box::new(Node::Ident(
+                                    "temporary".to_string(),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "local binding should not survive into a later block segment",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `temporary`",
+    );
+}
+
+#[test]
+fn local_binding_is_available_within_its_block_segment() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Local(Box::new(
+                                Node::Define(Define {
+                                    name: "temporary".to_string(),
+                                    value: Box::new(Node::Lit(
+                                        Literal::Num(10),
+                                    )),
+                                }),
+                            )),
+
+                            Node::Define(Define {
+                                name: "result".to_string(),
+                                value: Box::new(Node::Ident(
+                                    "temporary".to_string(),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local binding should be available within its segment");
+
+    assert_eq!(
+        evaluator.get("result"),
+        None,
+    );
+
+    assert_eq!(
+        evaluator.get("temporary"),
+        None,
+    );
+
+    // The block-local result existed during evaluation but both names
+    // correctly disappear when the block scope ends.
+    assert_eq!(
+        evaluator.get("temporary"),
+        None,
+    );
+
+    let _ = Value::Num(10);
+}
+
+#[test]
+fn local_bind_updates_source_before_segment_cleanup() {
+    use crate::compiler::ast::{
+        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Local(Box::new(
+                                Node::Bind(Bind {
+                                    name: "alias".to_string(),
+                                    target: "source".to_string(),
+                                }),
+                            )),
+
+                            Node::Define(Define {
+                                name: "alias".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "result".to_string(),
+                                value: Box::new(Node::Ident(
+                                    "source".to_string(),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local bind should update its shared source slot");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        None,
+    );
+}
+
+#[test]
+fn local_copy_remains_independent_and_is_removed_after_segment() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Copy, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Local(Box::new(
+                                Node::Copy(Copy {
+                                    name: "snapshot".to_string(),
+                                    target: "source".to_string(),
+                                }),
+                            )),
+
+                            Node::Define(Define {
+                                name: "snapshot".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "result".to_string(),
+                                value: Box::new(Node::Ident(
+                                    "source".to_string(),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local copy should remain independent");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10)),
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        None,
+    );
+}
+
+#[test]
+fn local_empty_definition_is_void_within_segment_and_removed_afterward() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Define, DefineEmpty, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Block(Block {
+                    segments: vec![
+                        BlockSegment {
+                            nodes: vec![
+                                Node::Local(Box::new(
+                                    Node::DefineEmpty(DefineEmpty {
+                                        name: "temporary".to_string(),
+                                    }),
+                                )),
+
+                                Node::Ident(
+                                    "temporary".to_string(),
+                                ),
+                            ],
+                        },
+                    ],
+                })),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("local empty definition should evaluate as explicit void");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Void),
+    );
+
+    assert_eq!(
+        evaluator.get("temporary"),
+        None,
+    );
+}
+
+#[test]
+fn local_shadow_is_restored_after_segment_diagnostic() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "value".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "value".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+
+                            Node::Local(Box::new(
+                                Node::Define(Define {
+                                    name: "value".to_string(),
+                                    value: Box::new(Node::Lit(
+                                        Literal::Num(30),
+                                    )),
+                                }),
+                            )),
+
+                            Node::Ident(
+                                "missing".to_string(),
+                            ),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("the missing identifier should produce a diagnostic");
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing`",
+    );
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(10)),
+    );
+}
+
+#[test]
+fn local_shadow_is_restored_before_return_propagates() {
+    use crate::compiler::ast::{
+        Block, BlockSegment, Define, Func, Literal, Node, Param, Program, Ret,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "value".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Func(Func {
+                name: "read_value".to_string(),
+                params: Vec::<Param>::new(),
+                body: vec![
+                    Node::Block(Block {
+                        segments: vec![
+                            BlockSegment {
+                                nodes: vec![
+                                    Node::Define(Define {
+                                        name: "value".to_string(),
+                                        value: Box::new(Node::Lit(
+                                            Literal::Num(20),
+                                        )),
+                                    }),
+
+                                    Node::Local(Box::new(
+                                        Node::Define(Define {
+                                            name: "value".to_string(),
+                                            value: Box::new(Node::Lit(
+                                                Literal::Num(30),
+                                            )),
+                                        }),
+                                    )),
+
+                                    Node::Ret(Ret {
+                                        value: Some(Box::new(Node::Ident(
+                                            "value".to_string(),
+                                        ))),
+                                    }),
+                                ],
+                            },
+                        ],
+                    }),
+                ],
+            }),
+
+            Node::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::Call(
+                    crate::compiler::ast::Call {
+                        callee: Box::new(Node::Ident(
+                            "read_value".to_string(),
+                        )),
+                        args: vec![],
+                    },
+                )),
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("return should propagate after local cleanup");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(30)),
+    );
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(10)),
+    );
+}
+
+#[test]
+fn ordinary_statement_block_binding_remains_available_across_segments() {
+    use crate::compiler::ast::{
+        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![
+            Node::Define(Define {
+                name: "source".to_string(),
+                value: Box::new(Node::Lit(Literal::Num(10))),
+            }),
+
+            Node::Block(Block {
+                segments: vec![
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Bind(Bind {
+                                name: "alias".to_string(),
+                                target: "source".to_string(),
+                            }),
+                        ],
+                    },
+
+                    BlockSegment {
+                        nodes: vec![
+                            Node::Define(Define {
+                                name: "alias".to_string(),
+                                value: Box::new(Node::Lit(
+                                    Literal::Num(20),
+                                )),
+                            }),
+                        ],
+                    },
+                ],
+            }),
+        ],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("ordinary statement-block binding should survive later segments");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(20)),
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        None,
+    );
+}

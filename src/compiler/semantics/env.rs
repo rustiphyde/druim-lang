@@ -103,6 +103,37 @@ impl Env {
         Ok(())
     }
 
+    /// Temporarily remove and return a name from the current scope.
+    pub fn take_current(&mut self, name: &str) -> Option<SlotRef> {
+        self.scopes
+            .last_mut()
+            .expect("no scope")
+            .names
+            .remove(name)
+    }
+
+    /// Restore a name and slot in the current scope.
+    pub fn restore_current(
+        &mut self,
+        name: String,
+        slot: SlotRef,
+    ) {
+        self.scopes
+            .last_mut()
+            .expect("no scope")
+            .names
+            .insert(name, slot);
+    }
+
+    /// Remove a name from the current scope only.
+    pub fn remove_current(&mut self, name: &str) {
+        self.scopes
+            .last_mut()
+            .expect("no scope")
+            .names
+            .remove(name);
+    }
+
     /// Convenience for tests: get the current value (if defined).
     pub fn get_value(&self, name: &str) -> Option<Value> {
         self.lookup(name).map(|s| s.borrow().value.clone())

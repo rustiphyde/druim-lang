@@ -324,6 +324,13 @@ fn define_accepts_compound_expression_rhs() {
     }
 }
 
+#[test]
+fn define_rejects_block_rhs() {
+    let _ = parse_node_err(
+        "result = :{ value = 10; }:",
+    );
+}
+
 // Block Tests
 #[test]
 fn parses_node_block() {

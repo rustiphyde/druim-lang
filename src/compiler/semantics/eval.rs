@@ -21,6 +21,17 @@ fn runtime_span() -> Span {
     }
 }
 
+fn local_name(node: &Node) -> Option<&str> {
+    match node {
+        Node::Define(def) => Some(&def.name),
+        Node::DefineEmpty(def) => Some(&def.name),
+        Node::Copy(copy) => Some(&copy.name),
+        Node::Bind(bind) => Some(&bind.name),
+        Node::Guard(guard) => Some(&guard.target),
+        _ => None,
+    }
+}
+
 impl Evaluator {
     pub fn new() -> Self {
         Self {
@@ -95,26 +106,6 @@ impl Evaluator {
                 self.env.define(func.name.clone(), value.clone());
 
                 Ok(value)
-            }
-
-            Node::Block(block) => {
-                self.env.push_scope();
-
-                let result = (|| {
-                    let mut last = Value::Void;
-
-                    for segment in &block.segments {
-                        for node in &segment.nodes {
-                            last = self.eval_value(node)?;
-                        }
-                    }
-
-                    Ok(last)
-                })();
-
-                self.env.pop_scope();
-
-                result
             }
 
             Node::Call(call) => {
@@ -605,12 +596,41 @@ impl Evaluator {
 
                 let result = (|| {
                     for segment in &block.segments {
-                        for node in &segment.nodes {
-                            let control = self.eval_node_ctrl(node)?;
+                        let mut local_names = Vec::new();
 
-                            if let Control::Return(value) = control {
-                                return Ok(Control::Return(value));
+                        let segment_result: Result<Control, Diagnostic> = (|| {
+                            for node in &segment.nodes {
+                                let control = match node {
+                                    Node::Local(inner) => {
+                                        if let Some(name) = local_name(inner) {
+                                            let previous = self.env.take_current(name);
+                                            local_names.push((name.to_string(), previous));
+                                        }
+
+                                        self.eval_node_ctrl(inner)?
+                                    }
+
+                                    _ => self.eval_node_ctrl(node)?,
+                                };
+
+                                if let Control::Return(value) = control {
+                                    return Ok(Control::Return(value));
+                                }
                             }
+
+                            Ok(Control::Continue)
+                        })();
+
+                        for (name, previous) in local_names {
+                            self.env.remove_current(&name);
+
+                            if let Some(slot) = previous {
+                                self.env.restore_current(name, slot);
+                            }
+                        }
+
+                        if let Control::Return(value) = segment_result? {
+                            return Ok(Control::Return(value));
                         }
                     }
 
