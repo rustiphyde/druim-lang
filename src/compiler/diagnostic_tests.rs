@@ -1,5 +1,5 @@
 use crate::compiler::diagnostic::render;
-use crate::compiler::error::{Diagnostic, Severity, Source, Span, Note};
+use crate::compiler::error::{Diagnostic, Note, Severity, Source, Span};
 
 fn assert_render(diag: &Diagnostic, source: &Source, expected: &str) {
     let got = render(diag, source);
@@ -14,12 +14,20 @@ fn assert_render(diag: &Diagnostic, source: &Source, expected: &str) {
 
 #[test]
 fn render_simple_error_single_caret() {
-    let source = Source::new("let x = ;\n".to_string());
+    let source_text = "let x = ;\n";
+    let source = Source::new(source_text.to_string());
+
+    let semicolon_start = source_text
+        .find(';')
+        .expect("source should contain `;`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unexpected token".to_string(),
-        span: Span { start: 8, end: 9 },
+        span: Span {
+            start: semicolon_start,
+            end: semicolon_start + 1,
+        },
         help: None,
         secondary: vec![],
         notes: vec![],
@@ -69,14 +77,20 @@ help: expressions cannot be empty
 
 #[test]
 fn render_multi_character_span() {
-    // Source: "let total = 123;\n"
-    // Indexes: l0 e1 t2 ' '3 t4 o5 t6 a7 l8 ' '9 =10 ' '11 1(12) 2(13) 3(14) ;15 \n16
-    let source = Source::new("let total = 123;\n".to_string());
+    let source_text = "let total = 123;\n";
+    let source = Source::new(source_text.to_string());
+
+    let number_start = source_text
+        .find("123")
+        .expect("source should contain `123`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "invalid number".to_string(),
-        span: Span { start: 12, end: 15 }, // highlights "123"
+        span: Span {
+            start: number_start,
+            end: number_start + "123".len(),
+        },
         help: None,
         secondary: vec![],
         notes: vec![],
@@ -113,14 +127,17 @@ line 11
 ";
     let source = Source::new(source_text.to_string());
 
-    // "bad stuff" starts at the beginning of line 10
-    // Compute the byte index manually:
-    // Each "line X\n" is 7 bytes for lines 1–9 ("line 1\n" .. "line 9\n")
-    // 9 * 7 = 63, so line 10 starts at byte 63
+    let bad_start = source_text
+        .find("bad")
+        .expect("source should contain `bad`");
+
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "invalid syntax".to_string(),
-        span: Span { start: 63, end: 66 }, // highlights "bad"
+        span: Span {
+            start: bad_start,
+            end: bad_start + "bad".len(),
+        },
         help: None,
         secondary: vec![],
         notes: vec![],
@@ -141,12 +158,20 @@ error: invalid syntax
 
 #[test]
 fn render_warning_severity() {
-    let source = Source::new("let x = 1;\n".to_string());
+    let source_text = "let x = 1;\n";
+    let source = Source::new(source_text.to_string());
+
+    let x_start = source_text
+        .find('x')
+        .expect("source should contain `x`");
 
     let diag = Diagnostic {
         severity: Severity::Warning,
         message: "unused variable".to_string(),
-        span: Span { start: 4, end: 5 }, // highlights "x"
+        span: Span {
+            start: x_start,
+            end: x_start + 1,
+        },
         help: None,
         secondary: vec![],
         notes: vec![],
@@ -167,12 +192,20 @@ warning: unused variable
 
 #[test]
 fn render_span_at_column_one() {
-    let source = Source::new("oops = 1;\n".to_string());
+    let source_text = "oops = 1;\n";
+    let source = Source::new(source_text.to_string());
+
+    let oops_start = source_text
+        .find("oops")
+        .expect("source should contain `oops`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unexpected identifier".to_string(),
-        span: Span { start: 0, end: 4 }, // highlights "oops"
+        span: Span {
+            start: oops_start,
+            end: oops_start + "oops".len(),
+        },
         help: None,
         secondary: vec![],
         notes: vec![],
@@ -243,24 +276,26 @@ note: this value is inferred
 
 #[test]
 fn render_error_in_multi_line_source() {
-    let source = Source::new(
-        "\
+    let source_text = "\
 let a = 1;
 let b = ;
 let c = 3;
-"
-        .to_string(),
-    );
+";
+    let source = Source::new(source_text.to_string());
 
-    // Error is on line 2: "let b = ;"
-    // Indexes:
-    // line 1: "let a = 1;\n" -> 11 bytes
-    // line 2 starts at byte 11
-    // "let b = ;" -> ';' is at byte 18
+    let line_two_start = source_text
+        .find("let b = ;")
+        .expect("source should contain line two");
+
+    let semicolon_start = line_two_start + "let b = ".len();
+
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "expected expression".to_string(),
-        span: Span { start: 19, end: 20 },
+        span: Span {
+            start: semicolon_start,
+            end: semicolon_start + 1,
+        },
         help: Some("expressions cannot be empty"),
         secondary: vec![],
         notes: vec![],
@@ -283,25 +318,36 @@ help: expressions cannot be empty
 
 #[test]
 fn render_error_with_secondary_span_label() {
-    let source = Source::new(
-        "\
+    let source_text = "\
 let total = price * qty;
 let price = 10;
-"
-        .to_string(),
-    );
+";
+    let source = Source::new(source_text.to_string());
+
+    let qty_start = source_text
+        .find("qty")
+        .expect("source should contain `qty`");
+
+    let price_start = source_text
+        .find("price")
+        .expect("source should contain `price`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variable `qty`".to_string(),
-        span: Span { start: 20, end: 23 }, // "qty"
+        span: Span {
+            start: qty_start,
+            end: qty_start + "qty".len(),
+        },
         help: None,
         secondary: vec![(
-            Span { start: 11 , end: 19 },
+            Span {
+                start: price_start,
+                end: price_start + "price".len(),
+            },
             "defined here",
         )],
         notes: vec![],
-
     };
 
     assert_render(
@@ -313,30 +359,55 @@ error: unknown variable `qty`
   |
 1 | let total = price * qty;
   |                     ^^^
-  |             -------- defined here
+  |             ------- defined here
 ",
     );
 }
 
 #[test]
 fn render_error_with_multiple_secondary_labels() {
-    let source = Source::new(
-        "\
+    let source_text = "\
 let total = price * qty + tax;
 let price = 10;
 let tax = 2;
-"
-        .to_string(),
-    );
+";
+    let source = Source::new(source_text.to_string());
+
+    let primary_start = source_text
+        .find("qty + tax")
+        .expect("source should contain `qty + tax`");
+
+    let price_start = source_text
+        .find("price")
+        .expect("source should contain the first `price`");
+
+    let declared_tax_start = source_text
+        .rfind("tax")
+        .expect("source should contain the declared `tax`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variables".to_string(),
-        span: Span { start: 20, end: 29 }, // "qty + tax"
+        span: Span {
+            start: primary_start,
+            end: primary_start + "qty + tax".len(),
+        },
         help: None,
         secondary: vec![
-            (Span { start: 12, end: 17 }, "defined here"), // price
-            (Span { start: 33, end: 36 }, "defined here"), // tax
+            (
+                Span {
+                    start: price_start,
+                    end: price_start + "price".len(),
+                },
+                "defined here",
+            ),
+            (
+                Span {
+                    start: declared_tax_start,
+                    end: declared_tax_start + "tax".len(),
+                },
+                "defined here",
+            ),
         ],
         notes: vec![],
     };
@@ -350,20 +421,33 @@ error: unknown variables
   |
 1 | let total = price * qty + tax;
   |                     ^^^^^^^^^
-  |             -------- defined here
-  |             -------- defined here
+  |             ------- defined here
+
+defined here
+ --> line 3, column 5
+  |
+3 | let tax = 2;
+  |     ^^^
 ",
     );
 }
 
 #[test]
 fn render_error_with_note_and_help() {
-    let source = Source::new("x = y;\n".to_string());
+    let source_text = "x = y;\n";
+    let source = Source::new(source_text.to_string());
+
+    let y_start = source_text
+        .find('y')
+        .expect("source should contain `y`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variable `y`".to_string(),
-        span: Span { start: 4, end: 5 },
+        span: Span {
+            start: y_start,
+            end: y_start + 1,
+        },
         help: None,
         secondary: vec![],
         notes: vec![
@@ -399,25 +483,37 @@ help: try defining `y` earlier in the file
 
 #[test]
 fn render_embedded_note_with_source_span() {
-    let source = Source::new(
-        "\
+    let source_text = "\
 let total = price * qty;
 let price = 10;
-"
-        .to_string(),
-    );
+";
+    let source = Source::new(source_text.to_string());
+
+    let qty_start = source_text
+        .find("qty")
+        .expect("source should contain `qty`");
+
+    let price_start = source_text
+        .find("price")
+        .expect("source should contain `price`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variable `qty`".to_string(),
-        span: Span { start: 20, end: 23 },
+        span: Span {
+            start: qty_start,
+            end: qty_start + "qty".len(),
+        },
         help: None,
         secondary: vec![],
         notes: vec![
             Note {
                 severity: Severity::Note,
                 message: "`price` is defined here".to_string(),
-                span: Some(Span { start: 12, end: 17 }),
+                span: Some(Span {
+                    start: price_start,
+                    end: price_start + "price".len(),
+                }),
             }
         ],
     };
@@ -443,25 +539,37 @@ note: `price` is defined here
 
 #[test]
 fn render_error_with_multiple_notes_mixed_spans() {
-    let source = Source::new(
-        "\
+    let source_text = "\
 let total = price * qty;
 let price = 10;
-"
-        .to_string(),
-    );
+";
+    let source = Source::new(source_text.to_string());
+
+    let qty_start = source_text
+        .find("qty")
+        .expect("source should contain `qty`");
+
+    let price_start = source_text
+        .find("price")
+        .expect("source should contain `price`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variable `qty`".to_string(),
-        span: Span { start: 20, end: 23 }, // qty
+        span: Span {
+            start: qty_start,
+            end: qty_start + "qty".len(),
+        },
         help: Some("declare `qty` before use"),
         secondary: vec![],
         notes: vec![
             Note {
                 severity: Severity::Note,
                 message: "`price` is defined here".to_string(),
-                span: Some(Span { start: 12, end: 17 }), // price
+                span: Some(Span {
+                    start: price_start,
+                    end: price_start + "price".len(),
+                }),
             },
             Note {
                 severity: Severity::Note,
@@ -574,14 +682,111 @@ error: test
 
 #[test]
 fn secondary_labels_do_not_shift_caret() {
-    let source = Source::new("let x = y;\n".to_string());
+    let source_text = "let x = y;\n";
+    let source = Source::new(source_text.to_string());
+
+    let x_start = source_text
+        .find('x')
+        .expect("source should contain `x`");
+
+    let y_start = source_text
+        .find('y')
+        .expect("source should contain `y`");
 
     let diag = Diagnostic {
         severity: Severity::Error,
         message: "unknown variable".to_string(),
-        span: Span { start: 8, end: 9 },
+        span: Span {
+            start: y_start,
+            end: y_start + 1,
+        },
         help: None,
-        secondary: vec![(Span { start: 4, end: 5 }, "defined here")],
+        secondary: vec![(
+            Span {
+                start: x_start,
+                end: x_start + 1,
+            },
+            "defined here",
+        )],
+        notes: vec![],
+    };
+
+    assert_render(
+    &diag,
+    &source,
+    "\
+error: unknown variable
+ --> line 1, column 9
+  |
+1 | let x = y;
+  |         ^
+  |     --- defined here
+",
+    );
+}
+
+#[test]
+fn diagnostic_caret_uses_character_columns_for_utf8_source() {
+    let source_text = "value = \"é\" + bad;\n".to_string();
+    let source = Source::new(source_text.clone());
+
+    let bad_start = source_text
+        .find("bad")
+        .expect("test source should contain `bad`");
+
+    let diag = Diagnostic::error(
+        "invalid value",
+        Span {
+            start: bad_start,
+            end: bad_start + "bad".len(),
+        },
+    );
+
+    assert_render(
+        &diag,
+        &source,
+        "\
+error: invalid value
+ --> line 1, column 15
+  |
+1 | value = \"é\" + bad;
+  |               ^^^
+",
+    );
+}
+
+#[test]
+fn cross_line_secondary_span_renders_its_own_source_block() {
+    let source_text = "\
+let total = pirce * qty;
+let price = 10;
+";
+
+    let source = Source::new(source_text.to_string());
+
+    let primary_start = source_text
+        .find("pirce")
+        .expect("source should contain `pirce`");
+
+    let secondary_start = source_text
+        .rfind("price")
+        .expect("source should contain `price`");
+
+    let diag = Diagnostic {
+        severity: Severity::Error,
+        message: "unknown variable `pirce`".to_string(),
+        span: Span {
+            start: primary_start,
+            end: primary_start + "pirce".len(),
+        },
+        help: None,
+        secondary: vec![(
+            Span {
+                start: secondary_start,
+                end: secondary_start + "price".len(),
+            },
+            "similar name defined here",
+        )],
         notes: vec![],
     };
 
@@ -589,12 +794,17 @@ fn secondary_labels_do_not_shift_caret() {
         &diag,
         &source,
         "\
-error: unknown variable
- --> line 1, column 9
+error: unknown variable `pirce`
+ --> line 1, column 13
   |
-1 | let x = y;
-  |         ^
-  | -------- defined here
+1 | let total = pirce * qty;
+  |             ^^^^^
+
+similar name defined here
+ --> line 2, column 5
+  |
+2 | let price = 10;
+  |     ^^^^^
 ",
     );
 }

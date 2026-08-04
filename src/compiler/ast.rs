@@ -1,3 +1,5 @@
+use crate::compiler::error::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     /// Integer number.
@@ -20,7 +22,13 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Node {
+pub struct Node {
+    pub kind: NodeKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeKind {
     // ===== Atoms =====
     Ident(String),
     Lit(Literal),
@@ -53,12 +61,12 @@ pub enum Node {
     Or(Box<Node>, Box<Node>),
 
     // ===== Traversal =====
-    Get(Box<Node>, Box<Node>), // ::
-    Has(Box<Node>, Box<Node>), // :?
-    Index(Box<Node>),          // [expression]
+    Get(Box<Node>, Box<Node>),
+    Has(Box<Node>, Box<Node>),
+    Index(Box<Node>),
 
     // ===== Flow =====
-    Pipe(Box<Node>, Box<Node>),      // |>
+    Pipe(Box<Node>, Box<Node>),
     Block(Block),
     Loop(Loop),
     Local(Box<Node>),
@@ -70,6 +78,19 @@ pub enum Node {
     Guard(Guard),
     Func(Func),
     Call(Call),
+}
+
+impl Node {
+    pub fn new(kind: NodeKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
+    pub fn start(kind: NodeKind, start: usize, end: usize) -> Self {
+        Self {
+            kind,
+            span: Span { start, end },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

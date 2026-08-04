@@ -2,7 +2,7 @@ use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
 use crate::compiler::ast::{
     Bind, Block, Call, Copy, Define, DefineEmpty, Func, Guard, Literal, Node,
-    Program, Ret,
+    NodeKind, Program, Ret,
 };
 use crate::compiler::diagnostic::render;
 use crate::compiler::error::{Diagnostic, Source};
@@ -49,12 +49,13 @@ fn parses_multiple_nodes() {
 fn parses_define_empty_node() {
     let node = parse_node("a =;");
 
-    assert_eq!(
-        node,
-        Node::DefineEmpty(DefineEmpty {
-            name: "a".into()
-        })
-    );
+    match &node.kind {
+        NodeKind::DefineEmpty(DefineEmpty { name }) => {
+            assert_eq!(name, "a");
+        }
+
+        other => panic!("expected DefineEmpty node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -99,9 +100,9 @@ fn parses_local_define_empty_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::DefineEmpty(DefineEmpty { name }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::DefineEmpty(DefineEmpty { name }) => {
                 assert_eq!(name, "a");
             }
             other => panic!("expected empty definition inside local node, got {:?}", other),
@@ -119,15 +120,15 @@ fn define_empty_allows_following_statement() {
     let first = parser.parse_node().unwrap();
     let second = parser.parse_node().unwrap();
 
-    match first {
-        Node::DefineEmpty(DefineEmpty { name }) => {
+    match &(first).kind {
+        NodeKind::DefineEmpty(DefineEmpty { name }) => {
             assert_eq!(name, "a");
         }
         other => panic!("expected first empty definition node, got {:?}", other),
     }
 
-    match second {
-        Node::DefineEmpty(DefineEmpty { name }) => {
+    match &(second).kind {
+        NodeKind::DefineEmpty(DefineEmpty { name }) => {
             assert_eq!(name, "b");
         }
         other => panic!("expected second empty definition node, got {:?}", other),
@@ -152,12 +153,12 @@ fn parses_define_node() {
 
     let node = parser.parse_node().expect("failed to parse define node");
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "x");
 
-            match *value {
-                Node::Lit(Literal::Num(n)) => assert_eq!(n, 42),
+            match &value.kind {
+                NodeKind::Lit(Literal::Num(n)) => assert_eq!(*n, 42),
                 _ => panic!("expected numeric literal on right-hand side"),
             }
         }
@@ -273,13 +274,13 @@ fn parses_local_define_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::Define(Define { name, value }) => {
                 assert_eq!(name, "a");
 
-                match value.as_ref() {
-                    Node::Lit(Literal::Num(value)) => {
+                match &(value.as_ref()).kind {
+                    NodeKind::Lit(Literal::Num(value)) => {
                         assert_eq!(*value, 12);
                     }
                     other => panic!("expected numeric literal, got {:?}", other),
@@ -308,18 +309,29 @@ fn define_accepts_compound_expression_rhs() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "a");
 
-            match value.as_ref() {
-                Node::Add(lhs, rhs) => {
-                    assert_eq!(lhs.as_ref(), &Node::Lit(Literal::Num(12)));
-                    assert_eq!(rhs.as_ref(), &Node::Lit(Literal::Num(13)));
+            match &value.kind {
+                NodeKind::Add(lhs, rhs) => {
+                    assert!(matches!(
+                        &lhs.kind,
+                        NodeKind::Lit(Literal::Num(12))
+                    ));
+
+                    assert!(matches!(
+                        &rhs.kind,
+                        NodeKind::Lit(Literal::Num(13))
+                    ));
                 }
-                other => panic!("expected addition expression, got {:?}", other),
+
+                other => {
+                    panic!("expected addition expression, got {:?}", other)
+                }
             }
         }
+
         other => panic!("expected define node, got {:?}", other),
     }
 }
@@ -342,19 +354,17 @@ fn parses_node_block() {
 
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Block(Block { segments }) => {
+    match &program.nodes[0].kind {
+        NodeKind::Block(Block { segments }) => {
             assert_eq!(segments.len(), 1);
             assert_eq!(segments[0].nodes.len(), 2);
 
-            assert!(matches!(
-                segments[0].nodes[0],
-                Node::Copy(Copy { .. })
+            assert!(matches!(&(segments[0].nodes[0]).kind,
+                NodeKind::Copy(Copy { .. })
             ));
 
-            assert!(matches!(
-                segments[0].nodes[1],
-                Node::Define(Define { .. })
+            assert!(matches!(&(segments[0].nodes[1]).kind,
+                NodeKind::Define(Define { .. })
             ));
         }
         other => panic!("expected block node, got {:?}", other),
@@ -370,7 +380,7 @@ fn block_requires_closing_delimiter() {
     let err = parser.parse_program().unwrap_err();
 
     let source = Source::new(src.to_string());
-    let diag: Diagnostic = err.into();
+    let diag: Diagnostic = err;
     let msg = render(&diag, &source);
     assert!(msg.contains("Druim expected a closing block delimiter `}:`."));
 }
@@ -384,8 +394,8 @@ fn parses_copy_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Copy(Copy { name, target }) => {
+    match &(node).kind {
+        NodeKind::Copy(Copy { name, target }) => {
             assert_eq!(name, "a");
             assert_eq!(target, "b");
         }
@@ -459,9 +469,9 @@ fn parses_local_copy_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Copy(Copy { name, target }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::Copy(Copy { name, target }) => {
                 assert_eq!(name, "a");
                 assert_eq!(target, "b");
             }
@@ -490,8 +500,8 @@ fn parses_bind_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Bind(Bind { name, target, .. }) => {
+    match &(node).kind {
+        NodeKind::Bind(Bind { name, target, .. }) => {
             assert_eq!(name, "a");
             assert_eq!(target, "b");
         }
@@ -560,9 +570,9 @@ fn parses_local_bind_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Bind(Bind { name, target }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::Bind(Bind { name, target }) => {
                 assert_eq!(name, "a");
                 assert_eq!(target, "b");
             }
@@ -591,8 +601,8 @@ fn guard_basic_node() {
     let program = parser.parse_program().unwrap();
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Guard(Guard { target, branches })  => {
+    match &program.nodes[0].kind {
+        NodeKind::Guard(Guard { target, branches })  => {
             assert_eq!(target, "x");
             assert_eq!(branches.len(), 1);
         }
@@ -609,19 +619,18 @@ fn guard_single_fallback_node() {
     let program = parser.parse_program().unwrap();
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Guard(Guard { target, branches })  => {
+    match &program.nodes[0].kind {
+        NodeKind::Guard(Guard { target, branches })  => {
             assert_eq!(target, "x");
             assert_eq!(branches.len(), 2);
 
-            assert!(matches!(
-                &branches[0].expr,
-                Node::Ident(s) if s == "y"
+            assert!(matches!(&branches[0].expr.kind,
+                NodeKind::Ident(s) if s == "y"
             ));
 
             assert!(matches!(
-                &branches[1].expr,
-                Node::Ident(s) if s == "z"
+                &branches[1].expr.kind,
+                NodeKind::Ident(s) if s == "z"
             ));
         }
         other => panic!("expected guard, got {:?}", other),
@@ -637,8 +646,8 @@ fn guard_chained_node() {
 
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Guard(Guard { target, branches })  => {
+    match &program.nodes[0].kind {
+        NodeKind::Guard(Guard { target, branches })  => {
             assert_eq!(target, "x");
             assert_eq!(branches.len(), 4);
         }
@@ -676,13 +685,13 @@ fn guard_allows_void_condition() {
 
     let node = parser.parse_node().expect("expected guard node to parse");
 
-    match node {
-        Node::Guard(Guard { target, branches }) => {
+    match &(node).kind {
+        NodeKind::Guard(Guard { target, branches }) => {
             assert_eq!(target, "x");
             assert_eq!(branches.len(), 1);
 
-            match &branches[0].expr {
-                Node::Lit(Literal::Void) => {}
+            match &branches[0].expr.kind {
+                NodeKind::Lit(Literal::Void) => {}
                 other => panic!("expected void branch, got {:?}", other),
             }
         }
@@ -727,11 +736,11 @@ fn parses_return_node_with_value() {
 
     let node = parser.parse_node().expect("failed to parse ret");
 
-    match node {
-        Node::Ret(Ret { value: Some(value) }) => {
-            match *value {
-                Node::Lit(Literal::Num(n)) => {
-                    assert_eq!(n, 42);
+    match &(node).kind {
+        NodeKind::Ret(Ret { value: Some(value) }) => {
+            match &value.kind {
+                NodeKind::Lit(Literal::Num(n)) => {
+                    assert_eq!(*n, 42);
                 }
                 other => panic!("expected numeric literal, got {:?}", other),
             }
@@ -748,16 +757,29 @@ fn parses_local_guard_node() {
 
     let node = parser.parse_node().unwrap();
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Guard(Guard { target, branches }) => {
+    match &node.kind {
+        NodeKind::Local(inner) => match &inner.kind {
+            NodeKind::Guard(Guard { target, branches }) => {
                 assert_eq!(target, "x");
                 assert_eq!(branches.len(), 2);
-                assert_eq!(branches[0].expr, Node::Lit(Literal::Num(12)));
-                assert_eq!(branches[1].expr, Node::Lit(Literal::Num(13)));
+
+                assert!(matches!(
+                    &branches[0].expr.kind,
+                    NodeKind::Lit(Literal::Num(12))
+                ));
+
+                assert!(matches!(
+                    &branches[1].expr.kind,
+                    NodeKind::Lit(Literal::Num(13))
+                ));
             }
-            other => panic!("expected guard inside local node, got {:?}", other),
+
+            other => panic!(
+                "expected guard inside local node, got {:?}",
+                other
+            ),
         },
+
         other => panic!("expected local guard node, got {:?}", other),
     }
 }
@@ -816,8 +838,8 @@ fn parses_function_with_single_param_and_body() {
 
     let expr = parser.parse_node().expect("failed to parse function");
 
-    match expr {
-        Node::Func(Func { name, params, body }) => {
+    match &(expr).kind {
+        NodeKind::Func(Func { name, params, body }) => {
             assert_eq!(name, "f");
 
             assert_eq!(params.len(), 1);
@@ -826,13 +848,12 @@ fn parses_function_with_single_param_and_body() {
 
             assert_eq!(body.len(), 1);
 
-            match &body[0] {
-                Node::Ret(Ret {
+            match &body[0].kind {
+                NodeKind::Ret(Ret {
                     value: Some(value),
                 }) => {
-                    assert!(matches!(
-                        value.as_ref(),
-                        Node::Ident(s) if s == "x"
+                    assert!(matches!(&(value.as_ref()).kind,
+                        NodeKind::Ident(s) if s == "x"
                     ));
                 }
                 other => panic!("expected `ret x;`, got {:?}", other),
@@ -872,11 +893,10 @@ fn parses_function_call_with_no_arguments() {
         .parse_expr()
         .expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { callee, args }) => {
-            assert!(matches!(
-                callee.as_ref(),
-                Node::Ident(name) if name == "f"
+    match &(expr).kind {
+        NodeKind::Call(Call { callee, args }) => {
+            assert!(matches!(&(callee.as_ref()).kind,
+                NodeKind::Ident(name) if name == "f"
             ));
 
             assert!(args.is_empty());
@@ -896,18 +916,26 @@ fn parses_function_call_with_multiple_arguments() {
         .parse_expr()
         .expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { callee, args }) => {
-            assert!(matches!(
-                callee.as_ref(),
-                Node::Ident(name) if name == "f"
+    match &(expr).kind {
+        NodeKind::Call(Call { callee, args }) => {
+            assert!(matches!(&(callee.as_ref()).kind,
+                NodeKind::Ident(name) if name == "f"
             ));
 
             assert_eq!(args.len(), 3);
 
-            assert!(matches!(&args[0], Node::Ident(name) if name == "a"));
-            assert!(matches!(&args[1], Node::Ident(name) if name == "b"));
-            assert!(matches!(&args[2], Node::Ident(name) if name == "c"));
+            assert!(matches!(
+                &args[0].kind,
+                NodeKind::Ident(name) if name == "a"
+            ));
+            assert!(matches!(
+                &args[1].kind,
+                NodeKind::Ident(name) if name == "b"
+            ));
+            assert!(matches!(
+                &args[2].kind,
+                NodeKind::Ident(name) if name == "c"
+            ));
         }
 
         other => panic!("expected Call node, got {:?}", other),
@@ -924,17 +952,22 @@ fn parses_function_call_with_expression_arguments() {
         .parse_expr()
         .expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { callee, args }) => {
-            assert!(matches!(
-                callee.as_ref(),
-                Node::Ident(name) if name == "f"
+    match &(expr).kind {
+        NodeKind::Call(Call { callee, args }) => {
+            assert!(matches!(&(callee.as_ref()).kind,
+                NodeKind::Ident(name) if name == "f"
             ));
 
             assert_eq!(args.len(), 2);
 
-            assert!(matches!(&args[0], Node::Add(_, _)));
-            assert!(matches!(&args[1], Node::Mul(_, _)));
+            assert!(matches!(
+                &args[0].kind,
+                NodeKind::Add(_, _)
+            ));
+            assert!(matches!(
+                &args[1].kind,
+                NodeKind::Mul(_, _)
+            ));
         }
 
         other => panic!("expected Call node, got {:?}", other),
@@ -951,15 +984,16 @@ fn function_calls_bind_tighter_than_addition() {
         .parse_expr()
         .expect("failed to parse expression");
 
-    match expr {
-        Node::Add(lhs, rhs) => {
-            assert!(matches!(lhs.as_ref(), Node::Call(_)));
-            assert!(matches!(rhs.as_ref(), Node::Call(_)));
+    match &(expr).kind {
+        NodeKind::Add(lhs, rhs) => {
+            assert!(matches!(&(lhs.as_ref()).kind, NodeKind::Call(_)));
+            assert!(matches!(&(rhs.as_ref()).kind, NodeKind::Call(_)));
         }
 
         other => panic!("expected Add node, got {:?}", other),
     }
 }
+
 
 #[test]
 fn parses_nested_function_call_argument() {
@@ -971,33 +1005,40 @@ fn parses_nested_function_call_argument() {
         .parse_expr()
         .expect("failed to parse nested function call");
 
-    match expr {
-        Node::Call(Call { callee, args }) => {
+    match &expr.kind {
+        NodeKind::Call(Call { callee, args }) => {
             assert!(matches!(
-                callee.as_ref(),
-                Node::Ident(name) if name == "f"
+                &callee.kind,
+                NodeKind::Ident(name) if name == "f"
             ));
 
             assert_eq!(args.len(), 1);
 
-            match &args[0] {
-                Node::Call(Call {
+            match &args[0].kind {
+                 NodeKind::Call(Call {
                     callee: inner_callee,
                     args: inner_args,
                 }) => {
                     assert!(matches!(
-                        inner_callee.as_ref(),
-                        Node::Ident(name) if name == "g"
+                        &inner_callee.kind,
+                        NodeKind::Ident(name) if name == "g"
                     ));
 
                     assert_eq!(inner_args.len(), 1);
+
                     assert!(matches!(
-                        &inner_args[0],
-                        Node::Ident(name) if name == "a"
+                        &inner_args[0].kind,
+                        NodeKind::Ident(name) if name == "a"
                     ));
+
                 }
 
-                other => panic!("expected nested Call argument, got {:?}", other),
+                other => {
+                    panic!(
+                        "expected nested Call argument, got {:?}",
+                        other
+                    )
+                }
             }
         }
 
@@ -1125,18 +1166,16 @@ fn parses_function_call_with_single_argument() {
         .parse_expr()
         .expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { callee, args }) => {
-            assert!(matches!(
-                callee.as_ref(),
-                Node::Ident(name) if name == "f"
+    match &(expr).kind {
+        NodeKind::Call(Call { callee, args }) => {
+            assert!(matches!(&(callee.as_ref()).kind,
+                NodeKind::Ident(name) if name == "f"
             ));
 
             assert_eq!(args.len(), 1);
 
-            assert!(matches!(
-                &args[0],
-                Node::Ident(name) if name == "a"
+            assert!(matches!(&args[0].kind,
+                NodeKind::Ident(name) if name == "a"
             ));
         }
 
@@ -1148,70 +1187,142 @@ fn parses_function_call_with_single_argument() {
 fn parses_get_expression() {
     let node = parse_node("x = user::profile;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Ident("user".into())),
-                Box::new(Node::Ident("profile".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    assert!(matches!(
+                        &target.kind,
+                        NodeKind::Ident(name) if name == "user"
+                    ));
+
+                    assert!(matches!(
+                        &selector.kind,
+                        NodeKind::Ident(name) if name == "profile"
+                    ));
+                }
+
+                other => panic!("expected Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_chained_get_expression() {
     let node = parse_node("x = user::profile::email;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("user".into())),
-                    Box::new(Node::Ident("profile".into())),
-                )),
-                Box::new(Node::Ident("email".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(lhs, rhs) => {
+                    assert!(matches!(
+                        &rhs.kind,
+                        NodeKind::Ident(name) if name == "email"
+                    ));
+
+                    match &lhs.kind {
+                        NodeKind::Get(inner_lhs, inner_rhs) => {
+                            assert!(matches!(
+                                &inner_lhs.kind,
+                                NodeKind::Ident(name) if name == "user"
+                            ));
+
+                            assert!(matches!(
+                                &inner_rhs.kind,
+                                NodeKind::Ident(name) if name == "profile"
+                            ));
+                        }
+
+                        other => {
+                            panic!("expected inner Get node, got {:?}", other)
+                        }
+                    }
+                }
+
+                other => panic!("expected outer Get node, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_has_expression() {
     let node = parse_node("x = user:?profile;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Ident("user".into())),
-                Box::new(Node::Ident("profile".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Has(target, selector) => {
+                    assert!(matches!(
+                        &target.kind,
+                        NodeKind::Ident(name) if name == "user"
+                    ));
+
+                    assert!(matches!(
+                        &selector.kind,
+                        NodeKind::Ident(name) if name == "profile"
+                    ));
+                }
+
+                other => panic!("expected Has expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_has_at_end_of_get_chain() {
     let node = parse_node("x = user::profile:?email;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("user".into())),
-                    Box::new(Node::Ident("profile".into())),
-                )),
-                Box::new(Node::Ident("email".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Has(target, selector) => {
+                    assert!(matches!(
+                        &selector.kind,
+                        NodeKind::Ident(name) if name == "email"
+                    ));
+
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "user"
+                            ));
+
+                            assert!(matches!(
+                                &inner_selector.kind,
+                                NodeKind::Ident(name) if name == "profile"
+                            ));
+                        }
+
+                        other => {
+                            panic!("expected Get expression, got {:?}", other)
+                        }
+                    }
+                }
+
+                other => panic!("expected Has expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -1257,12 +1368,12 @@ fn parses_empty_box_literal() {
     let src = "x = :[]:;";
     let node = parse_node(src);
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "x");
 
-            match value.as_ref() {
-                Node::Box(box_literal) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Box(box_literal) => {
                     assert!(box_literal.values.is_empty());
                 }
                 other => panic!("expected Box literal, got {:?}", other),
@@ -1277,32 +1388,34 @@ fn parses_box_literal_with_values() {
     let src = "x = :[1, 2, 3]:;";
     let node = parse_node(src);
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "x");
 
-            match value.as_ref() {
-                Node::Box(box_literal) => {
+            match &value.kind {
+                NodeKind::Box(box_literal) => {
                     assert_eq!(box_literal.values.len(), 3);
 
-                    assert_eq!(
-                        box_literal.values[0],
-                        Node::Lit(Literal::Num(1))
-                    );
+                    assert!(matches!(
+                        &box_literal.values[0].kind,
+                        NodeKind::Lit(Literal::Num(1))
+                    ));
 
-                    assert_eq!(
-                        box_literal.values[1],
-                        Node::Lit(Literal::Num(2))
-                    );
+                    assert!(matches!(
+                        &box_literal.values[1].kind,
+                        NodeKind::Lit(Literal::Num(2))
+                    ));
 
-                    assert_eq!(
-                        box_literal.values[2],
-                        Node::Lit(Literal::Num(3))
-                    );
+                    assert!(matches!(
+                        &box_literal.values[2].kind,
+                        NodeKind::Lit(Literal::Num(3))
+                    ));
                 }
+
                 other => panic!("expected Box literal, got {:?}", other),
             }
         }
+
         other => panic!("expected Define node, got {:?}", other),
     }
 }
@@ -1312,12 +1425,12 @@ fn parses_empty_bag_literal() {
     let src = "x = :||:;";
     let node = parse_node(src);
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "x");
 
-            match value.as_ref() {
-                Node::Bag(bag_literal) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Bag(bag_literal) => {
                     assert!(bag_literal.entries.is_empty());
                 }
                 other => panic!("expected Bag literal, got {:?}", other),
@@ -1332,29 +1445,32 @@ fn parses_bag_literal_with_entries() {
     let src = r#"x = :| name: "Rusty", level: 42 |:;"#;
     let node = parse_node(src);
 
-    match node {
-        Node::Define(Define { name, value }) => {
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
             assert_eq!(name, "x");
 
-            match value.as_ref() {
-                Node::Bag(bag_literal) => {
+            match &value.kind {
+                NodeKind::Bag(bag_literal) => {
                     assert_eq!(bag_literal.entries.len(), 2);
 
                     assert_eq!(bag_literal.entries[0].name, "name");
-                    assert_eq!(
-                        bag_literal.entries[0].value,
-                        Node::Lit(Literal::Text("Rusty".into()))
-                    );
+                    assert!(matches!(
+                        &bag_literal.entries[0].value.kind,
+                        NodeKind::Lit(Literal::Text(value))
+                            if value == "Rusty"
+                    ));
 
                     assert_eq!(bag_literal.entries[1].name, "level");
-                    assert_eq!(
-                        bag_literal.entries[1].value,
-                        Node::Lit(Literal::Num(42))
-                    );
+                    assert!(matches!(
+                        &bag_literal.entries[1].value.kind,
+                        NodeKind::Lit(Literal::Num(42))
+                    ));
                 }
+
                 other => panic!("expected Bag literal, got {:?}", other),
             }
         }
+
         other => panic!("expected Define node, got {:?}", other),
     }
 }
@@ -1363,12 +1479,12 @@ fn parses_bag_literal_with_entries() {
 fn parses_box_inside_box() {
     let node = parse_node("x = :[1, :[2, 3]:, 4]:;");
 
-    match node {
-        Node::Define(Define { value, .. }) => {
-            match value.as_ref() {
-                Node::Box(outer) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Box(outer) => {
                     assert_eq!(outer.values.len(), 3);
-                    assert!(matches!(&outer.values[1], Node::Box(_)));
+                    assert!(matches!(&outer.values[1].kind, NodeKind::Box(_)));
                 }
                 other => panic!("expected outer Box, got {:?}", other),
             }
@@ -1383,12 +1499,12 @@ fn parses_bag_inside_box() {
         r#"x = :[1, :| name: "Rusty" |:, 2]:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => {
-            match value.as_ref() {
-                Node::Box(outer) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Box(outer) => {
                     assert_eq!(outer.values.len(), 3);
-                    assert!(matches!(&outer.values[1], Node::Bag(_)));
+                    assert!(matches!(&outer.values[1].kind, NodeKind::Bag(_)));
                 }
                 other => panic!("expected outer Box, got {:?}", other),
             }
@@ -1403,12 +1519,12 @@ fn parses_box_inside_bag() {
         "x = :| items: :[1, 2, 3]: |:;",
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => {
-            match value.as_ref() {
-                Node::Bag(bag) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Bag(bag) => {
                     assert_eq!(bag.entries.len(), 1);
-                    assert!(matches!(&bag.entries[0].value, Node::Box(_)));
+                    assert!(matches!(&bag.entries[0].value.kind, NodeKind::Box(_)));
                 }
                 other => panic!("expected Bag, got {:?}", other),
             }
@@ -1423,12 +1539,12 @@ fn parses_bag_inside_bag() {
         r#"x = :| user: :| name: "Rusty" |: |:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => {
-            match value.as_ref() {
-                Node::Bag(bag) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Bag(bag) => {
                     assert_eq!(bag.entries.len(), 1);
-                    assert!(matches!(&bag.entries[0].value, Node::Bag(_)));
+                    assert!(matches!(&bag.entries[0].value.kind, NodeKind::Bag(_)));
                 }
                 other => panic!("expected outer Bag, got {:?}", other),
             }
@@ -1442,10 +1558,10 @@ fn parses_box_as_return_value() {
     let src = "ret :[1, 2, 3]:;";
     let node = parse_node(src);
 
-    match node {
-        Node::Ret(Ret { value: Some(value) }) => {
-            match value.as_ref() {
-                Node::Box(box_literal) => {
+    match &(node).kind {
+        NodeKind::Ret(Ret { value: Some(value) }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Box(box_literal) => {
                     assert_eq!(box_literal.values.len(), 3);
                 }
                 other => panic!("expected Box return value, got {:?}", other),
@@ -1460,10 +1576,10 @@ fn parses_bag_as_return_value() {
     let src = r#"ret :| name: "Rusty", level: 42 |:;"#;
     let node = parse_node(src);
 
-    match node {
-        Node::Ret(Ret { value: Some(value) }) => {
-            match value.as_ref() {
-                Node::Bag(bag_literal) => {
+    match &(node).kind {
+        NodeKind::Ret(Ret { value: Some(value) }) => {
+            match &(value.as_ref()).kind {
+                NodeKind::Bag(bag_literal) => {
                     assert_eq!(bag_literal.entries.len(), 2);
                 }
                 other => panic!("expected Bag return value, got {:?}", other),
@@ -1481,10 +1597,10 @@ fn parses_box_as_function_argument() {
 
     let expr = parser.parse_expr().expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { args, .. }) => {
+    match &(expr).kind {
+        NodeKind::Call(Call { args, .. }) => {
             assert_eq!(args.len(), 1);
-            assert!(matches!(&args[0], Node::Box(_)));
+            assert!(matches!(&args[0].kind, NodeKind::Box(_)));
         }
         other => panic!("expected Call node, got {:?}", other),
     }
@@ -1498,10 +1614,10 @@ fn parses_bag_as_function_argument() {
 
     let expr = parser.parse_expr().expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { args, .. }) => {
+    match &(expr).kind {
+        NodeKind::Call(Call { args, .. }) => {
             assert_eq!(args.len(), 1);
-            assert!(matches!(&args[0], Node::Bag(_)));
+            assert!(matches!(&args[0].kind, NodeKind::Bag(_)));
         }
         other => panic!("expected Call node, got {:?}", other),
     }
@@ -1515,11 +1631,11 @@ fn parses_box_and_bag_as_multiple_function_arguments() {
 
     let expr = parser.parse_expr().expect("failed to parse function call");
 
-    match expr {
-        Node::Call(Call { args, .. }) => {
+    match &(expr).kind {
+        NodeKind::Call(Call { args, .. }) => {
             assert_eq!(args.len(), 2);
-            assert!(matches!(&args[0], Node::Box(_)));
-            assert!(matches!(&args[1], Node::Bag(_)));
+            assert!(matches!(&args[0].kind, NodeKind::Box(_)));
+            assert!(matches!(&args[1].kind, NodeKind::Bag(_)));
         }
         other => panic!("expected Call node, got {:?}", other),
     }
@@ -1530,12 +1646,12 @@ fn parses_box_as_default_parameter_value() {
     let src = "fn process :(items = :[1, 2, 3]:)(ret items;):";
     let node = parse_node(src);
 
-    match node {
-        Node::Func(Func { params, .. }) => {
+    match &(node).kind {
+        NodeKind::Func(Func { params, .. }) => {
             assert_eq!(params.len(), 1);
 
             match &params[0].default {
-                Some(Node::Box(box_literal)) => {
+                Some(Node { kind: NodeKind::Box(box_literal), .. }) => {
                     assert_eq!(box_literal.values.len(), 3);
                 }
                 other => panic!(
@@ -1555,12 +1671,12 @@ fn parses_bag_as_default_parameter_value() {
 
     let node = parse_node(src);
 
-    match node {
-        Node::Func(Func { params, .. }) => {
+    match &(node).kind {
+        NodeKind::Func(Func { params, .. }) => {
             assert_eq!(params.len(), 1);
 
             match &params[0].default {
-                Some(Node::Bag(bag_literal)) => {
+                Some(Node { kind: NodeKind::Bag(bag_literal), .. }) => {
                     assert_eq!(bag_literal.entries.len(), 2);
                 }
                 other => panic!(
@@ -1577,10 +1693,10 @@ fn parses_bag_as_default_parameter_value() {
 fn parses_box_as_guard_branch() {
     let node = parse_node("result ?= :[1, 2, 3]:;");
 
-    match node {
-        Node::Guard(Guard { branches, .. }) => {
+    match &(node).kind {
+        NodeKind::Guard(Guard { branches, .. }) => {
             assert_eq!(branches.len(), 1);
-            assert!(matches!(&branches[0].expr, Node::Box(_)));
+            assert!(matches!(&branches[0].expr.kind, NodeKind::Box(_)));
         }
         other => panic!("expected Guard node, got {:?}", other),
     }
@@ -1592,10 +1708,10 @@ fn parses_bag_as_guard_branch() {
         r#"result ?= :| name: "Rusty", level: 42 |:;"#,
     );
 
-    match node {
-        Node::Guard(Guard { branches, .. }) => {
+    match &(node).kind {
+        NodeKind::Guard(Guard { branches, .. }) => {
             assert_eq!(branches.len(), 1);
-            assert!(matches!(&branches[0].expr, Node::Bag(_)));
+            assert!(matches!(&branches[0].expr.kind, NodeKind::Bag(_)));
         }
         other => panic!("expected Guard node, got {:?}", other),
     }
@@ -1607,13 +1723,13 @@ fn parses_box_and_bag_as_guard_fallbacks() {
         r#"result ?= load() : :[1, 2, 3]: : :| name: "Rusty" |:;"#,
     );
 
-    match node {
-        Node::Guard(Guard { branches, .. }) => {
+    match &(node).kind {
+        NodeKind::Guard(Guard { branches, .. }) => {
             assert_eq!(branches.len(), 3);
 
-            assert!(matches!(&branches[0].expr, Node::Call(_)));
-            assert!(matches!(&branches[1].expr, Node::Box(_)));
-            assert!(matches!(&branches[2].expr, Node::Bag(_)));
+            assert!(matches!(&branches[0].expr.kind, NodeKind::Call(_)));
+            assert!(matches!(&branches[1].expr.kind, NodeKind::Box(_)));
+            assert!(matches!(&branches[2].expr.kind, NodeKind::Bag(_)));
         }
         other => panic!("expected Guard node, got {:?}", other),
     }
@@ -1925,11 +2041,11 @@ fn bag_rejects_missing_closing_delimiter() {
 fn parses_box_as_local_define_value() {
     let node = parse_node("loc items = :[1, 2, 3]:;");
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::Define(Define { name, value }) => {
                 assert_eq!(name, "items");
-                assert!(matches!(value.as_ref(), Node::Box(_)));
+                assert!(matches!(&(value.as_ref()).kind, NodeKind::Box(_)));
             }
             other => panic!("expected Define inside Local, got {:?}", other),
         },
@@ -1943,11 +2059,11 @@ fn parses_bag_as_local_define_value() {
         r#"loc player = :| name: "Rusty", level: 42 |:;"#,
     );
 
-    match node {
-        Node::Local(inner) => match inner.as_ref() {
-            Node::Define(Define { name, value }) => {
+    match &(node).kind {
+        NodeKind::Local(inner) => match &(inner.as_ref()).kind {
+            NodeKind::Define(Define { name, value }) => {
                 assert_eq!(name, "player");
-                assert!(matches!(value.as_ref(), Node::Bag(_)));
+                assert!(matches!(&(value.as_ref()).kind, NodeKind::Bag(_)));
             }
             other => panic!("expected Define inside Local, got {:?}", other),
         },
@@ -1968,39 +2084,33 @@ fn box_accepts_mixed_value_types() {
         ]:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Box(box_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Box(box_literal) => {
                 assert_eq!(box_literal.values.len(), 6);
 
-                assert!(matches!(
-                    &box_literal.values[0],
-                    Node::Lit(Literal::Num(42))
+                assert!(matches!(&box_literal.values[0].kind,
+                    NodeKind::Lit(Literal::Num(42))
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[1],
-                    Node::Lit(Literal::Dec(value)) if value == "3.14"
+                assert!(matches!(&box_literal.values[1].kind,
+                    NodeKind::Lit(Literal::Dec(value)) if value == "3.14"
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[2],
-                    Node::Lit(Literal::Text(value)) if value == "Rusty"
+                assert!(matches!(&box_literal.values[2].kind,
+                    NodeKind::Lit(Literal::Text(value)) if value == "Rusty"
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[3],
-                    Node::Lit(Literal::Void)
+                assert!(matches!(&box_literal.values[3].kind,
+                    NodeKind::Lit(Literal::Void)
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[4],
-                    Node::Lit(Literal::Flag(true))
+                assert!(matches!(&box_literal.values[4].kind,
+                    NodeKind::Lit(Literal::Flag(true))
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[5],
-                    Node::Lit(Literal::Flag(false))
+                assert!(matches!(&box_literal.values[5].kind,
+                    NodeKind::Lit(Literal::Flag(false))
                 ));
             }
             other => panic!("expected Box literal, got {:?}", other),
@@ -2022,39 +2132,33 @@ fn bag_accepts_mixed_value_types() {
         |:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Bag(bag_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Bag(bag_literal) => {
                 assert_eq!(bag_literal.entries.len(), 6);
 
-                assert!(matches!(
-                    &bag_literal.entries[0].value,
-                    Node::Lit(Literal::Num(42))
+                assert!(matches!(&bag_literal.entries[0].value.kind,
+                    NodeKind::Lit(Literal::Num(42))
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[1].value,
-                    Node::Lit(Literal::Dec(value)) if value == "3.14"
+                assert!(matches!(&bag_literal.entries[1].value.kind,
+                    NodeKind::Lit(Literal::Dec(value)) if value == "3.14"
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[2].value,
-                    Node::Lit(Literal::Text(value)) if value == "Rusty"
+                assert!(matches!(&bag_literal.entries[2].value.kind,
+                    NodeKind::Lit(Literal::Text(value)) if value == "Rusty"
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[3].value,
-                    Node::Lit(Literal::Void)
+                assert!(matches!(&bag_literal.entries[3].value.kind,
+                    NodeKind::Lit(Literal::Void)
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[4].value,
-                    Node::Lit(Literal::Flag(true))
+                assert!(matches!(&bag_literal.entries[4].value.kind,
+                    NodeKind::Lit(Literal::Flag(true))
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[5].value,
-                    Node::Lit(Literal::Flag(false))
+                assert!(matches!(&bag_literal.entries[5].value.kind,
+                    NodeKind::Lit(Literal::Flag(false))
                 ));
             }
             other => panic!("expected Bag literal, got {:?}", other),
@@ -2073,24 +2177,21 @@ fn box_accepts_expression_values() {
         ]:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Box(box_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Box(box_literal) => {
                 assert_eq!(box_literal.values.len(), 3);
 
-                assert!(matches!(
-                    &box_literal.values[0],
-                    Node::Add(_, _)
+                assert!(matches!(&box_literal.values[0].kind,
+                    NodeKind::Add(_, _)
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[1],
-                    Node::Mul(_, _)
+                assert!(matches!(&box_literal.values[1].kind,
+                    NodeKind::Mul(_, _)
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[2],
-                    Node::Call(_)
+                assert!(matches!(&box_literal.values[2].kind,
+                    NodeKind::Call(_)
                 ));
             }
             other => panic!("expected Box literal, got {:?}", other),
@@ -2109,24 +2210,21 @@ fn bag_accepts_expression_values() {
         |:;"#,
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Bag(bag_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Bag(bag_literal) => {
                 assert_eq!(bag_literal.entries.len(), 3);
 
-                assert!(matches!(
-                    &bag_literal.entries[0].value,
-                    Node::Add(_, _)
+                assert!(matches!(&bag_literal.entries[0].value.kind,
+                    NodeKind::Add(_, _)
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[1].value,
-                    Node::Mul(_, _)
+                assert!(matches!(&bag_literal.entries[1].value.kind,
+                    NodeKind::Mul(_, _)
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[2].value,
-                    Node::Call(_)
+                assert!(matches!(&bag_literal.entries[2].value.kind,
+                    NodeKind::Call(_)
                 ));
             }
             other => panic!("expected Bag literal, got {:?}", other),
@@ -2139,24 +2237,21 @@ fn bag_accepts_expression_values() {
 fn box_accepts_identifier_values() {
     let node = parse_node("x = :[first, second, third]:;");
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Box(box_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Box(box_literal) => {
                 assert_eq!(box_literal.values.len(), 3);
 
-                assert!(matches!(
-                    &box_literal.values[0],
-                    Node::Ident(name) if name == "first"
+                assert!(matches!(&box_literal.values[0].kind,
+                    NodeKind::Ident(name) if name == "first"
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[1],
-                    Node::Ident(name) if name == "second"
+                assert!(matches!(&box_literal.values[1].kind,
+                    NodeKind::Ident(name) if name == "second"
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[2],
-                    Node::Ident(name) if name == "third"
+                assert!(matches!(&box_literal.values[2].kind,
+                    NodeKind::Ident(name) if name == "third"
                 ));
             }
             other => panic!("expected Box literal, got {:?}", other),
@@ -2171,19 +2266,17 @@ fn bag_accepts_identifier_values() {
         "x = :| primary: first, secondary: second |:;",
     );
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Bag(bag_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Bag(bag_literal) => {
                 assert_eq!(bag_literal.entries.len(), 2);
 
-                assert!(matches!(
-                    &bag_literal.entries[0].value,
-                    Node::Ident(name) if name == "first"
+                assert!(matches!(&bag_literal.entries[0].value.kind,
+                    NodeKind::Ident(name) if name == "first"
                 ));
 
-                assert!(matches!(
-                    &bag_literal.entries[1].value,
-                    Node::Ident(name) if name == "second"
+                assert!(matches!(&bag_literal.entries[1].value.kind,
+                    NodeKind::Ident(name) if name == "second"
                 ));
             }
             other => panic!("expected Bag literal, got {:?}", other),
@@ -2203,16 +2296,14 @@ fn parses_program_with_box_and_bag_definitions() {
 
     assert_eq!(program.nodes.len(), 2);
 
-    assert!(matches!(
-        &program.nodes[0],
-        Node::Define(Define { value, .. })
-            if matches!(value.as_ref(), Node::Box(_))
+    assert!(matches!(&program.nodes[0].kind,
+        NodeKind::Define(Define { value, .. })
+            if matches!(&(value.as_ref()).kind, NodeKind::Box(_))
     ));
 
-    assert!(matches!(
-        &program.nodes[1],
-        Node::Define(Define { value, .. })
-            if matches!(value.as_ref(), Node::Bag(_))
+    assert!(matches!(&program.nodes[1].kind,
+        NodeKind::Define(Define { value, .. })
+            if matches!(&(value.as_ref()).kind, NodeKind::Bag(_))
     ));
 }
 
@@ -2231,18 +2322,15 @@ fn parses_program_with_nested_collections_and_following_statement() {
 
     assert_eq!(program.nodes.len(), 2);
 
-    assert!(matches!(
-        &program.nodes[0],
-        Node::Define(Define { value, .. })
-            if matches!(value.as_ref(), Node::Box(_))
+    assert!(matches!(&program.nodes[0].kind,
+        NodeKind::Define(Define { value, .. })
+            if matches!(&(value.as_ref()).kind, NodeKind::Box(_))
     ));
 
-    assert!(matches!(
-        &program.nodes[1],
-        Node::Define(Define { value, .. })
-            if matches!(
-                value.as_ref(),
-                Node::Lit(Literal::Num(42))
+    assert!(matches!(&program.nodes[1].kind,
+        NodeKind::Define(Define { value, .. })
+            if matches!(&(value.as_ref()).kind,
+                NodeKind::Lit(Literal::Num(42))
             )
     ));
 }
@@ -2259,15 +2347,14 @@ fn parses_box_definition_inside_block() {
 
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Block(Block { segments }) => {
+    match &program.nodes[0].kind {
+        NodeKind::Block(Block { segments }) => {
             assert_eq!(segments.len(), 1);
             assert_eq!(segments[0].nodes.len(), 1);
 
-            assert!(matches!(
-                &segments[0].nodes[0],
-                Node::Define(Define { value, .. })
-                    if matches!(value.as_ref(), Node::Box(_))
+            assert!(matches!(&segments[0].nodes[0].kind,
+                NodeKind::Define(Define { value, .. })
+                    if matches!(&(value.as_ref()).kind, NodeKind::Box(_))
             ));
         }
 
@@ -2290,15 +2377,14 @@ fn parses_bag_definition_inside_block() {
 
     assert_eq!(program.nodes.len(), 1);
 
-    match &program.nodes[0] {
-        Node::Block(Block { segments }) => {
+    match &program.nodes[0].kind {
+        NodeKind::Block(Block { segments }) => {
             assert_eq!(segments.len(), 1);
             assert_eq!(segments[0].nodes.len(), 1);
 
-            assert!(matches!(
-                &segments[0].nodes[0],
-                Node::Define(Define { value, .. })
-                    if matches!(value.as_ref(), Node::Bag(_))
+            assert!(matches!(&segments[0].nodes[0].kind,
+                NodeKind::Define(Define { value, .. })
+                    if matches!(&(value.as_ref()).kind, NodeKind::Bag(_))
             ));
         }
 
@@ -2317,19 +2403,17 @@ fn parses_box_definition_inside_function_body() {
         "#,
     );
 
-    match node {
-        Node::Func(Func { body, .. }) => {
+    match &(node).kind {
+        NodeKind::Func(Func { body, .. }) => {
             assert_eq!(body.len(), 2);
 
-            assert!(matches!(
-                &body[0],
-                Node::Define(Define { value, .. })
-                    if matches!(value.as_ref(), Node::Box(_))
+            assert!(matches!(&body[0].kind,
+                NodeKind::Define(Define { value, .. })
+                    if matches!(&(value.as_ref()).kind, NodeKind::Box(_))
             ));
 
-            assert!(matches!(
-                &body[1],
-                Node::Ret(Ret { .. })
+            assert!(matches!(&body[1].kind,
+                NodeKind::Ret(Ret { .. })
             ));
         }
 
@@ -2351,19 +2435,17 @@ fn parses_bag_definition_inside_function_body() {
         "#,
     );
 
-    match node {
-        Node::Func(Func { body, .. }) => {
+    match &(node).kind {
+        NodeKind::Func(Func { body, .. }) => {
             assert_eq!(body.len(), 2);
 
-            assert!(matches!(
-                &body[0],
-                Node::Define(Define { value, .. })
-                    if matches!(value.as_ref(), Node::Bag(_))
+            assert!(matches!(&body[0].kind,
+                NodeKind::Define(Define { value, .. })
+                    if matches!(&(value.as_ref()).kind, NodeKind::Bag(_))
             ));
 
-            assert!(matches!(
-                &body[1],
-                Node::Ret(Ret { .. })
+            assert!(matches!(&body[1].kind,
+                NodeKind::Ret(Ret { .. })
             ));
         }
 
@@ -2375,19 +2457,17 @@ fn parses_bag_definition_inside_function_body() {
 fn parses_empty_box_and_bag_inside_box() {
     let node = parse_node("x = :[:[]:, :||:]:;");
 
-    match node {
-        Node::Define(Define { value, .. }) => match value.as_ref() {
-            Node::Box(box_literal) => {
+    match &(node).kind {
+        NodeKind::Define(Define { value, .. }) => match &(value.as_ref()).kind {
+            NodeKind::Box(box_literal) => {
                 assert_eq!(box_literal.values.len(), 2);
 
-                assert!(matches!(
-                    &box_literal.values[0],
-                    Node::Box(inner) if inner.values.is_empty()
+                assert!(matches!(&box_literal.values[0].kind,
+                    NodeKind::Box(inner) if inner.values.is_empty()
                 ));
 
-                assert!(matches!(
-                    &box_literal.values[1],
-                    Node::Bag(inner) if inner.entries.is_empty()
+                assert!(matches!(&box_literal.values[1].kind,
+                    NodeKind::Bag(inner) if inner.entries.is_empty()
                 ));
             }
 
@@ -2402,62 +2482,112 @@ fn parses_empty_box_and_bag_inside_box() {
 fn parses_true_flag_literal() {
     let node = parse_node("x = true;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Lit(Literal::Flag(true))),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            assert!(matches!(
+                &value.kind,
+                NodeKind::Lit(Literal::Flag(true))
+            ));
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_false_flag_literal() {
     let node = parse_node("x = false;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Lit(Literal::Flag(false))),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            assert!(matches!(
+                &value.kind,
+                NodeKind::Lit(Literal::Flag(false))
+            ));
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_indexed_get_expression() {
     let node = parse_node("x = items::[1];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Ident("items".into())),
-                Box::new(Node::Index(Box::new(
-                    Node::Lit(Literal::Num(1)),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    assert!(matches!(
+                        &target.kind,
+                        NodeKind::Ident(name) if name == "items"
+                    ));
+
+                    match &selector.kind {
+                        NodeKind::Index(index) => {
+                            assert!(matches!(
+                                &index.kind,
+                                NodeKind::Lit(Literal::Num(1))
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected indexed selector, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_indexed_has_expression() {
     let node = parse_node("x = items:?[1];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Ident("items".into())),
-                Box::new(Node::Index(Box::new(
-                    Node::Lit(Literal::Num(1)),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Has(target, selector) => {
+                    assert!(matches!(
+                        &target.kind,
+                        NodeKind::Ident(name) if name == "items"
+                    ));
+
+                    match &selector.kind {
+                        NodeKind::Index(index) => {
+                            assert!(matches!(
+                                &index.kind,
+                                NodeKind::Lit(Literal::Num(1))
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected indexed selector, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected Has expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -2480,128 +2610,322 @@ fn rejects_unclosed_index_selector() {
 fn parses_computed_index_expression() {
     let node = parse_node("x = items::[1 + 1];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Ident("items".into())),
-                Box::new(Node::Index(Box::new(
-                    Node::Add(
-                        Box::new(Node::Lit(Literal::Num(1))),
-                        Box::new(Node::Lit(Literal::Num(1))),
-                    ),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    assert!(matches!(
+                        &target.kind,
+                        NodeKind::Ident(name) if name == "items"
+                    ));
+
+                    match &selector.kind {
+                        NodeKind::Index(index_expr) => {
+                            match &index_expr.kind {
+                                NodeKind::Add(lhs, rhs) => {
+                                    assert!(matches!(
+                                        &lhs.kind,
+                                        NodeKind::Lit(Literal::Num(1))
+                                    ));
+
+                                    assert!(matches!(
+                                        &rhs.kind,
+                                        NodeKind::Lit(Literal::Num(1))
+                                    ));
+                                }
+
+                                other => {
+                                    panic!(
+                                        "expected Add expression inside Index, got {:?}",
+                                        other
+                                    )
+                                }
+                            }
+                        }
+
+                        other => {
+                            panic!("expected Index selector, got {:?}", other)
+                        }
+                    }
+                }
+
+                other => panic!("expected Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_repeated_indexed_get_expression() {
     let node = parse_node("x = matrix::[1]::[0];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("matrix".into())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(1)),
-                    ))),
-                )),
-                Box::new(Node::Index(Box::new(
-                    Node::Lit(Literal::Num(0)),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "matrix"
+                            ));
+
+                            match &inner_selector.kind {
+                                NodeKind::Index(index) => {
+                                    assert!(matches!(
+                                        &index.kind,
+                                        NodeKind::Lit(Literal::Num(1))
+                                    ));
+                                }
+
+                                other => panic!(
+                                    "expected first indexed selector, got {:?}",
+                                    other
+                                ),
+                            }
+                        }
+
+                        other => panic!(
+                            "expected inner Get expression, got {:?}",
+                            other
+                        ),
+                    }
+
+                    match &selector.kind {
+                        NodeKind::Index(index) => {
+                            assert!(matches!(
+                                &index.kind,
+                                NodeKind::Lit(Literal::Num(0))
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected second indexed selector, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected outer Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_indexed_get_followed_by_named_get() {
     let node = parse_node("x = data::[0]::name;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("data".into())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-                Box::new(Node::Ident("name".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    assert!(matches!(
+                        &selector.kind,
+                        NodeKind::Ident(name) if name == "name"
+                    ));
+
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "data"
+                            ));
+
+                            match &inner_selector.kind {
+                                NodeKind::Index(index) => {
+                                    assert!(matches!(
+                                        &index.kind,
+                                        NodeKind::Lit(Literal::Num(0))
+                                    ));
+                                }
+
+                                other => panic!(
+                                    "expected indexed selector, got {:?}",
+                                    other
+                                ),
+                            }
+                        }
+
+                        other => panic!(
+                            "expected inner Get expression, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected outer Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_named_get_followed_by_indexed_get() {
     let node = parse_node("x = data::items::[1];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("data".into())),
-                    Box::new(Node::Ident("items".into())),
-                )),
-                Box::new(Node::Index(Box::new(
-                    Node::Lit(Literal::Num(1)),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Get(target, selector) => {
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "data"
+                            ));
+
+                            assert!(matches!(
+                                &inner_selector.kind,
+                                NodeKind::Ident(name) if name == "items"
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected inner Get expression, got {:?}",
+                            other
+                        ),
+                    }
+
+                    match &selector.kind {
+                        NodeKind::Index(index) => {
+                            assert!(matches!(
+                                &index.kind,
+                                NodeKind::Lit(Literal::Num(1))
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected indexed selector, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected outer Get expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_indexed_get_followed_by_named_has() {
     let node = parse_node("x = data::[0]:?name;");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("data".into())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-                Box::new(Node::Ident("name".into())),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Has(target, selector) => {
+                    assert!(matches!(
+                        &selector.kind,
+                        NodeKind::Ident(name) if name == "name"
+                    ));
+
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "data"
+                            ));
+
+                            match &inner_selector.kind {
+                                NodeKind::Index(index) => {
+                                    assert!(matches!(
+                                        &index.kind,
+                                        NodeKind::Lit(Literal::Num(0))
+                                    ));
+                                }
+
+                                other => panic!(
+                                    "expected indexed selector, got {:?}",
+                                    other
+                                ),
+                            }
+                        }
+
+                        other => panic!(
+                            "expected Get expression before Has, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected Has expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
 fn parses_named_get_followed_by_indexed_has() {
     let node = parse_node("x = data::items:?[1];");
 
-    assert_eq!(
-        node,
-        Node::Define(Define {
-            name: "x".into(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Get(
-                    Box::new(Node::Ident("data".into())),
-                    Box::new(Node::Ident("items".into())),
-                )),
-                Box::new(Node::Index(Box::new(
-                    Node::Lit(Literal::Num(1)),
-                ))),
-            )),
-        })
-    );
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "x");
+
+            match &value.kind {
+                NodeKind::Has(target, selector) => {
+                    match &target.kind {
+                        NodeKind::Get(inner_target, inner_selector) => {
+                            assert!(matches!(
+                                &inner_target.kind,
+                                NodeKind::Ident(name) if name == "data"
+                            ));
+
+                            assert!(matches!(
+                                &inner_selector.kind,
+                                NodeKind::Ident(name) if name == "items"
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected inner Get expression, got {:?}",
+                            other
+                        ),
+                    }
+
+                    match &selector.kind {
+                        NodeKind::Index(index) => {
+                            assert!(matches!(
+                                &index.kind,
+                                NodeKind::Lit(Literal::Num(1))
+                            ));
+                        }
+
+                        other => panic!(
+                            "expected indexed selector, got {:?}",
+                            other
+                        ),
+                    }
+                }
+
+                other => panic!("expected Has expression, got {:?}", other),
+            }
+        }
+
+        other => panic!("expected Define node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -2619,29 +2943,40 @@ fn parses_basic_loop() {
         "#,
     );
 
-    match node {
-        Node::Loop(loop_node) => {
+    match &(node).kind {
+        NodeKind::Loop(loop_node) => {
             assert_eq!(loop_node.setup.len(), 2);
 
-            assert_eq!(
-                loop_node.condition.as_ref(),
-                &Node::Lt(
-                    Box::new(Node::Ident("index".to_string())),
-                    Box::new(Node::Ident("limit".to_string())),
-                ),
-            );
+            assert!(matches!(
+                &loop_node.condition.kind,
+                NodeKind::Lt(lhs, rhs)
+                    if matches!(
+                        &lhs.kind,
+                        NodeKind::Ident(name) if name == "index"
+                    )
+                    && matches!(
+                        &rhs.kind,
+                        NodeKind::Ident(name) if name == "limit"
+                    )
+            ));
 
             assert_eq!(loop_node.process.len(), 1);
 
             assert!(matches!(
-                &loop_node.process[0],
-                Node::Define(Define { name, value })
+                &loop_node.process[0].kind,
+                NodeKind::Define(Define { name, value })
                     if name == "index"
                         && matches!(
-                            value.as_ref(),
-                            Node::Add(lhs, rhs)
-                                if lhs.as_ref() == &Node::Ident("index".to_string())
-                                    && rhs.as_ref() == &Node::Lit(Literal::Num(1))
+                            &value.kind,
+                            NodeKind::Add(lhs, rhs)
+                                if matches!(
+                                    &lhs.kind,
+                                    NodeKind::Ident(name) if name == "index"
+                                )
+                                && matches!(
+                                    &rhs.kind,
+                                    NodeKind::Lit(Literal::Num(1))
+                                )
                         )
             ));
         }
@@ -2674,37 +3009,53 @@ fn parses_nested_loop() {
         "#,
     );
 
-    match node {
-        Node::Loop(outer_loop) => {
+    match &node.kind {
+        NodeKind::Loop(outer_loop) => {
             assert_eq!(outer_loop.setup.len(), 2);
             assert_eq!(outer_loop.process.len(), 2);
 
-            match &outer_loop.process[0] {
-                Node::Loop(inner_loop) => {
+            match &outer_loop.process[0].kind {
+                NodeKind::Loop(inner_loop) => {
                     assert_eq!(inner_loop.setup.len(), 2);
                     assert_eq!(inner_loop.process.len(), 1);
 
-                    assert_eq!(
-                        inner_loop.condition.as_ref(),
-                        &Node::Lt(
-                            Box::new(Node::Ident("inner_index".to_string())),
-                            Box::new(Node::Ident("inner_limit".to_string())),
-                        ),
-                    );
+                    assert!(matches!(
+                        &inner_loop.condition.kind,
+                        NodeKind::Lt(lhs, rhs)
+                            if matches!(
+                                &lhs.kind,
+                                NodeKind::Ident(name)
+                                    if name == "inner_index"
+                            )
+                            && matches!(
+                                &rhs.kind,
+                                NodeKind::Ident(name)
+                                    if name == "inner_limit"
+                            )
+                    ));
                 }
 
-                other => panic!("expected nested loop node, got {:?}", other),
+                other => {
+                    panic!("expected nested loop node, got {:?}", other)
+                }
             }
 
             assert!(matches!(
-                &outer_loop.process[1],
-                Node::Define(Define { name, value })
+                &outer_loop.process[1].kind,
+                NodeKind::Define(Define { name, value })
                     if name == "outer_index"
                         && matches!(
-                            value.as_ref(),
-                            Node::Add(lhs, rhs)
-                                if lhs.as_ref() == &Node::Ident("outer_index".to_string())
-                                    && rhs.as_ref() == &Node::Lit(Literal::Num(1))
+                            &value.kind,
+                            NodeKind::Add(lhs, rhs)
+                                if matches!(
+                                    &lhs.kind,
+                                    NodeKind::Ident(name)
+                                        if name == "outer_index"
+                                )
+                                && matches!(
+                                    &rhs.kind,
+                                    NodeKind::Lit(Literal::Num(1))
+                                )
                         )
             ));
         }
@@ -2792,30 +3143,27 @@ fn parses_loop_inside_function_body() {
 
     let node = parse_node(src);
 
-    match node {
-        Node::Func(Func { name, params, body }) => {
+    match &(node).kind {
+        NodeKind::Func(Func { name, params, body }) => {
             assert_eq!(name, "repeat");
             assert!(params.is_empty());
             assert_eq!(body.len(), 2);
 
-            match &body[0] {
-                Node::Loop(loop_node) => {
+            match &body[0].kind {
+                NodeKind::Loop(loop_node) => {
                     assert_eq!(loop_node.setup.len(), 1);
                     assert_eq!(loop_node.process.len(), 1);
 
-                    assert!(matches!(
-                        loop_node.setup[0],
-                        Node::Define(_)
+                    assert!(matches!(&(loop_node.setup[0]).kind,
+                        NodeKind::Define(_)
                     ));
 
-                    assert!(matches!(
-                        loop_node.condition.as_ref(),
-                        Node::Lt(_, _)
+                    assert!(matches!(&(loop_node.condition.as_ref()).kind,
+                        NodeKind::Lt(_, _)
                     ));
 
-                    assert!(matches!(
-                        loop_node.process[0],
-                        Node::Define(_)
+                    assert!(matches!(&(loop_node.process[0]).kind,
+                        NodeKind::Define(_)
                     ));
                 }
 
@@ -2827,17 +3175,185 @@ fn parses_loop_inside_function_body() {
                 }
             }
 
-            assert!(matches!(
-                &body[1],
-                Node::Ret(Ret {
+            assert!(matches!(&body[1].kind,
+                NodeKind::Ret(Ret {
                     value: Some(value),
-                }) if matches!(
-                    value.as_ref(),
-                    Node::Lit(Literal::Num(7))
+                }) if matches!(&(value.as_ref()).kind,
+                    NodeKind::Lit(Literal::Num(7))
                 )
             ));
         }
 
         other => panic!("expected Func node, got {:?}", other),
     }
+}
+
+#[test]
+fn parses_function_definition_inside_block() {
+    let program = parse_program(
+        r#"
+            :{
+                fn build :()(
+                    ret 42;
+                ):
+            }:
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 1);
+
+    match &program.nodes[0].kind {
+        NodeKind::Block(Block { segments }) => {
+            assert_eq!(segments.len(), 1);
+            assert_eq!(segments[0].nodes.len(), 1);
+
+            assert!(matches!(
+                &segments[0].nodes[0].kind,
+                NodeKind::Func(Func { name, .. }) if name == "build"
+            ));
+        }
+
+        other => panic!("expected Block node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_multiple_default_parameters() {
+    let node = parse_node(
+        "fn configure :(width = 10, height = 20)(ret width + height;):",
+    );
+
+    match &node.kind {
+        NodeKind::Func(Func { params, .. }) => {
+            assert_eq!(params.len(), 2);
+
+            assert_eq!(params[0].name, "width");
+            assert!(matches!(
+                &params[0].default,
+                Some(Node {
+                    kind: NodeKind::Lit(Literal::Num(10)),
+                    ..
+                })
+            ));
+
+            assert_eq!(params[1].name, "height");
+            assert!(matches!(
+                &params[1].default,
+                Some(Node {
+                    kind: NodeKind::Lit(Literal::Num(20)),
+                    ..
+                })
+            ));
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parses_required_parameter_after_default_parameter() {
+    let node = parse_node(
+        "fn configure :(width = 10, height)(ret height;):",
+    );
+
+    match &node.kind {
+        NodeKind::Func(Func { params, .. }) => {
+            assert_eq!(params.len(), 2);
+
+            assert_eq!(params[0].name, "width");
+            assert!(params[0].default.is_some());
+
+            assert_eq!(params[1].name, "height");
+            assert!(params[1].default.is_none());
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn function_rejects_duplicate_parameter_names() {
+    let src = "fn configure :(width, width = 10)(ret width;):";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected duplicate parameter names to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("duplicate function parameter"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_rejects_trailing_parameter_comma() {
+    let src = "fn configure :(width,)(ret width;):";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected trailing parameter comma to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("invalid function parameter")
+            || rendered.contains("parameter list"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_rejects_leading_parameter_comma() {
+    let src = "fn configure :(, width)(ret width;):";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected leading parameter comma to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("invalid function parameter")
+            || rendered.contains("parameter list"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn function_rejects_consecutive_parameter_commas() {
+    let src = "fn configure :(width,, height)(ret width;):";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected consecutive parameter commas to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("invalid function parameter")
+            || rendered.contains("parameter list"),
+        "unexpected error message:\n{}",
+        rendered
+    );
 }

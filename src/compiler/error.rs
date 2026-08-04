@@ -85,13 +85,20 @@ impl Source {
     }
 
     pub fn line_col(&self, pos: usize) -> (usize, usize) {
-        let line = match self.line_starts.binary_search(&pos) {
+        let pos = pos.min(self.text.len());
+
+        let line_index = match self.line_starts.binary_search(&pos) {
             Ok(i) => i,
-            Err(i) => i - 1,
+            Err(i) => i.saturating_sub(1),
         };
 
-        let col = pos - self.line_starts[line];
-        (line + 1, col + 1)
+        let line_start = self.line_starts[line_index];
+
+        let col = self.text[line_start..pos]
+            .chars()
+            .count();
+
+        (line_index + 1, col + 1)
     }
 
     pub fn line_text(&self, line: usize) -> &str {
@@ -104,6 +111,13 @@ impl Source {
 
         self.text[start..end]
             .trim_end_matches('\n')
+    }
+
+    pub fn span_char_width(&self, span: Span) -> usize {
+        let start = span.start.min(self.text.len());
+        let end = span.end.min(self.text.len()).max(start);
+
+        self.text[start..end].chars().count()
     }
 
     pub fn is_newline_at(&self, pos: usize) -> bool {
@@ -233,7 +247,7 @@ impl Diagnostic {
 }
 
 impl Note {
-    pub fn note(message: impl Into<String>, span: Option<Span>) -> Self {
+     pub fn new(message: impl Into<String>, span: Option<Span>) -> Self {
         Self {
             severity: Severity::Note,
             message: message.into(),

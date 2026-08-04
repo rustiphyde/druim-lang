@@ -11,6 +11,11 @@ pub struct Slot {
 
 pub type SlotRef = Rc<RefCell<Slot>>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvError {
+    UndefinedName(String),
+}
+
 #[derive(Debug, Default)]
 pub struct Scope {
     names: HashMap<String, SlotRef>,
@@ -89,8 +94,10 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), ()> {
-        let slot = self.lookup(target).ok_or(())?;
+    ) -> Result<(), EnvError> {
+        let slot = self
+            .lookup(target)
+            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
 
         self.scopes
             .last_mut()
@@ -100,6 +107,7 @@ impl Env {
 
         Ok(())
     }
+
 
     /// Bind through normal lexical resolution.
     ///
@@ -111,8 +119,10 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), ()> {
-        let target_slot = self.lookup(target).ok_or(())?;
+    ) -> Result<(), EnvError> {
+        let target_slot = self
+            .lookup(target)
+            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
 
         if let Some(scope) = self
             .scopes
@@ -138,15 +148,16 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), ()> {
-        let source = self.lookup(target).ok_or(())?;
-        let value = source.borrow().value.clone();
+    ) -> Result<(), EnvError> {
+        let source = self
+            .lookup(target)
+            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
 
+        let value = source.borrow().value.clone();
         self.define(name, value);
 
         Ok(())
     }
-
     /// Copy through normal lexical resolution.
     ///
     /// If the destination name exists in a visible scope, update the nearest
@@ -157,19 +168,29 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), ()> {
-        let source = self.lookup(target).ok_or(())?;
-        let value = source.borrow().value.clone();
+    ) -> Result<(), EnvError> {
+        let source = self
+            .lookup(target)
+            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
 
+        let value = source.borrow().value.clone();
         self.define_nearest_or_current(name, value);
 
         Ok(())
     }
 
     /// Assign into an existing slot (mutation).
-    pub fn assign(&mut self, name: &str, value: Value) -> Result<(), ()> {
-        let slot = self.lookup(name).ok_or(())?;
+    pub fn assign(
+        &mut self,
+        name: &str,
+        value: Value,
+    ) -> Result<(), EnvError> {
+        let slot = self
+            .lookup(name)
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
         slot.borrow_mut().value = value;
+
         Ok(())
     }
 

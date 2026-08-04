@@ -1,8 +1,8 @@
-use crate::compiler::ast::{Node, Program};
+use crate::compiler::ast::{Node, NodeKind, Program};
 use crate::compiler::semantics::env::Env;
 use crate::compiler::semantics::truth::{truth_of, Truth};
 use crate::compiler::semantics::value::Value;
-use crate::compiler::error::{Diagnostic, Span};
+use crate::compiler::error::Diagnostic;
 
 pub struct Evaluator {
     env: Env,
@@ -14,21 +14,20 @@ enum Control {
     Return(Value),
 }
 
-fn runtime_span() -> Span {
-    Span {
-        start: 0,
-        end: 0,
+fn local_name(node: &Node) -> Option<&str> {
+    match &node.kind {
+        NodeKind::Define(def) => Some(&def.name),
+        NodeKind::DefineEmpty(def) => Some(&def.name),
+        NodeKind::Copy(copy) => Some(&copy.name),
+        NodeKind::Bind(bind) => Some(&bind.name),
+        NodeKind::Guard(guard) => Some(&guard.target),
+        _ => None,
     }
 }
 
-fn local_name(node: &Node) -> Option<&str> {
-    match node {
-        Node::Define(def) => Some(&def.name),
-        Node::DefineEmpty(def) => Some(&def.name),
-        Node::Copy(copy) => Some(&copy.name),
-        Node::Bind(bind) => Some(&bind.name),
-        Node::Guard(guard) => Some(&guard.target),
-        _ => None,
+impl Default for Evaluator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -56,13 +55,12 @@ impl Evaluator {
     }
 
     fn eval_value(&mut self, node: &Node) -> Result<Value, Diagnostic> {
-        
-        match node {
-            Node::Lit(lit) => {
+        match &node.kind {
+            NodeKind::Lit(lit) => {
                 Ok(Value::from_literal(lit))
             }
 
-            Node::Box(box_literal) => {
+            NodeKind::Box(box_literal) => {
                 let values = box_literal
                     .values
                     .iter()
@@ -72,7 +70,7 @@ impl Evaluator {
                 Ok(Value::Box(values))
             }
 
-            Node::Bag(bag_literal) => {
+            NodeKind::Bag(bag_literal) => {
                 let mut entries = std::collections::HashMap::with_capacity(
                     bag_literal.entries.len(),
                 );
@@ -85,16 +83,16 @@ impl Evaluator {
                 Ok(Value::Bag(entries))
             }
 
-            Node::Ident(name) => {
+            NodeKind::Ident(name) => {
                 self.get(name).ok_or_else(|| {
                     Diagnostic::error(
                         format!("undeclared identifier `{name}`"),
-                        runtime_span(),
+                        node.span,
                     )
                 })
             }
 
-            Node::Func(func) => {
+            NodeKind::Func(func) => {
                 let value = Value::Func(
                     crate::compiler::semantics::value::Func {
                         name: func.name.clone(),
@@ -108,13 +106,13 @@ impl Evaluator {
                 Ok(value)
             }
 
-            Node::Call(call) => {
+            NodeKind::Call(call) => {
                 let callee = self.eval_value(call.callee.as_ref())?;
 
                 let Value::Func(func) = callee else {
                     return Err(Diagnostic::error(
                         "attempted to call a non-function value",
-                        runtime_span(),
+                        call.callee.span,
                     ));
                 };
 
@@ -132,7 +130,7 @@ impl Evaluator {
                             func.params.len(),
                             argument_values.len(),
                         ),
-                        runtime_span(),
+                        node.span,
                     ));
                 }
 
@@ -153,7 +151,7 @@ impl Evaluator {
                                             func.name,
                                             param.name,
                                         ),
-                                        runtime_span(),
+                                        node.span,
                                     ));
                                 }
                             },
@@ -164,8 +162,8 @@ impl Evaluator {
 
                     let mut result = Value::Void;
 
-                    for node in &func.body {
-                        match self.eval_node_ctrl(node)? {
+                    for body_node in &func.body {
+                        match self.eval_node_ctrl(body_node)? {
                             Control::Continue => {}
 
                             Control::Return(value) => {
@@ -183,105 +181,115 @@ impl Evaluator {
                 result
             }
 
-           Node::Add(lhs, rhs) => {
+            NodeKind::Add(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
                 match (lhs, rhs) {
-                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a + b)),
+                    (Value::Num(a), Value::Num(b)) => {
+                        Ok(Value::Num(a + b))
+                    }
 
                     _ => Err(Diagnostic::error(
                         "addition requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Sub(lhs, rhs) => {
+            NodeKind::Sub(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
                 match (lhs, rhs) {
-                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a - b)),
+                    (Value::Num(a), Value::Num(b)) => {
+                        Ok(Value::Num(a - b))
+                    }
 
                     _ => Err(Diagnostic::error(
                         "subtraction requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Mul(lhs, rhs) => {
+            NodeKind::Mul(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
                 match (lhs, rhs) {
-                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a * b)),
+                    (Value::Num(a), Value::Num(b)) => {
+                        Ok(Value::Num(a * b))
+                    }
 
                     _ => Err(Diagnostic::error(
                         "multiplication requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Div(lhs, rhs) => {
+            NodeKind::Div(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
-                let rhs = self.eval_value(rhs)?;
+                let rhs_value = self.eval_value(rhs)?;
 
-                match (lhs, rhs) {
-                    (Value::Num(_), Value::Num(0)) => Err(
-                        Diagnostic::error(
+                match (lhs, rhs_value) {
+                    (Value::Num(_), Value::Num(0)) => {
+                        Err(Diagnostic::error(
                             "division by zero",
-                            runtime_span(),
-                        ),
-                    ),
+                            rhs.span,
+                        ))
+                    }
 
-                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a / b)),
+                    (Value::Num(a), Value::Num(b)) => {
+                        Ok(Value::Num(a / b))
+                    }
 
                     _ => Err(Diagnostic::error(
                         "division requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Mod(lhs, rhs) => {
+            NodeKind::Mod(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
-                let rhs = self.eval_value(rhs)?;
+                let rhs_value = self.eval_value(rhs)?;
 
-                match (lhs, rhs) {
-                    (Value::Num(_), Value::Num(0)) => Err(
-                        Diagnostic::error(
+                match (lhs, rhs_value) {
+                    (Value::Num(_), Value::Num(0)) => {
+                        Err(Diagnostic::error(
                             "modulo by zero",
-                            runtime_span(),
-                        ),
-                    ),
+                            rhs.span,
+                        ))
+                    }
 
-                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a % b)),
+                    (Value::Num(a), Value::Num(b)) => {
+                        Ok(Value::Num(a % b))
+                    }
 
                     _ => Err(Diagnostic::error(
                         "modulo requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Eq(lhs, rhs) => {
+            NodeKind::Eq(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
                 Ok(Value::Flag(lhs == rhs))
             }
 
-            Node::Ne(lhs, rhs) => {
+            NodeKind::Ne(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
                 Ok(Value::Flag(lhs != rhs))
             }
 
-            Node::Lt(lhs, rhs) => {
+            NodeKind::Lt(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
@@ -292,12 +300,12 @@ impl Evaluator {
 
                     _ => Err(Diagnostic::error(
                         "less-than comparison requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Le(lhs, rhs) => {
+            NodeKind::Le(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
@@ -308,12 +316,12 @@ impl Evaluator {
 
                     _ => Err(Diagnostic::error(
                         "less-than-or-equal comparison requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Gt(lhs, rhs) => {
+            NodeKind::Gt(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
@@ -324,12 +332,12 @@ impl Evaluator {
 
                     _ => Err(Diagnostic::error(
                         "greater-than comparison requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Ge(lhs, rhs) => {
+            NodeKind::Ge(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
                 let rhs = self.eval_value(rhs)?;
 
@@ -340,38 +348,40 @@ impl Evaluator {
 
                     _ => Err(Diagnostic::error(
                         "greater-than-or-equal comparison requires two numbers",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::And(lhs, rhs) => {
+            NodeKind::And(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
 
                 if truth_of(&lhs) == Truth::False {
                     Ok(Value::Flag(false))
                 } else {
                     let rhs = self.eval_value(rhs)?;
+
                     Ok(Value::Flag(
                         truth_of(&rhs) == Truth::True,
                     ))
                 }
             }
 
-            Node::Or(lhs, rhs) => {
+            NodeKind::Or(lhs, rhs) => {
                 let lhs = self.eval_value(lhs)?;
 
                 if truth_of(&lhs) == Truth::True {
                     Ok(Value::Flag(true))
                 } else {
                     let rhs = self.eval_value(rhs)?;
+
                     Ok(Value::Flag(
                         truth_of(&rhs) == Truth::True,
                     ))
                 }
             }
 
-            Node::Not(value) => {
+            NodeKind::Not(value) => {
                 let value = self.eval_value(value)?;
 
                 Ok(Value::Flag(
@@ -379,60 +389,66 @@ impl Evaluator {
                 ))
             }
 
-            Node::Neg(value) => {
-                let value = self.eval_value(value)?;
+            NodeKind::Neg(value) => {
+                let evaluated = self.eval_value(value)?;
 
-                match value {
+                match evaluated {
                     Value::Num(number) => {
                         Ok(Value::Num(-number))
                     }
 
                     _ => Err(Diagnostic::error(
                         "numeric negation requires a number",
-                        runtime_span(),
+                        node.span,
                     )),
                 }
             }
 
-            Node::Get(lhs, selector) => {
+            NodeKind::Get(lhs, selector) => {
                 let lhs = self.eval_value(lhs)?;
 
                 match lhs {
                     Value::Box(values) => {
-                        let Node::Index(index_expr) = selector.as_ref() else {
+                        let NodeKind::Index(index_expr) = &selector.kind else {
                             return Err(Diagnostic::error(
                                 "Box traversal requires an indexed selector",
-                                runtime_span(),
+                                selector.span,
                             ));
                         };
 
                         let index = self.eval_value(index_expr)?;
 
                         match index {
-                            Value::Num(index) if index >= 0 => Ok(
-                                values
-                                    .get(index as usize)
-                                    .cloned()
-                                    .unwrap_or(Value::Void),
-                            ),
+                            Value::Num(index) if index >= 0 => {
+                                Ok(
+                                    values
+                                        .get(index as usize)
+                                        .cloned()
+                                        .unwrap_or(Value::Void),
+                                )
+                            }
 
-                            Value::Num(_) => Err(Diagnostic::error(
-                                "Box index cannot be negative",
-                                runtime_span(),
-                            )),
+                            Value::Num(_) => {
+                                Err(Diagnostic::error(
+                                    "Box index cannot be negative",
+                                    index_expr.span,
+                                ))
+                            }
 
-                            _ => Err(Diagnostic::error(
-                                "Box index must evaluate to a number",
-                                runtime_span(),
-                            )),
+                            _ => {
+                                Err(Diagnostic::error(
+                                    "Box index must evaluate to a number",
+                                    index_expr.span,
+                                ))
+                            }
                         }
                     }
 
                     Value::Bag(entries) => {
-                        let Node::Ident(name) = selector.as_ref() else {
+                        let NodeKind::Ident(name) = &selector.kind else {
                             return Err(Diagnostic::error(
                                 "Bag traversal requires a named selector",
-                                runtime_span(),
+                                selector.span,
                             ));
                         };
 
@@ -448,15 +464,15 @@ impl Evaluator {
                 }
             }
 
-           Node::Has(lhs, selector) => {
+            NodeKind::Has(lhs, selector) => {
                 let lhs = self.eval_value(lhs)?;
 
                 match lhs {
                     Value::Box(values) => {
-                        let Node::Index(index_expr) = selector.as_ref() else {
+                        let NodeKind::Index(index_expr) = &selector.kind else {
                             return Err(Diagnostic::error(
                                 "Box traversal requires an indexed selector",
-                                runtime_span(),
+                                selector.span,
                             ));
                         };
 
@@ -464,40 +480,47 @@ impl Evaluator {
 
                         match index {
                             Value::Num(index) if index >= 0 => {
-                                Ok(Value::Flag((index as usize) < values.len()))
+                                Ok(Value::Flag(
+                                    (index as usize) < values.len(),
+                                ))
                             }
 
-                            Value::Num(_) => Err(Diagnostic::error(
-                                "Box index cannot be negative",
-                                runtime_span(),
-                            )),
+                            Value::Num(_) => {
+                                Err(Diagnostic::error(
+                                    "Box index cannot be negative",
+                                    index_expr.span,
+                                ))
+                            }
 
-                            _ => Err(Diagnostic::error(
-                                "Box index must evaluate to a number",
-                                runtime_span(),
-                            )),
+                            _ => {
+                                Err(Diagnostic::error(
+                                    "Box index must evaluate to a number",
+                                    index_expr.span,
+                                ))
+                            }
                         }
                     }
 
                     Value::Bag(entries) => {
-                        let Node::Ident(name) = selector.as_ref() else {
+                        let NodeKind::Ident(name) = &selector.kind else {
                             return Err(Diagnostic::error(
                                 "Bag traversal requires a named selector",
-                                runtime_span(),
+                                selector.span,
                             ));
                         };
 
-                        Ok(Value::Flag(entries.contains_key(name)))
+                        Ok(Value::Flag(
+                            entries.contains_key(name),
+                        ))
                     }
 
                     _ => Ok(Value::Flag(false)),
                 }
             }
 
-           _ => Ok(Value::Void),
+            _ => Ok(Value::Void),
         }
     }
-
 
     pub fn eval_node(
         &mut self,
@@ -509,7 +532,7 @@ impl Evaluator {
             Control::Return(_) => Err(
                 Diagnostic::error(
                     "return executed outside of a function",
-                    runtime_span(),
+                    node.span,
                 ),
             ),
         }
@@ -519,19 +542,19 @@ impl Evaluator {
         &mut self,
         node: &Node,
     ) -> Result<Control, Diagnostic> {
-        match node {
-            Node::Local(inner) => {
-                match inner.as_ref() {
-                    Node::Define(def) => {
+        match &node.kind {
+            NodeKind::Local(inner) => {
+                match &inner.kind {
+                    NodeKind::Define(def) => {
                         let value = self.eval_value(&def.value)?;
                         self.env.define(def.name.clone(), value);
                     }
 
-                    Node::DefineEmpty(def) => {
+                    NodeKind::DefineEmpty(def) => {
                         self.env.define(def.name.clone(), Value::Void);
                     }
 
-                    Node::Copy(copy) => {
+                    NodeKind::Copy(copy) => {
                         self.env
                             .copy(copy.name.clone(), &copy.target)
                             .map_err(|_| {
@@ -540,12 +563,12 @@ impl Evaluator {
                                         "undeclared identifier `{}`",
                                         copy.target,
                                     ),
-                                    runtime_span(),
+                                    inner.span,
                                 )
                             })?;
                     }
 
-                    Node::Bind(bind) => {
+                    NodeKind::Bind(bind) => {
                         self.env
                             .bind(bind.name.clone(), &bind.target)
                             .map_err(|_| {
@@ -554,12 +577,12 @@ impl Evaluator {
                                         "undeclared identifier `{}`",
                                         bind.target,
                                     ),
-                                    runtime_span(),
+                                    inner.span,
                                 )
                             })?;
                     }
 
-                    Node::Guard(guard) => {
+                    NodeKind::Guard(guard) => {
                         let mut result = Value::Void;
 
                         for branch in &guard.branches {
@@ -578,7 +601,7 @@ impl Evaluator {
                         return Err(
                             Diagnostic::error(
                                 "`loc` cannot modify this loop statement",
-                                runtime_span(),
+                                node.span,
                             ),
                         );
                     }
@@ -587,7 +610,7 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            Node::Define(def) => {
+            NodeKind::Define(def) => {
                 let value = self.eval_value(&def.value)?;
 
                 self.env
@@ -596,7 +619,7 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            Node::DefineEmpty(def) => {
+            NodeKind::DefineEmpty(def) => {
                 self.env.define_nearest_or_current(
                     def.name.clone(),
                     Value::Void,
@@ -605,7 +628,7 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            Node::Copy(copy) => {
+            NodeKind::Copy(copy) => {
                 self.env
                     .copy_nearest_or_current(
                         copy.name.clone(),
@@ -617,14 +640,14 @@ impl Evaluator {
                                 "undeclared identifier `{}`",
                                 copy.target,
                             ),
-                            runtime_span(),
+                            node.span,
                         )
                     })?;
 
                 Ok(Control::Continue)
             }
 
-            Node::Bind(bind) => {
+            NodeKind::Bind(bind) => {
                 self.env
                     .bind_nearest_or_current(
                         bind.name.clone(),
@@ -636,14 +659,14 @@ impl Evaluator {
                                 "undeclared identifier `{}`",
                                 bind.target,
                             ),
-                            runtime_span(),
+                            node.span,
                         )
                     })?;
 
                 Ok(Control::Continue)
             }
 
-            Node::Guard(guard) => {
+            NodeKind::Guard(guard) => {
                 let mut result = Value::Void;
 
                 for branch in &guard.branches {
@@ -671,21 +694,21 @@ impl Evaluator {
         &mut self,
         node: &Node,
     ) -> Result<Control, Diagnostic> {
-        match node {
-           Node::Define(def) => {
+        match &node.kind {
+            NodeKind::Define(def) => {
                 let value = self.eval_value(&def.value)?;
                 self.env.define(def.name.clone(), value);
 
                 Ok(Control::Continue)
             }
 
-            Node::DefineEmpty(def) => {
+            NodeKind::DefineEmpty(def) => {
                 self.env.define(def.name.clone(), Value::Void);
 
                 Ok(Control::Continue)
             }
 
-            Node::Copy(copy) => {
+            NodeKind::Copy(copy) => {
                 self.env
                     .copy(copy.name.clone(), &copy.target)
                     .map_err(|_| {
@@ -694,14 +717,14 @@ impl Evaluator {
                                 "undeclared identifier `{}`",
                                 copy.target,
                             ),
-                            runtime_span(),
+                            node.span,
                         )
                     })?;
 
                 Ok(Control::Continue)
             }
 
-            Node::Bind(bind) => {
+            NodeKind::Bind(bind) => {
                 self.env
                     .bind(bind.name.clone(), &bind.target)
                     .map_err(|_| {
@@ -710,14 +733,14 @@ impl Evaluator {
                                 "undeclared identifier `{}`",
                                 bind.target,
                             ),
-                            runtime_span(),
+                            node.span,
                         )
                     })?;
 
                 Ok(Control::Continue)
             }
 
-            Node::Guard(guard) => {
+            NodeKind::Guard(guard) => {
                 let mut result = Value::Void;
 
                 for branch in &guard.branches {
@@ -734,22 +757,22 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            Node::Ret(ret) => {
+            NodeKind::Ret(ret) => {
                 let value = match &ret.value {
-                    Some(node) => self.eval_value(node)?,
+                    Some(value_node) => self.eval_value(value_node)?,
                     None => Value::Void,
                 };
 
                 Ok(Control::Return(value))
             }
 
-            Node::Loop(loop_node) => {
+            NodeKind::Loop(loop_node) => {
                 self.env.push_scope();
 
                 let result = (|| {
                     // Setup executes exactly once.
-                    for node in &loop_node.setup {
-                        match self.eval_loop_node_ctrl(node)? {
+                    for setup_node in &loop_node.setup {
+                        match self.eval_loop_node_ctrl(setup_node)? {
                             Control::Continue => {}
 
                             Control::Return(value) => {
@@ -768,8 +791,8 @@ impl Evaluator {
                             break;
                         }
 
-                        for node in &loop_node.process {
-                            match self.eval_loop_node_ctrl(node)? {
+                        for process_node in &loop_node.process {
+                            match self.eval_loop_node_ctrl(process_node)? {
                                 Control::Continue => {}
 
                                 Control::Return(value) => {
@@ -787,7 +810,7 @@ impl Evaluator {
                 result
             }
 
-            Node::Block(block) => {
+            NodeKind::Block(block) => {
                 self.env.push_scope();
 
                 let result = (|| {
@@ -795,18 +818,22 @@ impl Evaluator {
                         let mut local_names = Vec::new();
 
                         let segment_result: Result<Control, Diagnostic> = (|| {
-                            for node in &segment.nodes {
-                                let control = match node {
-                                    Node::Local(inner) => {
+                            for segment_node in &segment.nodes {
+                                let control = match &segment_node.kind {
+                                    NodeKind::Local(inner) => {
                                         if let Some(name) = local_name(inner) {
                                             let previous = self.env.take_current(name);
-                                            local_names.push((name.to_string(), previous));
+
+                                            local_names.push((
+                                                name.to_string(),
+                                                previous,
+                                            ));
                                         }
 
                                         self.eval_node_ctrl(inner)?
                                     }
 
-                                    _ => self.eval_node_ctrl(node)?,
+                                    _ => self.eval_node_ctrl(segment_node)?,
                                 };
 
                                 if let Control::Return(value) = control {
@@ -838,7 +865,7 @@ impl Evaluator {
                 result
             }
 
-            Node::Func(func) => {
+            NodeKind::Func(func) => {
                 let value = Value::Func(
                     crate::compiler::semantics::value::Func {
                         name: func.name.clone(),
@@ -852,13 +879,11 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            other => {
-                let _ = self.eval_value(other)?;
+            _ => {
+                let _ = self.eval_value(node)?;
 
                 Ok(Control::Continue)
             }
-
         }
-
     }
 }

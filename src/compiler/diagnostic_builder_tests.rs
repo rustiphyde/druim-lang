@@ -31,8 +31,8 @@ mod tests {
     fn diagnostic_with_secondary_builder_matches_manual_construction() {
         let source = Source::new("let total = price * qty;".to_string());
 
-        let primary_span = Span { start: 21, end: 24 }; // qty
-        let secondary_span = Span { start: 13, end: 18 }; // price
+        let primary_span = Span { start: 20, end: 23 }; // qty
+        let secondary_span = Span { start: 12, end: 17 }; // price
 
         // Manual construction (ground truth)
         let manual = Diagnostic {
@@ -58,8 +58,8 @@ mod tests {
     fn diagnostic_with_note_builder_matches_manual_construction() {
         let source = Source::new("let total = price * qty;".to_string());
 
-        let primary_span = Span { start: 21, end: 24 }; // qty
-        let note_span = Span { start: 13, end: 18 }; // price
+        let primary_span = Span { start: 20, end: 23 }; // qty
+        let note_span = Span { start: 12, end: 17 }; // price
 
         let note = Note {
             severity: Severity::Note,
@@ -120,10 +120,10 @@ mod tests {
         let a = Diagnostic::error("test", span)
             .with_secondary(secondary, "secondary")
             .with_help("help_text")
-            .with_note(Note::note("note text", Some(span)));
+            .with_note(Note::new("note text", Some(span)));
 
         let b = Diagnostic::error("test", span)
-            .with_note(Note::note("note text", Some(span)))
+            .with_note(Note::new("note text", Some(span)))
             .with_help("help_text")
             .with_secondary(secondary, "secondary"); 
             

@@ -577,14 +577,16 @@ fn my_function :(a, b)( body ):
 - Each parameter must be a valid parameter form.
 - A parameter may be a plain identifier.
 - A parameter may include a default value using the Define form.
-- Parameter defaults use `=` and must contain exactly one complete expression.
+- Parameter defaults use `=` and must contain exactly one complete expression without a semi-colon.
+- Required and defaulted parameters may appear in any order within a function parameter list.
+- Function parameter names must be unique within the same parameter list. Duplicate parameter names are invalid.
 - Copy, Bind, Guard, and DefineEmpty are not valid parameter-default forms unless a later canon revision explicitly permits them.
 - The body contains a sequence of valid statements, including loops.
 
 Example with a default parameter:
 
 ```druim
-fn my_func :(w, x = 12;)(ret w * x;):
+fn my_func :(w, x = 12)(ret w * x;):
 ```
 ### Function Calls
 

@@ -118,6 +118,9 @@ mod tests {
 
     #[test]
     fn invalid_decimal_forms_error() {
+        let mut lx = Lexer::new(".");
+        assert!(lx.tokenize().is_err());
+
         let mut lx = Lexer::new(".5");
         assert!(lx.tokenize().is_err());
 

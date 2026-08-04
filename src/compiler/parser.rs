@@ -1,6 +1,7 @@
 use crate::compiler::ast::{
     BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
-    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Node, Param, Program, Ret,
+    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Node, NodeKind, Param,
+    Program, Ret,
 };
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
@@ -105,6 +106,7 @@ impl<'a> Parser<'a> {
 
     fn parse_ret(&mut self) -> Result<Node, Diagnostic> {
         // We are committing to parsing a return statement
+        let start = self.current_span().start;
         self.bump(); // consume `ret`
 
         // 🔒 REQUIRED: verify semicolon exists BEFORE parsing anything else
@@ -114,22 +116,43 @@ impl<'a> Parser<'a> {
         {
             Some(off) => self.index + off,
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated return statement", self.current_span())
-                        .with_help(
-                            "Druim expected a semicolon `;` to terminate this return statement.\n\
-                            Examples:\n\
-                            `ret;`\n\
-                            `ret 42;`",
-                        ),
+                    Diagnostic::error(
+                        "unterminated return statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this return statement.\n\
+                        Examples:\n\
+                        `ret;`\n\
+                        `ret 42;`",
+                    ),
                 );
             }
         };
 
         // `ret;` — valid, no value
         if self.peek_kind() == TokenKind::Semicolon {
-            self.bump(); // consume `;`
-            return Ok(Node::Ret(Ret { value: None }));
+            let semicolon = self
+                .bump()
+                .expect("semicolon token must exist");
+
+            return Ok(Node::new(
+                NodeKind::Ret(Ret { value: None }),
+                Span {
+                    start,
+                    end: semicolon.pos + semicolon.lexeme.len(),
+                },
+            ));
         }
 
         // Disallow statement operators inside return value
@@ -168,22 +191,36 @@ impl<'a> Parser<'a> {
                 && self.peek_kind() == TokenKind::Ident
             {
                 let ident = self.bump().expect("identifier token must exist");
-                Node::Ident(ident.lexeme.clone())
+                Node::new(
+                    NodeKind::Ident(ident.lexeme.clone()),
+                    Span {
+                        start: ident.pos,
+                        end: ident.pos + ident.lexeme.len(),
+                    },
+                )
             } else {
                 self.parse_rhs()?
             };
 
-        // Consume terminating semicolon
-        self.bump(); // `;`
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
 
-        Ok(Node::Ret(Ret {
-            value: Some(Box::new(value)),
-        }))
+        Ok(Node::new(
+            NodeKind::Ret(Ret {
+                value: Some(Box::new(value)),
+            }),
+            Span {
+                start,
+                end: semicolon.pos + semicolon.lexeme.len(),
+            },
+        ))
     }
 
     fn parse_define_empty(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
 
-        // Optional `loc` (syntactic only — no semantics here)
+        // Optional `loc`
         let is_local = if self.peek_kind() == TokenKind::KwLoc {
             self.bump();
             true
@@ -191,16 +228,19 @@ impl<'a> Parser<'a> {
             false
         };
 
-        // Identifier (single assertion)
+        // Identifier
         let ident_tok = match self.bump() {
             Some(tok) => tok,
             None => {
                 return Err(
-                    Diagnostic::error("invalid empty definition", self.current_span())
-                        .with_help(
-                            "Druim empty definitions must begin with an identifier.\n\
-                            Example: `x =;`",
-                        ),
+                    Diagnostic::error(
+                        "invalid empty definition",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Druim empty definitions must begin with an identifier.\n\
+                        Example: `x =;`",
+                    ),
                 );
             }
         };
@@ -223,8 +263,15 @@ impl<'a> Parser<'a> {
 
         let name = ident_tok.lexeme.clone();
 
-        // Consume `=;` (operator already identified by entry function)
-        self.bump();
+        // Consume `=;`
+        let operator = self
+            .bump()
+            .expect("empty define operator must exist");
+
+        let statement_span = Span {
+            start,
+            end: operator.pos + operator.lexeme.len(),
+        };
 
         // Chaining is illegal
         match self.peek_kind() {
@@ -234,27 +281,38 @@ impl<'a> Parser<'a> {
             | TokenKind::Bind
             | TokenKind::Guard => {
                 return Err(
-                    Diagnostic::error("invalid empty definition", self.current_span())
-                        .with_help(
-                            "Statement operators cannot be chained.\n\
-                            Split this into multiple statements.\n\
-                            Example: `a =; b = 1;`",
-                        ),
+                    Diagnostic::error(
+                        "invalid empty definition",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Statement operators cannot be chained.\n\
+                        Split this into multiple statements.\n\
+                        Example: `a =; b = 1;`",
+                    ),
                 );
             }
             _ => {}
         }
 
-        let node = Node::DefineEmpty(DefineEmpty { name });
+        let node = Node::new(
+            NodeKind::DefineEmpty(DefineEmpty { name }),
+            statement_span,
+        );
 
         if is_local {
-            Ok(Node::Local(Box::new(node)))
+            Ok(Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ))
         } else {
             Ok(node)
         }
     }
 
     fn parse_define(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         // Statement MUST terminate
         let stmt_end = match self.tokens[self.index..]
             .iter()
@@ -262,12 +320,24 @@ impl<'a> Parser<'a> {
         {
             Some(off) => self.index + off,
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated define statement", self.current_span())
-                        .with_help(
-                            "Druim expected a semicolon `;` to terminate this define statement.\n\
-                            Example: `x = 42;`",
-                        ),
+                    Diagnostic::error(
+                        "unterminated define statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this define statement.\n\
+                        Example: `x = 42;`",
+                    ),
                 );
             }
         };
@@ -426,22 +496,35 @@ impl<'a> Parser<'a> {
             );
         }
 
-        // Consume `;`
-        self.bump();
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
 
-        let node = Node::Define(Define {
-            name,
-            value: Box::new(value),
-        });
+        let statement_span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
+
+        let node = Node::new(
+            NodeKind::Define(Define {
+                name,
+                value: Box::new(value),
+            }),
+            statement_span,
+        );
 
         if is_local {
-            Ok(Node::Local(Box::new(node)))
+            Ok(Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ))
         } else {
             Ok(node)
         }
     }
 
     fn parse_copy(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
 
         match self.tokens[self.index..]
             .iter()
@@ -449,12 +532,24 @@ impl<'a> Parser<'a> {
         {
             Some(off) => self.index + off,
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated copy statement", self.current_span())
-                        .with_help(
-                            "Druim expected a semicolon `;` to terminate this copy statement.\n\
-                            Example: `a := b;`",
-                        ),
+                    Diagnostic::error(
+                        "unterminated copy statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this copy statement.\n\
+                        Example: `a := b;`",
+                    ),
                 );
             }
         };
@@ -581,30 +676,57 @@ impl<'a> Parser<'a> {
             };
         }
         // 7️⃣ Consume `;`
-        self.bump();
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
 
-        let node = Node::Copy(Copy { name, target });
+        let statement_span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
+
+        let node = Node::new(
+            NodeKind::Copy(Copy { name, target }),
+            statement_span,
+        );
 
         if is_local {
-            Ok(Node::Local(Box::new(node)))
+            Ok(Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ))
         } else {
             Ok(node)
         }
     }
 
     fn parse_bind(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         match self.tokens[self.index..]
             .iter()
             .position(|t| t.kind == TokenKind::Semicolon)
         {
             Some(_) => {}
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated bind statement", self.current_span())
-                        .with_help(
-                            "Druim expected a semicolon `;` to terminate this bind statement.\n\
-                            Example: `a :> b;`",
-                        ),
+                    Diagnostic::error(
+                        "unterminated bind statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this bind statement.\n\
+                        Example: `a :> b;`",
+                    ),
                 );
             }
         }
@@ -732,18 +854,33 @@ impl<'a> Parser<'a> {
         }
 
         // Consume `;`
-        self.bump();
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
 
-        let node = Node::Bind(Bind { name, target });
+        let statement_span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
+
+        let node = Node::new(
+            NodeKind::Bind(Bind { name, target }),
+            statement_span,
+        );
 
         if is_local {
-            Ok(Node::Local(Box::new(node)))
+            Ok(Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ))
         } else {
             Ok(node)
         }
     }
 
     fn parse_guard(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         // Find statement terminator FIRST
         let stmt_end = match self.tokens[self.index..]
             .iter()
@@ -751,12 +888,24 @@ impl<'a> Parser<'a> {
         {
             Some(off) => self.index + off,
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated guard statement", self.current_span())
-                        .with_help(
-                            "Druim expected a semicolon `;` to terminate this guard statement.\n\
-                            Example: `x ?= y;`",
-                        ),
+                    Diagnostic::error(
+                        "unterminated guard statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this guard statement.\n\
+                        Example: `x ?= y;`",
+                    ),
                 );
             }
         };
@@ -905,21 +1054,36 @@ impl<'a> Parser<'a> {
         }
 
         // Consume `;`
-        self.bump();
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
 
-        let node = Node::Guard(Guard {
-            target: name,
-            branches,
-        });
+        let statement_span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
+
+        let node = Node::new(
+            NodeKind::Guard(Guard {
+                target: name,
+                branches,
+            }),
+            statement_span,
+        );
 
         if is_local {
-            Ok(Node::Local(Box::new(node)))
+            Ok(Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ))
         } else {
             Ok(node)
         }
     }
 
     fn parse_block(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         if self.in_func {
             return Err(
                 Diagnostic::error("block not allowed in function body", self.current_span())
@@ -954,10 +1118,21 @@ impl<'a> Parser<'a> {
 
         if !has_end {
             self.in_block = prev;
+            let end = self
+                .tokens
+                .last()
+                .map(|token| token.pos + token.lexeme.len())
+                .unwrap_or(0);
 
             return Err(
-                Diagnostic::error("unterminated block structure", self.current_span())
-                    .with_help("Druim expected a closing block delimiter `}:`."),
+                Diagnostic::error(
+                    "unterminated block structure",
+                    Span {
+                        start: end,
+                        end,
+                    },
+                )
+                .with_help("Druim expected a closing block delimiter `}:`."),
             );
         }
 
@@ -975,22 +1150,33 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            nodes.push(self.parse_statement_entry()?);
+            nodes.push(self.parse_node()?);
         }
 
         // Store the final segment
         segments.push(BlockSegment { nodes });
 
         // Consume closing delimiter
-        self.bump(); // `}:`
+        let block_end = self
+            .bump()
+            .cloned()
+            .expect("closing block delimiter must exist");
 
         // Exit block context
         self.in_block = prev;
 
-        Ok(Node::Block(Block { segments }))
+        Ok(Node::new(
+            NodeKind::Block(Block { segments }),
+            Span {
+                start,
+                end: block_end.pos + block_end.lexeme.len(),
+            },
+        ))
     }
 
     fn parse_loop(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         self.bump(); // consume `:<`
 
         let mut setup = Vec::new();
@@ -1108,16 +1294,26 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.bump(); // consume `>:`
+        let loop_end = self
+            .bump()
+            .expect("closing loop delimiter must exist");
 
-        Ok(Node::Loop(Loop {
-            setup,
-            condition: Box::new(condition),
-            process,
-        }))
+        Ok(Node::new(
+            NodeKind::Loop(Loop {
+                setup,
+                condition: Box::new(condition),
+                process,
+            }),
+            Span {
+                start,
+                end: loop_end.pos + loop_end.lexeme.len(),
+            },
+        ))
     }
 
     fn parse_func(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         if self.in_func {
             return Err(
                 Diagnostic::error("nested function not allowed", self.current_span())
@@ -1135,14 +1331,25 @@ impl<'a> Parser<'a> {
             // Consume `fn`
             self.bump();
 
-            // Verify function can close
             if !self.tokens[self.index..]
                 .iter()
                 .any(|t| t.kind == TokenKind::FuncEnd)
             {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
-                    Diagnostic::error("unterminated function structure", self.current_span())
-                        .with_help("Druim expected a closing function delimiter `):`."),
+                    Diagnostic::error(
+                        "unterminated function structure",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help("Druim expected a closing function delimiter `):`."),
                 );
             }
 
@@ -1216,18 +1423,27 @@ impl<'a> Parser<'a> {
             }
 
             if !saw_body {
+                let func_end = &self.tokens[i];
+
                 return Err(
-                    Diagnostic::error("incomplete function definition", self.current_span())
-                        .with_help(
-                            "Druim functions must consist of a parameter list and at least one body.\n\
-                            An empty list and empty body is allowed, but a body delimiter `)(` is required.\n\
-                            Example: `fn f :()():`",
-                        ),
+                    Diagnostic::error(
+                        "incomplete function definition",
+                        Span {
+                            start: func_end.pos,
+                            end: func_end.pos + func_end.lexeme.len(),
+                        },
+                    )
+                    .with_help(
+                        "Druim functions must consist of a parameter list and at least one body.\n\
+                        An empty list and empty body is allowed, but a body delimiter `)(` is required.\n\
+                        Example: `fn f :()():`",
+                    ),
                 );
             }
 
             // Parse parameters
             let mut params = Vec::new();
+            let mut param_names = std::collections::HashSet::new();
 
             if self.peek_kind() != TokenKind::FuncChain {
                 loop {
@@ -1265,6 +1481,21 @@ impl<'a> Parser<'a> {
                     }
 
                     let param_name = ident_tok.lexeme.clone();
+
+                    if !param_names.insert(param_name.clone()) {
+                        return Err(
+                            Diagnostic::error(
+                                "duplicate function parameter",
+                                Span {
+                                    start: ident_tok.pos,
+                                    end: ident_tok.pos + ident_tok.lexeme.len(),
+                                },
+                            )
+                            .with_help(
+                                "Druim function parameter names must be unique within the same parameter list.",
+                            ),
+                        );
+                    }
 
                     if self.peek_kind() == TokenKind::Define {
                         self.bump();
@@ -1331,13 +1562,21 @@ impl<'a> Parser<'a> {
                 nodes.push(self.parse_node()?);
             }
 
-            self.bump(); // consume `):`
+            let func_end = self
+                .bump()
+                .expect("closing function delimiter must exist");
 
-            Ok(Node::Func(Func {
-                name,
-                params,
-                body: nodes,
-            }))
+            Ok(Node::new(
+                NodeKind::Func(Func {
+                    name,
+                    params,
+                    body: nodes,
+                }),
+                Span {
+                    start,
+                    end: func_end.pos + func_end.lexeme.len(),
+                },
+            ))
         })();
 
         self.in_func = prev_in_func;
@@ -1345,14 +1584,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_rhs(&mut self) -> Result<Node, Diagnostic> {
-        let start_span = self.current_span();
-
         let value = self.parse_expr()?;
 
         // Bare identifiers are not values
-        if matches!(value, Node::Ident(_)) {
+        if matches!(&value.kind, NodeKind::Ident(_)) {
             return Err(
-                Diagnostic::error("invalid value expression", start_span)
+                Diagnostic::error("invalid value expression", value.span)
                     .with_help(
                         "A bare identifier is not a value.\n\
                         Use a function call, copy (`:=`), or bind (`:>`) instead.",
@@ -1364,6 +1601,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_call_statement(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
         // Verify statement terminates
         let stmt_end = match self.tokens[self.index..]
             .iter()
@@ -1371,10 +1610,19 @@ impl<'a> Parser<'a> {
         {
             Some(off) => self.index + off,
             None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
                 return Err(
                     Diagnostic::error(
                         "unterminated function call statement",
-                        self.current_span(),
+                        Span {
+                            start: end,
+                            end,
+                        },
                     )
                     .with_help(
                         "Druim expected a semicolon `;` to terminate this function call.\n\
@@ -1416,14 +1664,14 @@ impl<'a> Parser<'a> {
         }
 
         // Parse the complete call expression
-        let call = self.parse_expr()?;
+        let mut call = self.parse_expr()?;
 
         // A standalone expression must structurally be a function call
-        if !matches!(call, Node::Call(_)) {
+        if !matches!(&call.kind, NodeKind::Call(_)) {
             return Err(
                 Diagnostic::error(
                     "invalid function call statement",
-                    self.current_span(),
+                    call.span,
                 )
                 .with_help(
                     "Only function calls may appear as standalone expressions.\n\
@@ -1446,7 +1694,14 @@ impl<'a> Parser<'a> {
             );
         }
 
-        self.bump(); // consume `;`
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
+
+        call.span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
 
         Ok(call)
     }
@@ -1483,7 +1738,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            if matches!(lhs, Node::Has(_, _))
+            if matches!(&lhs.kind, NodeKind::Has(_, _))
                 && matches!(infix_kind, Infix::Get | Infix::Has)
             {
                  return Err(
@@ -1500,7 +1755,10 @@ impl<'a> Parser<'a> {
             let rhs = if matches!(infix_kind, Infix::Get | Infix::Has)
                 && self.peek_kind() == TokenKind::LBracket
             {
-                self.bump(); // consume `[`
+                let bracket_start = self
+                    .bump()
+                    .cloned()
+                    .expect("opening index bracket must exist");
 
                 let index = self.parse_bp(0)?;
 
@@ -1514,9 +1772,18 @@ impl<'a> Parser<'a> {
                     );
                 }
 
-                self.bump(); // consume `]`
+                let bracket_end = self
+                    .bump()
+                    .cloned()
+                    .expect("closing index bracket must exist");
 
-                Node::Index(Box::new(index))
+                Node::new(
+                    NodeKind::Index(Box::new(index)),
+                    Span {
+                        start: bracket_start.pos,
+                        end: bracket_end.pos + bracket_end.lexeme.len(),
+                    },
+                )
             } else {
                 self.parse_bp(r_bp)?
             };
@@ -1541,18 +1808,36 @@ impl<'a> Parser<'a> {
             .with_help("Druim expected a value expression here.")
         })?;
 
+        let token_span = Span {
+            start: tok.pos,
+            end: tok.pos + tok.lexeme.len(),
+        };
+
         match tok.kind {
             // ─── Atoms ──────────────────────────────
-            TokenKind::Ident => Ok(Node::Ident(tok.lexeme.clone())),
+            TokenKind::Ident => Ok(Node::new(
+                NodeKind::Ident(tok.lexeme.clone()),
+                token_span,
+            )),
 
             TokenKind::NumLit => {
                 let n = tok.lexeme.parse::<i64>().unwrap_or(0);
-                Ok(Node::Lit(Literal::Num(n)))
+
+                Ok(Node::new(
+                    NodeKind::Lit(Literal::Num(n)),
+                    token_span,
+                ))
             }
 
-            TokenKind::DecLit => Ok(Node::Lit(Literal::Dec(tok.lexeme.clone()))),
+            TokenKind::DecLit => Ok(Node::new(
+                NodeKind::Lit(Literal::Dec(tok.lexeme.clone())),
+                token_span,
+            )),
 
-            TokenKind::TextLit => Ok(Node::Lit(Literal::Text(tok.lexeme.clone()))),
+            TokenKind::TextLit => Ok(Node::new(
+                NodeKind::Lit(Literal::Text(tok.lexeme.clone())),
+                token_span,
+            )),
 
             TokenKind::FlagLit => {
                 let value = match tok.lexeme.as_str() {
@@ -1560,44 +1845,64 @@ impl<'a> Parser<'a> {
                     "false" => false,
                     _ => {
                         return Err(
-                            Diagnostic::error(
-                                "invalid flag literal",
-                                Span {
-                                    start: tok.pos,
-                                    end: tok.pos + tok.lexeme.len(),
-                                },
-                            )
-                            .with_help(
-                                "Druim flag literals must be either `true` or `false`.",
-                            ),
+                            Diagnostic::error("invalid flag literal", token_span)
+                                .with_help(
+                                    "Druim flag literals must be either `true` or `false`.",
+                                ),
                         );
                     }
                 };
 
-                Ok(Node::Lit(Literal::Flag(value)))
+                Ok(Node::new(
+                    NodeKind::Lit(Literal::Flag(value)),
+                    token_span,
+                ))
             }
 
-            TokenKind::KwVoid => Ok(Node::Lit(Literal::Void)),
+            TokenKind::KwVoid => Ok(Node::new(
+                NodeKind::Lit(Literal::Void),
+                token_span,
+            )),
 
             // ─── Collection literals ───────────────
-            TokenKind::BoxStart => self.parse_box_literal(),
+            TokenKind::BoxStart => self.parse_box_literal(tok.pos),
 
-            TokenKind::BagStart => self.parse_bag_literal(),
+            TokenKind::BagStart => self.parse_bag_literal(tok.pos),
 
             // ─── Unary operators ────────────────────
             TokenKind::Not => {
                 let rhs = self.parse_bp(PREFIX_BP)?;
-                Ok(Node::Not(Box::new(rhs)))
+
+                let span = Span {
+                    start: tok.pos,
+                    end: rhs.span.end,
+                };
+
+                Ok(Node::new(
+                    NodeKind::Not(Box::new(rhs)),
+                    span,
+                ))
             }
 
             TokenKind::Sub => {
                 let rhs = self.parse_bp(PREFIX_BP)?;
-                Ok(Node::Neg(Box::new(rhs)))
+
+                let span = Span {
+                    start: tok.pos,
+                    end: rhs.span.end,
+                };
+
+                Ok(Node::new(
+                    NodeKind::Neg(Box::new(rhs)),
+                    span,
+                ))
             }
 
             // ─── Grouping ───────────────────────────
             TokenKind::LParen => {
                 let expr = self.parse_bp(0)?;
+
+                let closing_span = self.current_span();
                 self.expect(TokenKind::RParen, "`)`")?;
 
                 if !is_math_expression(&expr) {
@@ -1606,7 +1911,7 @@ impl<'a> Parser<'a> {
                             "invalid parenthesized expression",
                             Span {
                                 start: tok.pos,
-                                end: tok.pos + tok.lexeme.len(),
+                                end: closing_span.end,
                             },
                         )
                         .with_help(
@@ -1628,10 +1933,7 @@ impl<'a> Parser<'a> {
                 Err(
                     Diagnostic::error(
                         "invalid value expression",
-                        Span {
-                            start: tok.pos,
-                            end: tok.pos + tok.lexeme.len(),
-                        },
+                        token_span,
                     )
                     .with_help(
                         "Statement operators are not valid values.\n\
@@ -1648,10 +1950,7 @@ impl<'a> Parser<'a> {
                 Err(
                     Diagnostic::error(
                         "invalid value expression",
-                        Span {
-                            start: tok.pos,
-                            end: tok.pos + tok.lexeme.len(),
-                        },
+                        token_span,
                     )
                     .with_help(
                         "This construct cannot be used as a value.\n\
@@ -1664,23 +1963,29 @@ impl<'a> Parser<'a> {
             _ => Err(
                 Diagnostic::error(
                     "unexpected token in value expression",
-                    Span {
-                        start: tok.pos,
-                        end: tok.pos + tok.lexeme.len(),
-                    },
+                    token_span,
                 )
                 .with_help("Druim expected a value here."),
             ),
         }
     }
 
-    fn parse_box_literal(&mut self) -> Result<Node, Diagnostic> {
+    fn parse_box_literal(&mut self, start: usize) -> Result<Node, Diagnostic> {
         let mut values = Vec::new();
 
         // Empty Box: `:[]:`
         if self.peek_kind() == TokenKind::BoxEnd {
-            self.bump(); // consume `]:`
-            return Ok(Node::Box(BoxLiteral { values }));
+            let box_end = self
+                .bump()
+                .expect("closing Box delimiter must exist");
+
+            return Ok(Node::new(
+                NodeKind::Box(BoxLiteral { values }),
+                Span {
+                    start,
+                    end: box_end.pos + box_end.lexeme.len(),
+                },
+            ));
         }
 
         loop {
@@ -1764,8 +2069,17 @@ impl<'a> Parser<'a> {
                 }
 
                 TokenKind::BoxEnd => {
-                    self.bump(); // consume `]:`
-                    return Ok(Node::Box(BoxLiteral { values }));
+                    let box_end = self
+                        .bump()
+                        .expect("closing Box delimiter must exist");
+
+                    return Ok(Node::new(
+                        NodeKind::Box(BoxLiteral { values }),
+                        Span {
+                            start,
+                            end: box_end.pos + box_end.lexeme.len(),
+                        },
+                    ));
                 }
 
                 TokenKind::Semicolon => {
@@ -1800,7 +2114,7 @@ impl<'a> Parser<'a> {
                             self.current_span(),
                         )
                         .with_help(
-                            "Druim box values must be separated by commas.\n\
+                            "Druim Box values must be separated by commas.\n\
                             Example: `:[1, 2, 3]:`",
                         ),
                     );
@@ -1809,7 +2123,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_bag_literal(&mut self) -> Result<Node, Diagnostic> {
+    fn parse_bag_literal(&mut self, start: usize) -> Result<Node, Diagnostic> {
         use std::collections::HashSet;
 
         let mut entries = Vec::new();
@@ -1817,8 +2131,17 @@ impl<'a> Parser<'a> {
 
         // Empty Bag: `:||:`
         if self.peek_kind() == TokenKind::BagEnd {
-            self.bump(); // consume `|:`
-            return Ok(Node::Bag(BagLiteral { entries }));
+            let bag_end = self
+                .bump()
+                .expect("closing Bag delimiter must exist");
+
+            return Ok(Node::new(
+                NodeKind::Bag(BagLiteral { entries }),
+                Span {
+                    start,
+                    end: bag_end.pos + bag_end.lexeme.len(),
+                },
+            ));
         }
 
         loop {
@@ -1858,7 +2181,7 @@ impl<'a> Parser<'a> {
                         )
                         .with_help(
                             "Druim expected an entry after the previous comma.\n\
-                            Trailing commas are not allowed in DruimBag literals.",
+                            Trailing commas are not allowed in Druim Bag literals.",
                         ),
                     );
                 }
@@ -1987,8 +2310,17 @@ impl<'a> Parser<'a> {
                 }
 
                 TokenKind::BagEnd => {
-                    self.bump(); // consume `|:`
-                    return Ok(Node::Bag(BagLiteral { entries }));
+                    let bag_end = self
+                        .bump()
+                        .expect("closing Bag delimiter must exist");
+
+                    return Ok(Node::new(
+                        NodeKind::Bag(BagLiteral { entries }),
+                        Span {
+                            start,
+                            end: bag_end.pos + bag_end.lexeme.len(),
+                        },
+                    ));
                 }
 
                 TokenKind::Semicolon => {
@@ -2033,6 +2365,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_call_suffix(&mut self, callee: Node) -> Result<Node, Diagnostic> {
+        let start = callee.span.start;
+
         self.bump(); // consume `(`
 
         let mut args = Vec::new();
@@ -2063,12 +2397,20 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.bump(); // consume `)`
+        let call_end = self
+            .bump()
+            .expect("closing function-call parenthesis must exist");
 
-        Ok(Node::Call(Call {
-            callee: Box::new(callee),
-            args,
-        }))
+        Ok(Node::new(
+            NodeKind::Call(Call {
+                callee: Box::new(callee),
+                args,
+            }),
+            Span {
+                start,
+                end: call_end.pos + call_end.lexeme.len(),
+            },
+        ))
     }
 
     fn expect(&mut self, kind: TokenKind, expected: &'static str) -> Result<(), Diagnostic> {
@@ -2149,13 +2491,13 @@ fn is_snake_case(name: &str) -> bool {
 
 fn is_math_expression(node: &Node) -> bool {
     matches!(
-        node,
-        Node::Add(_, _)
-            | Node::Sub(_, _)
-            | Node::Mul(_, _)
-            | Node::Div(_, _)
-            | Node::Mod(_, _)
-            | Node::Neg(_)
+        &node.kind,
+        NodeKind::Add(_, _)
+            | NodeKind::Sub(_, _)
+            | NodeKind::Mul(_, _)
+            | NodeKind::Div(_, _)
+            | NodeKind::Mod(_, _)
+            | NodeKind::Neg(_)
     )
 }
 
@@ -2231,26 +2573,33 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
 fn build_infix(kind: Infix, lhs: Node, rhs: Node) -> Node {
     use Infix::*;
 
-    match kind {
-        Add => Node::Add(Box::new(lhs), Box::new(rhs)),
-        Sub => Node::Sub(Box::new(lhs), Box::new(rhs)),
-        Mul => Node::Mul(Box::new(lhs), Box::new(rhs)),
-        Div => Node::Div(Box::new(lhs), Box::new(rhs)),
-        Mod => Node::Mod(Box::new(lhs), Box::new(rhs)),
+    let span = Span {
+        start: lhs.span.start,
+        end: rhs.span.end,
+    };
 
-        Eq => Node::Eq(Box::new(lhs), Box::new(rhs)),
-        Ne => Node::Ne(Box::new(lhs), Box::new(rhs)),
-        Lt => Node::Lt(Box::new(lhs), Box::new(rhs)),
-        Le => Node::Le(Box::new(lhs), Box::new(rhs)),
-        Gt => Node::Gt(Box::new(lhs), Box::new(rhs)),
-        Ge => Node::Ge(Box::new(lhs), Box::new(rhs)),
+    let kind = match kind {
+        Add => NodeKind::Add(Box::new(lhs), Box::new(rhs)),
+        Sub => NodeKind::Sub(Box::new(lhs), Box::new(rhs)),
+        Mul => NodeKind::Mul(Box::new(lhs), Box::new(rhs)),
+        Div => NodeKind::Div(Box::new(lhs), Box::new(rhs)),
+        Mod => NodeKind::Mod(Box::new(lhs), Box::new(rhs)),
 
-        And => Node::And(Box::new(lhs), Box::new(rhs)),
-        Or => Node::Or(Box::new(lhs), Box::new(rhs)),
+        Eq => NodeKind::Eq(Box::new(lhs), Box::new(rhs)),
+        Ne => NodeKind::Ne(Box::new(lhs), Box::new(rhs)),
+        Lt => NodeKind::Lt(Box::new(lhs), Box::new(rhs)),
+        Le => NodeKind::Le(Box::new(lhs), Box::new(rhs)),
+        Gt => NodeKind::Gt(Box::new(lhs), Box::new(rhs)),
+        Ge => NodeKind::Ge(Box::new(lhs), Box::new(rhs)),
 
-        Get => Node::Get(Box::new(lhs), Box::new(rhs)),
-        Has => Node::Has(Box::new(lhs), Box::new(rhs)),
+        And => NodeKind::And(Box::new(lhs), Box::new(rhs)),
+        Or => NodeKind::Or(Box::new(lhs), Box::new(rhs)),
 
-        Pipe => Node::Pipe(Box::new(lhs), Box::new(rhs)),
-    }
+        Get => NodeKind::Get(Box::new(lhs), Box::new(rhs)),
+        Has => NodeKind::Has(Box::new(lhs), Box::new(rhs)),
+
+        Pipe => NodeKind::Pipe(Box::new(lhs), Box::new(rhs)),
+    };
+
+    Node::new(kind, span)
 }

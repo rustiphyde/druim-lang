@@ -39,11 +39,6 @@ fn ansi_enabled() -> bool {
 }
 
 #[cfg(not(feature = "ansi"))]
-fn ansi_enabled() -> bool {
-    false
-}
-
-#[cfg(not(feature = "ansi"))]
 fn apply_ansi(_style: Style, text: &str) -> String {
     text.to_string()
 }
@@ -53,18 +48,20 @@ fn write_styled(out: &mut String, style: Style, text: &str) {
     out.push_str(&rendered);
 }
 
-
-// Renders a source span and returns `start_col`, the zero-based column
-// of the first caret derived solely from `span.start`.
-// This value is authoritative and must never be influenced by
-// secondary labels, notes, or other annotations.
-fn render_span_block(out: &mut String, source: &Source, span: Span) -> usize {
+// Renders a source span using `span.start` as the authoritative
+// position of the first caret.
+// Secondary labels, notes, and other annotations must not alter it.
+fn render_span_block(
+    out: &mut String,
+    source: &Source,
+    span: Span,
+) {
     let (line, col) = source.line_col(span.start);
     write_styled(
         out,
         Style::Plain,
         &format!(" --> line {}, column {}\n", line, col),
-);
+    );
 
 
     let line_text = source.line_text(line);
@@ -87,19 +84,17 @@ fn render_span_block(out: &mut String, source: &Source, span: Span) -> usize {
         ),
     );
 
-
-    let line_len = line_text.len();
+    let line_len = line_text.chars().count();
     let span_starts_on_newline = source.is_newline_at(span.start);
 
     let start_col = if span_starts_on_newline {
         line_len
     } else {
-        (col.saturating_sub(1)).min(line_len)
+        col.saturating_sub(1).min(line_len)
     };
 
-    let width = span
-        .end
-        .saturating_sub(span.start)
+    let width = source
+        .span_char_width(span)
         .min(line_len.saturating_sub(start_col))
         .max(1);
 
@@ -118,10 +113,6 @@ fn render_span_block(out: &mut String, source: &Source, span: Span) -> usize {
 
     // Newline (PLAIN)
     out.push('\n');
-
-
-
-    start_col
 }
 
 fn render_secondary_labels(
@@ -134,43 +125,63 @@ fn render_secondary_labels(
         return;
     }
 
-    let (line, _) = source.line_col(primary_span.start);
-    let gutter_width = format!("{}", line).len();
+    let (primary_line, primary_col) = source.line_col(primary_span.start);
+    let gutter_width = format!("{}", primary_line).len();
 
-    // Compute primary caret start column (same logic as render_span_block)
-    let (_, col) = source.line_col(primary_span.start);
-    let line_text = source.line_text(line);
-    let line_len = line_text.len();
-    let span_starts_on_newline = source.is_newline_at(primary_span.start);
+    let primary_line_text = source.line_text(primary_line);
+    let primary_line_len = primary_line_text.chars().count();
 
-    let start_col = if span_starts_on_newline {
-        line_len
+    let primary_start_col = if source.is_newline_at(primary_span.start) {
+        primary_line_len
     } else {
-        col.saturating_sub(1).min(line_len.saturating_sub(1))
+        primary_col
+            .saturating_sub(1)
+            .min(primary_line_len)
     };
 
-    // Label rule you locked in:
-    // - dashline ends 1 column before first caret
-    // - max 8 dashes (shorter if near start)
-    // - then single space, then label
-    for (_span, label) in secondary {
-        if start_col == 0 {
+    for (span, label) in secondary {
+        let (secondary_line, secondary_col) = source.line_col(span.start);
+
+        if secondary_line != primary_line {
+            out.push('\n');
+            write_styled(out, Style::Plain, label);
+            out.push('\n');
+
+            render_span_block(out, source, *span);
             continue;
         }
 
-        let dash_len = start_col.min(8);
-        let dash_start = start_col - dash_len;
+        let secondary_line_text = source.line_text(secondary_line);
+        let secondary_line_len = secondary_line_text.chars().count();
 
-        write_styled(
-            out,
-            Style::Plain,
-            &format!("{:>width$} | ", "", width = gutter_width),
-        );
+        let secondary_start_col = if source.is_newline_at(span.start) {
+            secondary_line_len
+        } else {
+            secondary_col
+                .saturating_sub(1)
+                .min(secondary_line_len)
+        };
 
-
-        for _ in 0..dash_start {
-            out.push(' ');
+        // A connector must begin before the primary caret.
+        if secondary_start_col >= primary_start_col {
+            continue;
         }
+
+        // Dashes end one column before the primary caret.
+        // The following space places the label directly beneath it.
+        let dash_len = primary_start_col
+            .saturating_sub(secondary_start_col)
+            .saturating_sub(1);
+
+        let mut prefix =
+            format!("{:>width$} | ", "", width = gutter_width);
+
+        for _ in 0..secondary_start_col {
+            prefix.push(' ');
+        }
+
+        write_styled(out, Style::Plain, &prefix);
+
         for _ in 0..dash_len {
             out.push('-');
         }

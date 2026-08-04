@@ -1,23 +1,29 @@
-use crate::compiler::ast::{Guard, GuardBranch, Literal, Node};
+use crate::compiler::ast::{Guard, GuardBranch, Literal, Node, NodeKind};
+use crate::compiler::error::Span;
 use crate::compiler::semantics::eval::Evaluator;
 use crate::compiler::semantics::value::Value;
 
+
+fn test_span() -> Span {
+    Span { start: 0, end: 0 }
+}
+
 fn branch(v: Literal) -> GuardBranch {
     GuardBranch {
-        expr: Node::Lit(v),
+        expr: Node::new(NodeKind::Lit(v), test_span()),
     }
 }
 
 #[test]
 fn guard_assigns_first_truthy_branch() {
-    let node = Node::Guard(Guard {
+    let node = Node::new(NodeKind::Guard(Guard {
         target: "x".into(),
         branches: vec![
             branch(Literal::Flag(false)),
             branch(Literal::Num(1)),
             branch(Literal::Num(2)),
         ],
-    });
+    }), test_span());
 
     let mut ev = Evaluator::new();
     ev.eval_node(&node)
@@ -31,7 +37,7 @@ fn guard_assigns_first_truthy_branch() {
 
 #[test]
 fn guard_skips_false_values_until_true() {
-    let node = Node::Guard(Guard {
+    let node = Node::new(NodeKind::Guard(Guard {
         target: "x".into(),
         branches: vec![
             branch(Literal::Void),
@@ -39,7 +45,7 @@ fn guard_skips_false_values_until_true() {
             branch(Literal::Text("".into())),
             branch(Literal::Text("ok".into())),
         ],
-    });
+    }), test_span());
 
     let mut ev = Evaluator::new();
     ev.eval_node(&node)
@@ -53,14 +59,14 @@ fn guard_skips_false_values_until_true() {
 
 #[test]
 fn guard_assigns_void_if_all_branches_false() {
-    let node = Node::Guard(Guard {
+    let node = Node::new(NodeKind::Guard(Guard {
         target: "x".into(),
         branches: vec![
             branch(Literal::Flag(false)),
             branch(Literal::Num(0)),
             branch(Literal::Text("".into())),
         ],
-    });
+    }), test_span());
 
     let mut ev = Evaluator::new();
     ev.eval_node(&node)
@@ -74,10 +80,10 @@ fn guard_assigns_void_if_all_branches_false() {
 
 #[test]
 fn guard_single_branch_true() {
-    let node = Node::Guard(Guard {
+    let node = Node::new(NodeKind::Guard(Guard {
         target: "x".into(),
         branches: vec![branch(Literal::Num(5))],
-    });
+    }), test_span());
 
     let mut ev = Evaluator::new();
     ev.eval_node(&node)
@@ -91,10 +97,10 @@ fn guard_single_branch_true() {
 
 #[test]
 fn guard_single_branch_false_becomes_void() {
-    let node = Node::Guard(Guard {
+    let node = Node::new(NodeKind::Guard(Guard {
         target: "x".into(),
         branches: vec![branch(Literal::Num(0))],
-    });
+    }), test_span());
 
     let mut ev = Evaluator::new();
     ev.eval_node(&node)
@@ -116,28 +122,28 @@ fn function_call_returns_explicit_value() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![Param {
                     name: "value".to_string(),
                     default: None,
                 }],
-                body: vec![Node::Ret(Ret {
-                    value: Some(Box::new(Node::Ident(
+                body: vec![Node::new(NodeKind::Ret(Ret {
+                    value: Some(Box::new(Node::new(NodeKind::Ident(
                         "value".to_string(),
-                    ))),
-                })],
-            }),
+                    ), test_span()))),
+                }), test_span())],
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "identity".to_string(),
-                    )),
-                    args: vec![Node::Lit(Literal::Num(7))],
-                })),
-            }),
+                    ), test_span())),
+                    args: vec![Node::new(NodeKind::Lit(Literal::Num(7)), test_span())],
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -162,19 +168,19 @@ fn function_call_without_return_evaluates_to_void() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "noop".to_string(),
                 params: vec![],
                 body: vec![],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("noop".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("noop".to_string()), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -199,7 +205,7 @@ fn function_call_binds_multiple_parameters_in_order() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "second".to_string(),
                 params: vec![
                     Param {
@@ -211,25 +217,25 @@ fn function_call_binds_multiple_parameters_in_order() {
                         default: None,
                     },
                 ],
-                body: vec![Node::Ret(Ret {
-                    value: Some(Box::new(Node::Ident(
+                body: vec![Node::new(NodeKind::Ret(Ret {
+                    value: Some(Box::new(Node::new(NodeKind::Ident(
                         "b".to_string(),
-                    ))),
-                })],
-            }),
+                    ), test_span()))),
+                }), test_span())],
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "second".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(3)),
-                        Node::Lit(Literal::Num(4)),
+                        Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -254,30 +260,30 @@ fn function_call_uses_default_parameter_value() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![
                     Param {
                         name: "value".to_string(),
-                        default: Some(Node::Lit(Literal::Num(42))),
+                        default: Some(Node::new(NodeKind::Lit(Literal::Num(42)), test_span())),
                     },
                 ],
-                body: vec![Node::Ret(Ret {
-                    value: Some(Box::new(Node::Ident(
+                body: vec![Node::new(NodeKind::Ret(Ret {
+                    value: Some(Box::new(Node::new(NodeKind::Ident(
                         "value".to_string(),
-                    ))),
-                })],
-            }),
+                    ), test_span()))),
+                }), test_span())],
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "identity".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -302,32 +308,32 @@ fn function_call_explicit_argument_overrides_default() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![
                     Param {
                         name: "value".to_string(),
-                        default: Some(Node::Lit(Literal::Num(42))),
+                        default: Some(Node::new(NodeKind::Lit(Literal::Num(42)), test_span())),
                     },
                 ],
-                body: vec![Node::Ret(Ret {
-                    value: Some(Box::new(Node::Ident(
+                body: vec![Node::new(NodeKind::Ret(Ret {
+                    value: Some(Box::new(Node::new(NodeKind::Ident(
                         "value".to_string(),
-                    ))),
-                })],
-            }),
+                    ), test_span()))),
+                }), test_span())],
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "identity".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -351,7 +357,7 @@ fn function_call_rejects_missing_required_argument() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![
                     Param {
@@ -360,14 +366,14 @@ fn function_call_rejects_missing_required_argument() {
                     },
                 ],
                 body: vec![],
-            }),
+            }), test_span()),
 
-            Node::Call(Call {
-                callee: Box::new(Node::Ident(
+            Node::new(NodeKind::Call(Call {
+                callee: Box::new(Node::new(NodeKind::Ident(
                     "identity".to_string(),
-                )),
+                ), test_span())),
                 args: vec![],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -392,24 +398,24 @@ fn function_call_rejects_too_many_arguments() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![Param {
                     name: "value".to_string(),
                     default: None,
                 }],
                 body: vec![],
-            }),
+            }), test_span()),
 
-            Node::Call(Call {
-                callee: Box::new(Node::Ident(
+            Node::new(NodeKind::Call(Call {
+                callee: Box::new(Node::new(NodeKind::Ident(
                     "identity".to_string(),
-                )),
+                ), test_span())),
                 args: vec![
-                    Node::Lit(Literal::Num(1)),
-                    Node::Lit(Literal::Num(2)),
+                    Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                    Node::new(NodeKind::Lit(Literal::Num(2)), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -434,12 +440,12 @@ fn function_call_rejects_non_function_callee() {
 
     let program = Program {
         nodes: vec![
-            Node::Call(Call {
-                callee: Box::new(Node::Lit(
+            Node::new(NodeKind::Call(Call {
+                callee: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(7),
-                )),
+                ), test_span())),
                 args: vec![],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -455,6 +461,45 @@ fn function_call_rejects_non_function_callee() {
 }
 
 #[test]
+fn non_function_call_uses_callee_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "value = 7; value();";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("non-function call should return a diagnostic");
+
+    assert_eq!(
+        err.message,
+        "attempted to call a non-function value",
+    );
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 11,
+            end: 16,
+        },
+    );
+}
+
+#[test]
 fn function_return_stops_remaining_body_execution() {
     use crate::compiler::ast::{
         Call, Define, Func, Literal, Node, Program, Ret,
@@ -464,34 +509,34 @@ fn function_return_stops_remaining_body_execution() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "early_return".to_string(),
                 params: vec![],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Lit(
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(1),
-                        ))),
-                    }),
+                        ), test_span()))),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "should_not_exist".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(2),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "early_return".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -521,25 +566,25 @@ fn function_return_without_value_evaluates_to_void() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "return_void".to_string(),
                 params: vec![],
                 body: vec![
-                    Node::Ret(Ret {
+                    Node::new(NodeKind::Ret(Ret {
                         value: None,
-                    }),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "return_void".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -564,35 +609,35 @@ fn function_return_inside_nested_block_propagates() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "nested_return".to_string(),
                 params: vec![],
                 body: vec![
-                    Node::Block(Block {
+                    Node::new(NodeKind::Block(Block {
                         segments: vec![
                             BlockSegment {
                                 nodes: vec![
-                                    Node::Ret(Ret {
-                                        value: Some(Box::new(Node::Lit(
+                                    Node::new(NodeKind::Ret(Ret {
+                                        value: Some(Box::new(Node::new(NodeKind::Lit(
                                             Literal::Num(9),
-                                        ))),
-                                    }),
+                                        ), test_span()))),
+                                    }), test_span()),
                                 ],
                             },
                         ],
-                    }),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "nested_return".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -617,7 +662,7 @@ fn function_scope_is_removed_after_call() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "scoped".to_string(),
                 params: vec![
                     Param {
@@ -626,23 +671,23 @@ fn function_scope_is_removed_after_call() {
                     },
                 ],
                 body: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "local_value".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(9),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Call(Call {
-                callee: Box::new(Node::Ident(
+            Node::new(NodeKind::Call(Call {
+                callee: Box::new(Node::new(NodeKind::Ident(
                     "scoped".to_string(),
-                )),
+                ), test_span())),
                 args: vec![
-                    Node::Lit(Literal::Num(4)),
+                    Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -673,12 +718,12 @@ fn function_scope_is_removed_after_call() {
                     },
                 ],
                 body: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "local_value".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(9),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
             },
         )),
@@ -693,7 +738,7 @@ fn nested_function_call_evaluates_as_argument() {
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
-    let identity = Node::Func(Func {
+    let identity = Node::new(NodeKind::Func(Func {
         name: "identity".to_string(),
         params: vec![
             Param {
@@ -702,38 +747,38 @@ fn nested_function_call_evaluates_as_argument() {
             },
         ],
         body: vec![
-            Node::Ret(Ret {
-                value: Some(Box::new(Node::Ident(
+            Node::new(NodeKind::Ret(Ret {
+                value: Some(Box::new(Node::new(NodeKind::Ident(
                     "value".to_string(),
-                ))),
-            }),
+                ), test_span()))),
+            }), test_span()),
         ],
-    });
+    }), test_span());
 
-    let inner_call = Node::Call(Call {
-        callee: Box::new(Node::Ident(
+    let inner_call = Node::new(NodeKind::Call(Call {
+        callee: Box::new(Node::new(NodeKind::Ident(
             "identity".to_string(),
-        )),
+        ), test_span())),
         args: vec![
-            Node::Lit(Literal::Num(7)),
+            Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
         ],
-    });
+    }), test_span());
 
-    let outer_call = Node::Call(Call {
-        callee: Box::new(Node::Ident(
+    let outer_call = Node::new(NodeKind::Call(Call {
+        callee: Box::new(Node::new(NodeKind::Ident(
             "identity".to_string(),
-        )),
+        ), test_span())),
         args: vec![inner_call],
-    });
+    }), test_span());
 
     let program = Program {
         nodes: vec![
             identity,
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
                 value: Box::new(outer_call),
-            }),
+            }), test_span()),
         ],
     };
 
@@ -758,7 +803,7 @@ fn function_can_return_sum_of_parameters() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "sum".to_string(),
                 params: vec![
                     Param {
@@ -771,25 +816,25 @@ fn function_can_return_sum_of_parameters() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Add(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("sum".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("sum".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(2)),
-                        Node::Lit(Literal::Num(3)),
+                        Node::new(NodeKind::Lit(Literal::Num(2)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -814,7 +859,7 @@ fn function_can_return_difference_of_parameters() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "difference".to_string(),
                 params: vec![
                     Param {
@@ -827,24 +872,24 @@ fn function_can_return_difference_of_parameters() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Sub(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Sub(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
-            Node::Define(Define {
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("difference".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("difference".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
-                        Node::Lit(Literal::Num(2)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(2)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -866,7 +911,7 @@ fn function_can_return_product_of_parameters() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "product".to_string(),
                 params: vec![
                     Param {
@@ -879,25 +924,25 @@ fn function_can_return_product_of_parameters() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Mul(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Mul(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("product".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("product".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
-                        Node::Lit(Literal::Num(3)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -922,7 +967,7 @@ fn function_can_return_quotient_of_parameters() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "quotient".to_string(),
                 params: vec![
                     Param {
@@ -935,25 +980,25 @@ fn function_can_return_quotient_of_parameters() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Div(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Div(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("quotient".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("quotient".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(21)),
-                        Node::Lit(Literal::Num(3)),
+                        Node::new(NodeKind::Lit(Literal::Num(21)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -978,7 +1023,7 @@ fn function_can_return_remainder_of_parameters() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "remainder".to_string(),
                 params: vec![
                     Param {
@@ -991,25 +1036,25 @@ fn function_can_return_remainder_of_parameters() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Mod(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Mod(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("remainder".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("remainder".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(22)),
-                        Node::Lit(Literal::Num(5)),
+                        Node::new(NodeKind::Lit(Literal::Num(22)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(5)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1033,7 +1078,7 @@ fn division_by_zero_returns_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "quotient".to_string(),
                 params: vec![
                     Param {
@@ -1046,24 +1091,24 @@ fn division_by_zero_returns_diagnostic() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Div(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Div(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
-            Node::Define(Define {
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("quotient".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("quotient".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
-                        Node::Lit(Literal::Num(0)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1084,7 +1129,7 @@ fn modulo_by_zero_returns_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "remainder".to_string(),
                 params: vec![
                     Param {
@@ -1097,24 +1142,24 @@ fn modulo_by_zero_returns_diagnostic() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Mod(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Mod(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
-            Node::Define(Define {
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("remainder".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("remainder".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
-                        Node::Lit(Literal::Num(0)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1136,7 +1181,7 @@ fn function_can_return_equality_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "equals".to_string(),
                 params: vec![
                     Param {
@@ -1149,25 +1194,25 @@ fn function_can_return_equality_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Eq(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Eq(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("equals".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("equals".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(5)),
-                        Node::Lit(Literal::Num(5)),
+                        Node::new(NodeKind::Lit(Literal::Num(5)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(5)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1192,7 +1237,7 @@ fn function_can_return_inequality_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "not_equals".to_string(),
                 params: vec![
                     Param {
@@ -1205,25 +1250,25 @@ fn function_can_return_inequality_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Ne(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Ne(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("not_equals".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("not_equals".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(5)),
-                        Node::Lit(Literal::Num(6)),
+                        Node::new(NodeKind::Lit(Literal::Num(5)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(6)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1248,7 +1293,7 @@ fn function_can_return_less_than_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "less_than".to_string(),
                 params: vec![
                     Param {
@@ -1261,25 +1306,25 @@ fn function_can_return_less_than_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Lt(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Lt(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("less_than".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("less_than".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(4)),
-                        Node::Lit(Literal::Num(7)),
+                        Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1304,7 +1349,7 @@ fn function_can_return_less_than_or_equal_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "less_than_or_equal".to_string(),
                 params: vec![
                     Param {
@@ -1317,25 +1362,25 @@ fn function_can_return_less_than_or_equal_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Le(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Le(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("less_than_or_equal".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("less_than_or_equal".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(7)),
-                        Node::Lit(Literal::Num(7)),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(7)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1360,7 +1405,7 @@ fn function_can_return_greater_than_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "greater_than".to_string(),
                 params: vec![
                     Param {
@@ -1373,25 +1418,25 @@ fn function_can_return_greater_than_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Gt(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Gt(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("greater_than".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("greater_than".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(9)),
-                        Node::Lit(Literal::Num(4)),
+                        Node::new(NodeKind::Lit(Literal::Num(9)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1416,7 +1461,7 @@ fn function_can_return_greater_than_or_equal_comparison() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "greater_than_or_equal".to_string(),
                 params: vec![
                     Param {
@@ -1429,25 +1474,25 @@ fn function_can_return_greater_than_or_equal_comparison() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Ge(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Ge(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("greater_than_or_equal".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("greater_than_or_equal".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(9)),
-                        Node::Lit(Literal::Num(9)),
+                        Node::new(NodeKind::Lit(Literal::Num(9)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(9)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1472,7 +1517,7 @@ fn function_can_return_logical_and() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "logical_and".to_string(),
                 params: vec![
                     Param {
@@ -1485,25 +1530,25 @@ fn function_can_return_logical_and() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::And(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::And(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("logical_and".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("logical_and".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Flag(true)),
-                        Node::Lit(Literal::Flag(true)),
+                        Node::new(NodeKind::Lit(Literal::Flag(true)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Flag(true)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1528,7 +1573,7 @@ fn function_can_return_logical_or() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "logical_or".to_string(),
                 params: vec![
                     Param {
@@ -1541,25 +1586,25 @@ fn function_can_return_logical_or() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Or(
-                            Box::new(Node::Ident("a".to_string())),
-                            Box::new(Node::Ident("b".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Or(
+                            Box::new(Node::new(NodeKind::Ident("a".to_string()), test_span())),
+                            Box::new(Node::new(NodeKind::Ident("b".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("logical_or".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("logical_or".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Flag(false)),
-                        Node::Lit(Literal::Flag(true)),
+                        Node::new(NodeKind::Lit(Literal::Flag(false)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Flag(true)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1584,7 +1629,7 @@ fn function_can_return_logical_not() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "logical_not".to_string(),
                 params: vec![
                     Param {
@@ -1593,23 +1638,23 @@ fn function_can_return_logical_not() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Not(
-                            Box::new(Node::Ident("value".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Not(
+                            Box::new(Node::new(NodeKind::Ident("value".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("logical_not".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("logical_not".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Flag(false)),
+                        Node::new(NodeKind::Lit(Literal::Flag(false)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1634,7 +1679,7 @@ fn function_can_return_numeric_negation() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "negate".to_string(),
                 params: vec![
                     Param {
@@ -1643,23 +1688,23 @@ fn function_can_return_numeric_negation() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Neg(
-                            Box::new(Node::Ident("value".to_string())),
-                        ))),
-                    }),
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Neg(
+                            Box::new(Node::new(NodeKind::Ident("value".to_string()), test_span())),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident("negate".to_string())),
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident("negate".to_string()), test_span())),
                     args: vec![
-                        Node::Lit(Literal::Num(42)),
+                        Node::new(NodeKind::Lit(Literal::Num(42)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1682,13 +1727,13 @@ fn get_on_void_returns_void() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Lit(crate::compiler::ast::Literal::Void)),
-                    Box::new(Node::Ident("anything".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Lit(crate::compiler::ast::Literal::Void), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1711,13 +1756,13 @@ fn has_on_void_returns_false() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Lit(crate::compiler::ast::Literal::Void)),
-                    Box::new(Node::Ident("anything".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Lit(crate::compiler::ast::Literal::Void), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1739,13 +1784,13 @@ fn get_on_flag_returns_void() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Lit(Literal::Flag(true))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Get(
+                Box::new(Node::new(NodeKind::Lit(Literal::Flag(true)), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1766,13 +1811,13 @@ fn has_on_flag_returns_false() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Lit(Literal::Flag(true))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Has(
+                Box::new(Node::new(NodeKind::Lit(Literal::Flag(true)), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1793,13 +1838,13 @@ fn get_on_num_returns_void() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Lit(Literal::Num(123))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Get(
+                Box::new(Node::new(NodeKind::Lit(Literal::Num(123)), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1820,13 +1865,13 @@ fn has_on_num_returns_false() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Lit(Literal::Num(123))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Has(
+                Box::new(Node::new(NodeKind::Lit(Literal::Num(123)), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1847,13 +1892,13 @@ fn get_on_text_returns_void() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Lit(Literal::Text("hello".to_string()))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Get(
+                Box::new(Node::new(NodeKind::Lit(Literal::Text("hello".to_string())), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1874,13 +1919,13 @@ fn has_on_text_returns_false() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Lit(Literal::Text("hello".to_string()))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Has(
+                Box::new(Node::new(NodeKind::Lit(Literal::Text("hello".to_string())), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1901,13 +1946,13 @@ fn get_on_dec_returns_void() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Get(
-                Box::new(Node::Lit(Literal::Dec("12.34".to_string()))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Get(
+                Box::new(Node::new(NodeKind::Lit(Literal::Dec("12.34".to_string())), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1928,13 +1973,13 @@ fn has_on_dec_returns_false() {
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::Define(Define {
+        nodes: vec![Node::new(NodeKind::Define(Define {
             name: "result".to_string(),
-            value: Box::new(Node::Has(
-                Box::new(Node::Lit(Literal::Dec("12.34".to_string()))),
-                Box::new(Node::Ident("anything".to_string())),
-            )),
-        })],
+            value: Box::new(Node::new(NodeKind::Has(
+                Box::new(Node::new(NodeKind::Lit(Literal::Dec("12.34".to_string())), test_span())),
+                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+            ), test_span())),
+        }), test_span())],
     };
 
     let mut evaluator = Evaluator::new();
@@ -1956,17 +2001,17 @@ fn get_on_void_identifier_returns_void() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "x".to_string(),
-                value: Box::new(Node::Lit(Literal::Void)),
-            }),
-            Node::Define(Define {
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Void), test_span())),
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("x".to_string())),
-                    Box::new(Node::Ident("anything".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("x".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -1991,16 +2036,16 @@ fn evaluates_box_literal() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(1)),
-                        Node::Lit(Literal::Num(2)),
-                        Node::Lit(Literal::Num(3)),
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(2)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2029,27 +2074,27 @@ fn evaluates_bag_literal() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "name".to_string(),
-                            value: Node::Lit(Literal::Text(
+                            value: Node::new(NodeKind::Lit(Literal::Text(
                                 "Rusty".to_string(),
-                            )),
+                            )), test_span()),
                         },
                         BagEntry {
                             name: "level".to_string(),
-                            value: Node::Lit(Literal::Num(42)),
+                            value: Node::new(NodeKind::Lit(Literal::Num(42)), test_span()),
                         },
                         BagEntry {
                             name: "active".to_string(),
-                            value: Node::Lit(Literal::Flag(true)),
+                            value: Node::new(NodeKind::Lit(Literal::Flag(true)), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2088,27 +2133,27 @@ fn get_returns_named_bag_value() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "name".to_string(),
-                            value: Node::Lit(Literal::Text(
+                            value: Node::new(NodeKind::Lit(Literal::Text(
                                 "Rusty".to_string(),
-                            )),
+                            )), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2133,20 +2178,20 @@ fn get_returns_void_for_missing_bag_name() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Ident("missing".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("missing".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2171,27 +2216,27 @@ fn has_returns_true_for_existing_bag_name() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "name".to_string(),
-                            value: Node::Lit(Literal::Text(
+                            value: Node::new(NodeKind::Lit(Literal::Text(
                                 "Rusty".to_string(),
-                            )),
+                            )), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2216,20 +2261,20 @@ fn has_returns_false_for_missing_bag_name() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Ident("missing".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("missing".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2254,25 +2299,25 @@ fn get_returns_box_value_at_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("first".to_string())),
-                        Node::Lit(Literal::Text("second".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("first".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("second".to_string())), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(1)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2297,24 +2342,24 @@ fn get_returns_void_for_out_of_range_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(10)),
+                        Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(4)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2339,24 +2384,24 @@ fn has_returns_true_for_existing_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Void),
+                        Node::new(NodeKind::Lit(Literal::Void), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2381,22 +2426,22 @@ fn has_returns_false_for_missing_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2421,36 +2466,36 @@ fn get_traverses_from_box_into_nested_bag() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "data".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Bag(BagLiteral {
+                        Node::new(NodeKind::Bag(BagLiteral {
                             entries: vec![
                                 BagEntry {
                                     name: "name".to_string(),
-                                    value: Node::Lit(Literal::Text(
+                                    value: Node::new(NodeKind::Lit(Literal::Text(
                                         "Rusty".to_string(),
-                                    )),
+                                    )), test_span()),
                                 },
                             ],
-                        }),
+                        }), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("data".to_string())),
-                        Box::new(Node::Index(Box::new(
-                            Node::Lit(Literal::Num(0)),
-                        ))),
-                    )),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("data".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Index(Box::new(
+                            Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                        )), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2476,40 +2521,40 @@ fn get_traverses_nested_boxes_by_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "matrix".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Box(BoxLiteral {
+                        Node::new(NodeKind::Box(BoxLiteral {
                             values: vec![
-                                Node::Lit(Literal::Num(1)),
-                                Node::Lit(Literal::Num(2)),
+                                Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                                Node::new(NodeKind::Lit(Literal::Num(2)), test_span()),
                             ],
-                        }),
-                        Node::Box(BoxLiteral {
+                        }), test_span()),
+                        Node::new(NodeKind::Box(BoxLiteral {
                             values: vec![
-                                Node::Lit(Literal::Num(3)),
-                                Node::Lit(Literal::Num(4)),
+                                Node::new(NodeKind::Lit(Literal::Num(3)), test_span()),
+                                Node::new(NodeKind::Lit(Literal::Num(4)), test_span()),
                             ],
-                        }),
+                        }), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("matrix".to_string())),
-                        Box::new(Node::Index(Box::new(
-                            Node::Lit(Literal::Num(1)),
-                        ))),
-                    )),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("matrix".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Index(Box::new(
+                            Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                        )), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2534,39 +2579,39 @@ fn get_traverses_from_bag_into_nested_box() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "data".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "items".to_string(),
-                            value: Node::Box(BoxLiteral {
+                            value: Node::new(NodeKind::Box(BoxLiteral {
                                 values: vec![
-                                    Node::Lit(Literal::Text(
+                                    Node::new(NodeKind::Lit(Literal::Text(
                                         "first".to_string(),
-                                    )),
-                                    Node::Lit(Literal::Text(
+                                    )), test_span()),
+                                    Node::new(NodeKind::Lit(Literal::Text(
                                         "second".to_string(),
-                                    )),
+                                    )), test_span()),
                                 ],
-                            }),
+                            }), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("data".to_string())),
-                        Box::new(Node::Ident("items".to_string())),
-                    )),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(1)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("data".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2591,36 +2636,36 @@ fn has_checks_named_entry_after_box_traversal() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "data".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Bag(BagLiteral {
+                        Node::new(NodeKind::Bag(BagLiteral {
                             entries: vec![
                                 BagEntry {
                                     name: "name".to_string(),
-                                    value: Node::Lit(Literal::Text(
+                                    value: Node::new(NodeKind::Lit(Literal::Text(
                                         "Rusty".to_string(),
-                                    )),
+                                    )), test_span()),
                                 },
                             ],
-                        }),
+                        }), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("data".to_string())),
-                        Box::new(Node::Index(Box::new(
-                            Node::Lit(Literal::Num(0)),
-                        ))),
-                    )),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("data".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Index(Box::new(
+                            Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                        )), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2645,35 +2690,35 @@ fn has_checks_box_index_after_bag_traversal() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "data".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "items".to_string(),
-                            value: Node::Box(BoxLiteral {
+                            value: Node::new(NodeKind::Box(BoxLiteral {
                                 values: vec![
-                                    Node::Lit(Literal::Num(10)),
-                                    Node::Lit(Literal::Num(20)),
+                                    Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
+                                    Node::new(NodeKind::Lit(Literal::Num(20)), test_span()),
                                 ],
-                            }),
+                            }), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("data".to_string())),
-                        Box::new(Node::Ident("items".to_string())),
-                    )),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(1)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("data".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2697,22 +2742,22 @@ fn get_rejects_named_selector_on_box() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(1)),
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2737,29 +2782,29 @@ fn get_rejects_indexed_selector_on_bag() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "name".to_string(),
-                            value: Node::Lit(Literal::Text(
+                            value: Node::new(NodeKind::Lit(Literal::Text(
                                 "Rusty".to_string(),
-                            )),
+                            )), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2784,22 +2829,22 @@ fn has_rejects_named_selector_on_box() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(1)),
+                        Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2825,29 +2870,29 @@ fn has_evaluates_computed_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(10)),
-                        Node::Lit(Literal::Num(20)),
-                        Node::Lit(Literal::Num(30)),
+                        Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(20)), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Num(30)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Add(
-                            Box::new(Node::Lit(Literal::Num(1))),
-                            Box::new(Node::Lit(Literal::Num(1))),
-                        ),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                        ), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2871,29 +2916,29 @@ fn has_rejects_indexed_selector_on_bag() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "player".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "name".to_string(),
-                            value: Node::Lit(Literal::Text(
+                            value: Node::new(NodeKind::Lit(Literal::Text(
                                 "Rusty".to_string(),
-                            )),
+                            )), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("player".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Num(0)),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("player".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Num(0)), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2918,32 +2963,32 @@ fn nested_traversal_propagates_selector_mismatch_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "data".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "items".to_string(),
-                            value: Node::Box(BoxLiteral {
+                            value: Node::new(NodeKind::Box(BoxLiteral {
                                 values: vec![
-                                    Node::Lit(Literal::Num(10)),
+                                    Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
                                 ],
-                            }),
+                            }), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Get(
-                        Box::new(Node::Ident("data".to_string())),
-                        Box::new(Node::Ident("items".to_string())),
-                    )),
-                    Box::new(Node::Ident("name".to_string())),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Get(
+                        Box::new(Node::new(NodeKind::Ident("data".to_string()), test_span())),
+                        Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident("name".to_string()), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -2968,26 +3013,26 @@ fn get_rejects_negative_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("first".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("first".to_string())), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Neg(Box::new(
-                            Node::Lit(Literal::Num(1)),
-                        )),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Neg(Box::new(
+                            Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                        )), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3012,24 +3057,24 @@ fn get_rejects_non_numeric_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("first".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("first".to_string())), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Text("zero".to_string())),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Text("zero".to_string())), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3054,26 +3099,26 @@ fn has_rejects_negative_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(10)),
+                        Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Neg(Box::new(
-                            Node::Lit(Literal::Num(1)),
-                        )),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Neg(Box::new(
+                            Node::new(NodeKind::Lit(Literal::Num(1)), test_span()),
+                        )), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3098,26 +3143,26 @@ fn has_rejects_non_numeric_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Num(10)),
+                        Node::new(NodeKind::Lit(Literal::Num(10)), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Lit(Literal::Text(
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Lit(Literal::Text(
                             "zero".to_string(),
-                        )),
-                    ))),
-                )),
-            }),
+                        )), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3143,29 +3188,29 @@ fn get_evaluates_computed_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("zero".to_string())),
-                        Node::Lit(Literal::Text("one".to_string())),
-                        Node::Lit(Literal::Text("two".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("zero".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("one".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("two".to_string())), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Add(
-                            Box::new(Node::Lit(Literal::Num(1))),
-                            Box::new(Node::Lit(Literal::Num(1))),
-                        ),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                        ), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3190,30 +3235,30 @@ fn get_evaluates_identifier_box_index() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "index".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(1))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("zero".to_string())),
-                        Node::Lit(Literal::Text("one".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("zero".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("one".to_string())), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Ident("index".to_string()),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Ident("index".to_string()), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3237,12 +3282,12 @@ fn undeclared_identifier_produces_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Ident(
                     "missing_value".to_string(),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3269,24 +3314,24 @@ fn indexed_get_propagates_undeclared_index_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("zero".to_string())),
-                        Node::Lit(Literal::Text("one".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("zero".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("one".to_string())), test_span()),
                     ],
-                })),
-            }),
-            Node::Define(Define {
+                }), test_span())),
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Ident("missing_index".to_string()),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Ident("missing_index".to_string()), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3313,24 +3358,24 @@ fn indexed_has_propagates_undeclared_index_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "items".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Lit(Literal::Text("zero".to_string())),
-                        Node::Lit(Literal::Text("one".to_string())),
+                        Node::new(NodeKind::Lit(Literal::Text("zero".to_string())), test_span()),
+                        Node::new(NodeKind::Lit(Literal::Text("one".to_string())), test_span()),
                     ],
-                })),
-            }),
-            Node::Define(Define {
+                }), test_span())),
+            }), test_span()),
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident("items".to_string())),
-                    Box::new(Node::Index(Box::new(
-                        Node::Ident("missing_index".to_string()),
-                    ))),
-                )),
-            }),
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident("items".to_string()), test_span())),
+                    Box::new(Node::new(NodeKind::Index(Box::new(
+                        Node::new(NodeKind::Ident("missing_index".to_string()), test_span()),
+                    )), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3357,17 +3402,17 @@ fn get_propagates_undeclared_target_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Get(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Get(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_container".to_string(),
-                    )),
-                    Box::new(Node::Ident(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "name".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3394,17 +3439,17 @@ fn has_propagates_undeclared_target_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Has(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Has(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_container".to_string(),
-                    )),
-                    Box::new(Node::Ident(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "name".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3431,16 +3476,16 @@ fn guard_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Guard(Guard {
+            Node::new(NodeKind::Guard(Guard {
                 target: "result".to_string(),
                 branches: vec![
                     GuardBranch {
-                        expr: Node::Ident(
+                        expr: Node::new(NodeKind::Ident(
                             "missing_value".to_string(),
-                        ),
+                        ), test_span()),
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -3467,27 +3512,27 @@ fn function_return_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "read_missing".to_string(),
                 params: vec![],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Ident(
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Ident(
                             "missing_value".to_string(),
-                        ))),
-                    }),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "read_missing".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3514,7 +3559,7 @@ fn function_argument_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "identity".to_string(),
                 params: vec![
                     Param {
@@ -3523,27 +3568,27 @@ fn function_argument_propagates_undeclared_identifier_diagnostic() {
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Ident(
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Ident(
                             "value".to_string(),
-                        ))),
-                    }),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "identity".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![
-                        Node::Ident(
+                        Node::new(NodeKind::Ident(
                             "missing_argument".to_string(),
-                        ),
+                        ), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3570,34 +3615,34 @@ fn default_parameter_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "read_default".to_string(),
                 params: vec![
                     Param {
                         name: "value".to_string(),
-                        default: Some(Node::Ident(
+                        default: Some(Node::new(NodeKind::Ident(
                             "missing_default".to_string(),
-                        )),
+                        ), test_span())),
                     },
                 ],
                 body: vec![
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Ident(
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Ident(
                             "value".to_string(),
-                        ))),
-                    }),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "read_default".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3624,16 +3669,16 @@ fn box_literal_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Box(BoxLiteral {
+                value: Box::new(Node::new(NodeKind::Box(BoxLiteral {
                     values: vec![
-                        Node::Ident(
+                        Node::new(NodeKind::Ident(
                             "missing_value".to_string(),
-                        ),
+                        ), test_span()),
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3660,19 +3705,19 @@ fn bag_literal_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Bag(BagLiteral {
+                value: Box::new(Node::new(NodeKind::Bag(BagLiteral {
                     entries: vec![
                         BagEntry {
                             name: "value".to_string(),
-                            value: Node::Ident(
+                            value: Node::new(NodeKind::Ident(
                                 "missing_value".to_string(),
-                            ),
+                            ), test_span()),
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3699,15 +3744,15 @@ fn function_call_propagates_undeclared_callee_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "missing_function".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3734,15 +3779,15 @@ fn arithmetic_expression_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Add(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Add(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                    Box::new(Node::Lit(Literal::Num(1))),
-                )),
-            }),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3769,15 +3814,15 @@ fn equality_comparison_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Eq(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Eq(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                    Box::new(Node::Lit(Literal::Num(1))),
-                )),
-            }),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(Literal::Num(1)), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3804,15 +3849,15 @@ fn logical_and_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::And(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::And(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                    Box::new(Node::Lit(Literal::Flag(true))),
-                )),
-            }),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(Literal::Flag(true)), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3839,14 +3884,14 @@ fn logical_not_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Not(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Not(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3873,14 +3918,14 @@ fn numeric_negation_propagates_undeclared_identifier_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Neg(
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Neg(
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3908,15 +3953,15 @@ fn logical_and_short_circuits_false_left_operand() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::And(
-                    Box::new(Node::Lit(Literal::Flag(false))),
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::And(
+                    Box::new(Node::new(NodeKind::Lit(Literal::Flag(false)), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3944,15 +3989,15 @@ fn logical_or_short_circuits_true_left_operand() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Or(
-                    Box::new(Node::Lit(Literal::Flag(true))),
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Or(
+                    Box::new(Node::new(NodeKind::Lit(Literal::Flag(true)), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -3979,15 +4024,15 @@ fn logical_or_evaluates_right_operand_when_left_is_false() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Or(
-                    Box::new(Node::Lit(Literal::Flag(false))),
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Or(
+                    Box::new(Node::new(NodeKind::Lit(Literal::Flag(false)), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4014,15 +4059,15 @@ fn logical_and_evaluates_right_operand_when_left_is_true() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::And(
-                    Box::new(Node::Lit(Literal::Flag(true))),
-                    Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::And(
+                    Box::new(Node::new(NodeKind::Lit(Literal::Flag(true)), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "missing_value".to_string(),
-                    )),
-                )),
-            }),
+                    ), test_span())),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4049,10 +4094,10 @@ fn copy_from_undeclared_identifier_produces_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Copy(Copy {
+            Node::new(NodeKind::Copy(Copy {
                 name: "result".to_string(),
                 target: "missing_source".to_string(),
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4071,6 +4116,47 @@ fn copy_from_undeclared_identifier_produces_diagnostic() {
 }
 
 #[test]
+fn copy_from_undeclared_identifier_uses_statement_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "result := missing_source;";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "Copy from an undeclared identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_source`",
+    );
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 0,
+            end: 25,
+        },
+    );
+}
+
+#[test]
 fn bind_from_undeclared_identifier_produces_diagnostic() {
     use crate::compiler::ast::{
         Bind, Node, Program,
@@ -4079,10 +4165,10 @@ fn bind_from_undeclared_identifier_produces_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "result".to_string(),
                 target: "missing_source".to_string(),
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4101,29 +4187,83 @@ fn bind_from_undeclared_identifier_produces_diagnostic() {
 }
 
 #[test]
+fn bind_from_undeclared_identifier_uses_statement_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "result :> missing_source;";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "Bind from an undeclared identifier should produce a diagnostic",
+        );
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `missing_source`",
+    );
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 0,
+            end: 25,
+        },
+    );
+}
+
+#[test]
 fn bind_preserves_shared_identity_after_source_redefinition() {
     use crate::compiler::ast::{
-        Bind, Define, Literal, Node, Program,
+        Bind, Define, Literal, Node, NodeKind, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
-                name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
-
-            Node::Bind(Bind {
-                name: "alias".to_string(),
-                target: "source".to_string(),
-            }),
-
-            Node::Define(Define {
-                name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(20))),
-            }),
+            Node::new(
+                NodeKind::Define(Define {
+                    name: "source".to_string(),
+                    value: Box::new(Node::new(
+                        NodeKind::Lit(Literal::Num(10)),
+                        test_span(),
+                    )),
+                }),
+                test_span(),
+            ),
+            Node::new(
+                NodeKind::Bind(Bind {
+                    name: "alias".to_string(),
+                    target: "source".to_string(),
+                }),
+                test_span(),
+            ),
+            Node::new(
+                NodeKind::Define(Define {
+                    name: "source".to_string(),
+                    value: Box::new(Node::new(
+                        NodeKind::Lit(Literal::Num(20)),
+                        test_span(),
+                    )),
+                }),
+                test_span(),
+            ),
         ],
     };
 
@@ -4149,20 +4289,20 @@ fn bind_preserves_shared_identity_after_alias_redefinition() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "alias".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(20))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4188,20 +4328,20 @@ fn copy_remains_independent_after_source_redefinition() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Copy(Copy {
+            Node::new(NodeKind::Copy(Copy {
                 name: "snapshot".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(20))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4232,20 +4372,20 @@ fn copy_redefinition_does_not_affect_source() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Copy(Copy {
+            Node::new(NodeKind::Copy(Copy {
                 name: "snapshot".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "snapshot".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(20))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4276,25 +4416,25 @@ fn bind_preserves_transitive_shared_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "a".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "b".to_string(),
                 target: "a".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "c".to_string(),
                 target: "b".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "c".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(30))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(30)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4319,25 +4459,25 @@ fn copy_from_bound_alias_remains_independent() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Copy(Copy {
+            Node::new(NodeKind::Copy(Copy {
                 name: "snapshot".to_string(),
                 target: "alias".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(20))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4373,25 +4513,25 @@ fn multiple_bind_aliases_share_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias_one".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias_two".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "alias_one".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(40))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(40)), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4427,30 +4567,30 @@ fn inner_scope_shadowing_does_not_mutate_outer_bind_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "source".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4481,30 +4621,30 @@ fn inner_scope_alias_shadowing_does_not_mutate_outer_bind_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Bind(Bind {
+            Node::new(NodeKind::Bind(Bind {
                 name: "alias".to_string(),
                 target: "source".to_string(),
-            }),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "alias".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4535,30 +4675,30 @@ fn inner_scope_bind_can_update_outer_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Bind(Bind {
+                            Node::new(NodeKind::Bind(Bind {
                                 name: "alias".to_string(),
                                 target: "source".to_string(),
-                            }),
+                            }), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "alias".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4589,30 +4729,30 @@ fn inner_scope_copy_does_not_mutate_outer_source() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Copy(Copy {
+                            Node::new(NodeKind::Copy(Copy {
                                 name: "snapshot".to_string(),
                                 target: "source".to_string(),
-                            }),
+                            }), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "snapshot".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4642,33 +4782,33 @@ fn local_binding_is_unavailable_in_later_block_segment() {
 
     let program = Program {
         nodes: vec![
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Local(Box::new(
-                                Node::Define(Define {
+                            Node::new(NodeKind::Local(Box::new(
+                                Node::new(NodeKind::Define(Define {
                                     name: "temporary".to_string(),
-                                    value: Box::new(Node::Lit(
+                                    value: Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(10),
-                                    )),
-                                }),
-                            )),
+                                    ), test_span())),
+                                }), test_span()),
+                            )), test_span()),
                         ],
                     },
 
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "result".to_string(),
-                                value: Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Ident(
                                     "temporary".to_string(),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4696,29 +4836,29 @@ fn local_binding_is_available_within_its_block_segment() {
 
     let program = Program {
         nodes: vec![
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Local(Box::new(
-                                Node::Define(Define {
+                            Node::new(NodeKind::Local(Box::new(
+                                Node::new(NodeKind::Define(Define {
                                     name: "temporary".to_string(),
-                                    value: Box::new(Node::Lit(
+                                    value: Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(10),
-                                    )),
-                                }),
-                            )),
+                                    ), test_span())),
+                                }), test_span()),
+                            )), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "result".to_string(),
-                                value: Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Ident(
                                     "temporary".to_string(),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4758,43 +4898,43 @@ fn local_bind_updates_source_before_segment_cleanup() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Local(Box::new(
-                                Node::Bind(Bind {
+                            Node::new(NodeKind::Local(Box::new(
+                                Node::new(NodeKind::Bind(Bind {
                                     name: "alias".to_string(),
                                     target: "source".to_string(),
-                                }),
-                            )),
+                                }), test_span()),
+                            )), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "alias".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
 
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "result".to_string(),
-                                value: Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Ident(
                                     "source".to_string(),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4825,43 +4965,43 @@ fn local_copy_remains_independent_and_is_removed_after_segment() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Local(Box::new(
-                                Node::Copy(Copy {
+                            Node::new(NodeKind::Local(Box::new(
+                                Node::new(NodeKind::Copy(Copy {
                                     name: "snapshot".to_string(),
                                     target: "source".to_string(),
-                                }),
-                            )),
+                                }), test_span()),
+                            )), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "snapshot".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
 
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "result".to_string(),
-                                value: Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Ident(
                                     "source".to_string(),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -4892,26 +5032,26 @@ fn local_empty_definition_is_void_within_segment_and_removed_afterward() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Block(Block {
+                value: Box::new(Node::new(NodeKind::Block(Block {
                     segments: vec![
                         BlockSegment {
                             nodes: vec![
-                                Node::Local(Box::new(
-                                    Node::DefineEmpty(DefineEmpty {
+                                Node::new(NodeKind::Local(Box::new(
+                                    Node::new(NodeKind::DefineEmpty(DefineEmpty {
                                         name: "temporary".to_string(),
-                                    }),
-                                )),
+                                    }), test_span()),
+                                )), test_span()),
 
-                                Node::Ident(
+                                Node::new(NodeKind::Ident(
                                     "temporary".to_string(),
-                                ),
+                                ), test_span()),
                             ],
                         },
                     ],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -4942,38 +5082,38 @@ fn local_shadow_is_restored_after_segment_diagnostic() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "value".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "value".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
 
-                            Node::Local(Box::new(
-                                Node::Define(Define {
+                            Node::new(NodeKind::Local(Box::new(
+                                Node::new(NodeKind::Define(Define {
                                     name: "value".to_string(),
-                                    value: Box::new(Node::Lit(
+                                    value: Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(30),
-                                    )),
-                                }),
-                            )),
+                                    ), test_span())),
+                                }), test_span()),
+                            )), test_span()),
 
-                            Node::Ident(
+                            Node::new(NodeKind::Ident(
                                 "missing".to_string(),
-                            ),
+                            ), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5004,58 +5144,58 @@ fn local_shadow_is_restored_before_return_propagates() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "value".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "read_value".to_string(),
                 params: Vec::<Param>::new(),
                 body: vec![
-                    Node::Block(Block {
+                    Node::new(NodeKind::Block(Block {
                         segments: vec![
                             BlockSegment {
                                 nodes: vec![
-                                    Node::Define(Define {
+                                    Node::new(NodeKind::Define(Define {
                                         name: "value".to_string(),
-                                        value: Box::new(Node::Lit(
+                                        value: Box::new(Node::new(NodeKind::Lit(
                                             Literal::Num(20),
-                                        )),
-                                    }),
+                                        ), test_span())),
+                                    }), test_span()),
 
-                                    Node::Local(Box::new(
-                                        Node::Define(Define {
+                                    Node::new(NodeKind::Local(Box::new(
+                                        Node::new(NodeKind::Define(Define {
                                             name: "value".to_string(),
-                                            value: Box::new(Node::Lit(
+                                            value: Box::new(Node::new(NodeKind::Lit(
                                                 Literal::Num(30),
-                                            )),
-                                        }),
-                                    )),
+                                            ), test_span())),
+                                        }), test_span()),
+                                    )), test_span()),
 
-                                    Node::Ret(Ret {
-                                        value: Some(Box::new(Node::Ident(
+                                    Node::new(NodeKind::Ret(Ret {
+                                        value: Some(Box::new(Node::new(NodeKind::Ident(
                                             "value".to_string(),
-                                        ))),
-                                    }),
+                                        ), test_span()))),
+                                    }), test_span()),
                                 ],
                             },
                         ],
-                    }),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(
+                value: Box::new(Node::new(NodeKind::Call(
                     crate::compiler::ast::Call {
-                        callee: Box::new(Node::Ident(
+                        callee: Box::new(Node::new(NodeKind::Ident(
                             "read_value".to_string(),
-                        )),
+                        ), test_span())),
                         args: vec![],
                     },
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -5086,34 +5226,34 @@ fn ordinary_statement_block_binding_remains_available_across_segments() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(Literal::Num(10))),
-            }),
+                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
+            }), test_span()),
 
-            Node::Block(Block {
+            Node::new(NodeKind::Block(Block {
                 segments: vec![
                     BlockSegment {
                         nodes: vec![
-                            Node::Bind(Bind {
+                            Node::new(NodeKind::Bind(Bind {
                                 name: "alias".to_string(),
                                 target: "source".to_string(),
-                            }),
+                            }), test_span()),
                         ],
                     },
 
                     BlockSegment {
                         nodes: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "alias".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
                     },
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5144,46 +5284,46 @@ fn loop_updates_outer_binding_until_condition_is_false() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "limit".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(3),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Ident(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Ident(
                         "limit".to_string(),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5214,61 +5354,61 @@ fn loop_process_binding_persists_across_iterations() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![],
 
-                condition: Box::new(Node::Or(
-                    Box::new(Node::Eq(
-                        Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Or(
+                    Box::new(Node::new(NodeKind::Eq(
+                        Box::new(Node::new(NodeKind::Ident(
                             "count".to_string(),
-                        )),
-                        Box::new(Node::Lit(
+                        ), test_span())),
+                        Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(0),
-                        )),
-                    )),
-                    Box::new(Node::Lt(
-                        Box::new(Node::Ident(
+                        ), test_span())),
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lt(
+                        Box::new(Node::new(NodeKind::Ident(
                             "carried".to_string(),
-                        )),
-                        Box::new(Node::Lit(
+                        ), test_span())),
+                        Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(3),
-                        )),
-                    )),
-                )),
+                        ), test_span())),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "carried".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5299,92 +5439,92 @@ fn nested_loops_use_independent_persistent_scopes() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "total".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "outer_index".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(0),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "outer_index".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(2),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Loop(Loop {
+                    Node::new(NodeKind::Loop(Loop {
                         setup: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "inner_index".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(0),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
 
-                        condition: Box::new(Node::Lt(
-                            Box::new(Node::Ident(
+                        condition: Box::new(Node::new(NodeKind::Lt(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "inner_index".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(2),
-                            )),
-                        )),
+                            ), test_span())),
+                        ), test_span())),
 
                         process: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "total".to_string(),
-                                value: Box::new(Node::Add(
-                                    Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Add(
+                                    Box::new(Node::new(NodeKind::Ident(
                                         "total".to_string(),
-                                    )),
-                                    Box::new(Node::Lit(
+                                    ), test_span())),
+                                    Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(1),
-                                    )),
-                                )),
-                            }),
+                                    ), test_span())),
+                                ), test_span())),
+                            }), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "inner_index".to_string(),
-                                value: Box::new(Node::Add(
-                                    Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Add(
+                                    Box::new(Node::new(NodeKind::Ident(
                                         "inner_index".to_string(),
-                                    )),
-                                    Box::new(Node::Lit(
+                                    ), test_span())),
+                                    Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(1),
-                                    )),
-                                )),
-                            }),
+                                    ), test_span())),
+                                ), test_span())),
+                            }), test_span()),
                         ],
-                    }),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "outer_index".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "outer_index".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5420,48 +5560,48 @@ fn local_loop_binding_shadows_outer_binding_until_loop_ends() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(100),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Local(Box::new(
-                        Node::Define(Define {
+                    Node::new(NodeKind::Local(Box::new(
+                        Node::new(NodeKind::Define(Define {
                             name: "count".to_string(),
-                            value: Box::new(Node::Lit(
+                            value: Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(0),
-                            )),
-                        }),
-                    )),
+                            ), test_span())),
+                        }), test_span()),
+                    )), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(3),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5487,67 +5627,67 @@ fn return_inside_loop_exits_enclosing_function() {
 
     let program = Program {
         nodes: vec![
-            Node::Func(Func {
+            Node::new(NodeKind::Func(Func {
                 name: "return_from_loop".to_string(),
                 params: vec![],
                 body: vec![
-                    Node::Loop(Loop {
+                    Node::new(NodeKind::Loop(Loop {
                         setup: vec![
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "loop_index".to_string(),
-                                value: Box::new(Node::Lit(
+                                value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(0),
-                                )),
-                            }),
+                                ), test_span())),
+                            }), test_span()),
                         ],
 
-                        condition: Box::new(Node::Lt(
-                            Box::new(Node::Ident(
+                        condition: Box::new(Node::new(NodeKind::Lt(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "loop_index".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
+                            ), test_span())),
+                        ), test_span())),
 
                         process: vec![
-                            Node::Ret(Ret {
-                                value: Some(Box::new(Node::Lit(
+                            Node::new(NodeKind::Ret(Ret {
+                                value: Some(Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(9),
-                                ))),
-                            }),
+                                ), test_span()))),
+                            }), test_span()),
 
-                            Node::Define(Define {
+                            Node::new(NodeKind::Define(Define {
                                 name: "loop_index".to_string(),
-                                value: Box::new(Node::Add(
-                                    Box::new(Node::Ident(
+                                value: Box::new(Node::new(NodeKind::Add(
+                                    Box::new(Node::new(NodeKind::Ident(
                                         "loop_index".to_string(),
-                                    )),
-                                    Box::new(Node::Lit(
+                                    ), test_span())),
+                                    Box::new(Node::new(NodeKind::Lit(
                                         Literal::Num(1),
-                                    )),
-                                )),
-                            }),
+                                    ), test_span())),
+                                ), test_span())),
+                            }), test_span()),
                         ],
-                    }),
+                    }), test_span()),
 
-                    Node::Ret(Ret {
-                        value: Some(Box::new(Node::Lit(
+                    Node::new(NodeKind::Ret(Ret {
+                        value: Some(Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(99),
-                        ))),
-                    }),
+                        ), test_span()))),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Call(Call {
-                    callee: Box::new(Node::Ident(
+                value: Box::new(Node::new(NodeKind::Call(Call {
+                    callee: Box::new(Node::new(NodeKind::Ident(
                         "return_from_loop".to_string(),
-                    )),
+                    ), test_span())),
                     args: vec![],
-                })),
-            }),
+                }), test_span())),
+            }), test_span()),
         ],
     };
 
@@ -5578,46 +5718,46 @@ fn loop_copy_updates_nearest_binding_with_independent_snapshot() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(10),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "snapshot".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "snapshot".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(10),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Copy(Copy {
+                    Node::new(NodeKind::Copy(Copy {
                         name: "snapshot".to_string(),
                         target: "source".to_string(),
-                    }),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "source".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5648,65 +5788,65 @@ fn loop_bind_updates_nearest_binding_and_preserves_shared_identity() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(10),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "alias".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Bind(Bind {
+                    Node::new(NodeKind::Bind(Bind {
                         name: "alias".to_string(),
                         target: "source".to_string(),
-                    }),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "source".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5742,62 +5882,62 @@ fn loop_guard_updates_nearest_visible_binding() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Guard(Guard {
+                    Node::new(NodeKind::Guard(Guard {
                         target: "result".to_string(),
                         branches: vec![
                             GuardBranch {
-                                expr: Node::Lit(
+                                expr: Node::new(NodeKind::Lit(
                                     Literal::Num(0),
-                                ),
+                                ), test_span()),
                             },
                             GuardBranch {
-                                expr: Node::Lit(
+                                expr: Node::new(NodeKind::Lit(
                                     Literal::Num(7),
-                                ),
+                                ), test_span()),
                             },
                         ],
-                    }),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5828,67 +5968,67 @@ fn local_loop_copy_uses_loop_scope_and_preserves_outer_binding() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(10),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "snapshot".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(99),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Local(Box::new(
-                        Node::Copy(Copy {
+                    Node::new(NodeKind::Local(Box::new(
+                        Node::new(NodeKind::Copy(Copy {
                             name: "snapshot".to_string(),
                             target: "source".to_string(),
-                        }),
-                    )),
+                        }), test_span()),
+                    )), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "snapshot".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -5924,67 +6064,67 @@ fn local_loop_bind_uses_loop_scope_and_preserves_outer_alias() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "source".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(10),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "alias".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(99),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Local(Box::new(
-                        Node::Bind(Bind {
+                    Node::new(NodeKind::Local(Box::new(
+                        Node::new(NodeKind::Bind(Bind {
                             name: "alias".to_string(),
                             target: "source".to_string(),
-                        }),
-                    )),
+                        }), test_span()),
+                    )), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "alias".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -6020,71 +6160,71 @@ fn local_loop_guard_uses_loop_scope_and_preserves_outer_binding() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "result".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(99),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Local(Box::new(
-                        Node::Guard(Guard {
+                    Node::new(NodeKind::Local(Box::new(
+                        Node::new(NodeKind::Guard(Guard {
                             target: "result".to_string(),
                             branches: vec![
                                 GuardBranch {
-                                    expr: Node::Lit(
+                                    expr: Node::new(NodeKind::Lit(
                                         Literal::Num(0),
-                                    ),
+                                    ), test_span()),
                                 },
                                 GuardBranch {
-                                    expr: Node::Lit(
+                                    expr: Node::new(NodeKind::Lit(
                                         Literal::Num(7),
-                                    ),
+                                    ), test_span()),
                                 },
                             ],
-                        }),
-                    )),
+                        }), test_span()),
+                    )), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "result".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -6115,59 +6255,59 @@ fn local_empty_loop_definition_uses_loop_scope_and_preserves_outer_binding() {
 
     let program = Program {
         nodes: vec![
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "value".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(99),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Define(Define {
+            Node::new(NodeKind::Define(Define {
                 name: "count".to_string(),
-                value: Box::new(Node::Lit(
+                value: Box::new(Node::new(NodeKind::Lit(
                     Literal::Num(0),
-                )),
-            }),
+                ), test_span())),
+            }), test_span()),
 
-            Node::Loop(Loop {
+            Node::new(NodeKind::Loop(Loop {
                 setup: vec![
-                    Node::Local(Box::new(
-                        Node::DefineEmpty(DefineEmpty {
+                    Node::new(NodeKind::Local(Box::new(
+                        Node::new(NodeKind::DefineEmpty(DefineEmpty {
                             name: "value".to_string(),
-                        }),
-                    )),
+                        }), test_span()),
+                    )), test_span()),
                 ],
 
-                condition: Box::new(Node::Lt(
-                    Box::new(Node::Ident(
+                condition: Box::new(Node::new(NodeKind::Lt(
+                    Box::new(Node::new(NodeKind::Ident(
                         "count".to_string(),
-                    )),
-                    Box::new(Node::Lit(
+                    ), test_span())),
+                    Box::new(Node::new(NodeKind::Lit(
                         Literal::Num(1),
-                    )),
-                )),
+                    ), test_span())),
+                ), test_span())),
 
                 process: vec![
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "value".to_string(),
-                        value: Box::new(Node::Lit(
+                        value: Box::new(Node::new(NodeKind::Lit(
                             Literal::Num(20),
-                        )),
-                    }),
+                        ), test_span())),
+                    }), test_span()),
 
-                    Node::Define(Define {
+                    Node::new(NodeKind::Define(Define {
                         name: "count".to_string(),
-                        value: Box::new(Node::Add(
-                            Box::new(Node::Ident(
+                        value: Box::new(Node::new(NodeKind::Add(
+                            Box::new(Node::new(NodeKind::Ident(
                                 "count".to_string(),
-                            )),
-                            Box::new(Node::Lit(
+                            ), test_span())),
+                            Box::new(Node::new(NodeKind::Lit(
                                 Literal::Num(1),
-                            )),
-                        )),
-                    }),
+                            ), test_span())),
+                        ), test_span())),
+                    }), test_span()),
                 ],
-            }),
+            }), test_span()),
         ],
     };
 
@@ -6185,5 +6325,147 @@ fn local_empty_loop_definition_uses_loop_scope_and_preserves_outer_binding() {
     assert_eq!(
         evaluator.get("count"),
         Some(Value::Num(1)),
+    );
+}
+
+#[test]
+fn undeclared_identifier_uses_parsed_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "result = missing_value + 1;";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("undeclared identifier should produce a diagnostic");
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 9,
+            end: 22,
+        },
+    );
+}
+
+#[test]
+fn division_by_zero_uses_rhs_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "result = 10 / 0;";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("division by zero should produce a diagnostic");
+
+    assert_eq!(err.message, "division by zero");
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 14,
+            end: 15,
+        },
+    );
+}
+
+#[test]
+fn modulo_by_zero_uses_rhs_source_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "result = 10 % 0;";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("modulo by zero should produce a diagnostic");
+
+    assert_eq!(err.message, "modulo by zero");
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 14,
+            end: 15,
+        },
+    );
+}
+
+#[test]
+fn negative_box_index_uses_index_expression_span() {
+    use crate::compiler::error::Span;
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = "items = :[10]:; result = items::[-1];";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("negative Box index should produce a diagnostic");
+
+    assert_eq!(err.message, "Box index cannot be negative");
+
+    assert_eq!(
+        err.span,
+        Span {
+            start: 33,
+            end: 35,
+        },
     );
 }
