@@ -3357,3 +3357,39 @@ fn function_rejects_consecutive_parameter_commas() {
         rendered
     );
 }
+
+#[test]
+fn parses_function_with_empty_body() {
+    let node = parse_node("fn noop :()():");
+
+    match &node.kind {
+        NodeKind::Func(Func { name, params, body }) => {
+            assert_eq!(name, "noop");
+            assert!(params.is_empty());
+            assert!(body.is_empty());
+        }
+
+        other => panic!("expected Func node, got {:?}", other),
+    }
+}
+
+#[test]
+fn function_rejects_multiple_bodies() {
+    let src = "fn noop :()()():";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected multiple function bodies to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("function chaining not allowed"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
