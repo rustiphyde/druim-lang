@@ -730,22 +730,25 @@ fn guard_rhs_cannot_be_empty() {
 
 #[test]
 fn parses_return_node_with_value() {
-    let src = "ret 42;";
-    let tokens = Lexer::new(src).tokenize().unwrap();
-    let mut parser = Parser::new(&tokens);
+    let node = parse_node("fn value :()(ret 42;):");
 
-    let node = parser.parse_node().expect("failed to parse ret");
+    match &node.kind {
+        NodeKind::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 1);
 
-    match &(node).kind {
-        NodeKind::Ret(Ret { value: Some(value) }) => {
-            match &value.kind {
-                NodeKind::Lit(Literal::Num(n)) => {
-                    assert_eq!(*n, 42);
+            match &body[0].kind {
+                NodeKind::Ret(Ret { value: Some(value) }) => {
+                    assert!(matches!(
+                        &value.kind,
+                        NodeKind::Lit(Literal::Num(42))
+                    ));
                 }
-                other => panic!("expected numeric literal, got {:?}", other),
+
+                other => panic!("expected return node, got {:?}", other),
             }
         }
-        other => panic!("expected ret node, got {:?}", other),
+
+        other => panic!("expected Func node, got {:?}", other),
     }
 }
 
@@ -1555,37 +1558,65 @@ fn parses_bag_inside_bag() {
 
 #[test]
 fn parses_box_as_return_value() {
-    let src = "ret :[1, 2, 3]:;";
-    let node = parse_node(src);
+    let node = parse_node(
+        "fn items :()(ret :[1, 2, 3]:;):",
+    );
 
-    match &(node).kind {
-        NodeKind::Ret(Ret { value: Some(value) }) => {
-            match &(value.as_ref()).kind {
-                NodeKind::Box(box_literal) => {
-                    assert_eq!(box_literal.values.len(), 3);
+    match &node.kind {
+        NodeKind::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 1);
+
+            match &body[0].kind {
+                NodeKind::Ret(Ret { value: Some(value) }) => {
+                    match &value.kind {
+                        NodeKind::Box(box_literal) => {
+                            assert_eq!(box_literal.values.len(), 3);
+                        }
+
+                        other => panic!(
+                            "expected Box return value, got {:?}",
+                            other
+                        ),
+                    }
                 }
-                other => panic!("expected Box return value, got {:?}", other),
+
+                other => panic!("expected return node, got {:?}", other),
             }
         }
-        other => panic!("expected Ret node, got {:?}", other),
+
+        other => panic!("expected Func node, got {:?}", other),
     }
 }
 
 #[test]
 fn parses_bag_as_return_value() {
-    let src = r#"ret :| name: "Rusty", level: 42 |:;"#;
-    let node = parse_node(src);
+    let node = parse_node(
+        r#"fn player :()(ret :| name: "Rusty", level: 42 |:;):"#,
+    );
 
-    match &(node).kind {
-        NodeKind::Ret(Ret { value: Some(value) }) => {
-            match &(value.as_ref()).kind {
-                NodeKind::Bag(bag_literal) => {
-                    assert_eq!(bag_literal.entries.len(), 2);
+    match &node.kind {
+        NodeKind::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 1);
+
+            match &body[0].kind {
+                NodeKind::Ret(Ret { value: Some(value) }) => {
+                    match &value.kind {
+                        NodeKind::Bag(bag_literal) => {
+                            assert_eq!(bag_literal.entries.len(), 2);
+                        }
+
+                        other => panic!(
+                            "expected Bag return value, got {:?}",
+                            other
+                        ),
+                    }
                 }
-                other => panic!("expected Bag return value, got {:?}", other),
+
+                other => panic!("expected return node, got {:?}", other),
             }
         }
-        other => panic!("expected Ret node, got {:?}", other),
+
+        other => panic!("expected Func node, got {:?}", other),
     }
 }
 
@@ -3389,6 +3420,28 @@ fn function_rejects_multiple_bodies() {
 
     assert!(
         rendered.contains("function chaining not allowed"),
+        "unexpected error message:\n{}",
+        rendered
+    );
+}
+
+#[test]
+fn return_is_rejected_outside_function() {
+    let src = "ret 42;";
+
+    let tokens = Lexer::new(src).tokenize().unwrap();
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_node()
+        .expect_err("expected top-level return to be rejected");
+
+    let source = Source::new(src.to_string());
+    let rendered = render(&err, &source);
+
+    assert!(
+        rendered.contains("return")
+            && rendered.contains("function"),
         "unexpected error message:\n{}",
         rendered
     );

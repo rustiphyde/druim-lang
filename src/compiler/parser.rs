@@ -106,9 +106,20 @@ impl<'a> Parser<'a> {
 
     fn parse_ret(&mut self) -> Result<Node, Diagnostic> {
         // We are committing to parsing a return statement
+         if !self.in_func {
+            return Err(
+                Diagnostic::error(
+                    "return statement outside function",
+                    self.current_span(),
+                )
+                .with_help("`ret` may only appear inside a function body."),
+            );
+        }
+
+        // We are committing to parsing a return statement
         let start = self.current_span().start;
         self.bump(); // consume `ret`
-
+        
         // 🔒 REQUIRED: verify semicolon exists BEFORE parsing anything else
         let stmt_end = match self.tokens[self.index..]
             .iter()
