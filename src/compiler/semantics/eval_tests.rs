@@ -8088,6 +8088,42 @@ fn stone_local_define_creates_immutable_local_identity() {
 }
 
 #[test]
+fn stone_local_define_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        created = 10;
+
+        :{
+            stone loc created = 42;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local definition should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `created` is already defined"
+    );
+}
+
+#[test]
 fn stone_local_define_empty_creates_immutable_local_void_identity() {
     use crate::compiler::lexer::Lexer;
     use crate::compiler::parser::Parser;
@@ -8124,6 +8160,42 @@ fn stone_local_define_empty_creates_immutable_local_void_identity() {
     assert_eq!(
         evaluator.get("created"),
         None
+    );
+}
+
+#[test]
+fn stone_local_define_empty_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        created = 10;
+
+        :{
+            stone loc created =;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local empty definition should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `created` is already defined"
     );
 }
 
@@ -8172,6 +8244,43 @@ fn stone_local_copy_creates_immutable_local_fresh_identity() {
     assert_eq!(
         evaluator.get("snapshot"),
         None
+    );
+}
+
+#[test]
+fn stone_local_copy_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        snapshot = 99;
+
+        :{
+            stone loc snapshot := source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local copy should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `snapshot` is already defined"
     );
 }
 
@@ -8231,6 +8340,43 @@ fn stone_local_bind_stones_local_shared_identity_only() {
 }
 
 #[test]
+fn stone_local_bind_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        alias = 99;
+
+        :{
+            stone loc alias :> source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local bind should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `alias` is already defined"
+    );
+}
+
+#[test]
 fn stone_local_guard_creates_immutable_local_identity() {
     use crate::compiler::lexer::Lexer;
     use crate::compiler::parser::Parser;
@@ -8282,6 +8428,43 @@ fn stone_local_guard_creates_immutable_local_identity() {
     assert_eq!(
         evaluator.get("candidate"),
         None
+    );
+}
+
+#[test]
+fn stone_local_guard_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        result = 99;
+
+        :{
+            candidate = 42;
+            stone loc result ?= candidate : 0;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local guard should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `result` is already defined"
     );
 }
 
