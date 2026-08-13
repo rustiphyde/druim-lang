@@ -18,10 +18,9 @@ pub enum TokenKind {
     // ===== Keywords (expressions) =====
     KwFn,   // fn
     KwRet,  // ret
-    KwLoc, // loc 
-
-    // ===== Assignment & binding =====
-
+    KwLoc, // loc
+    KwGlo, // glo
+    KwStone, // stone 
 
     // ===== Colon family =====
     Colon,         // :
@@ -49,11 +48,6 @@ pub enum TokenKind {
     Or,            // ||
     Not,           // !
 
-    // ===== Flow =====
-    Pipe,          // |>
-    ArrowR,        // ->
-    ArrowL,        // <-
-
     // ===== Define =====
     Define,        // =
     DefineEmpty,   // =;
@@ -61,6 +55,12 @@ pub enum TokenKind {
     // ===== Copy & Guard =====
     Copy,          // :=
     Guard,         // ?=
+
+    // ===== Mutation =====
+    Mutate,        // <<
+
+    // ===== Output =====
+    Print,         // |>
 
     // ===== Punctuation =====
     LParen,        // (

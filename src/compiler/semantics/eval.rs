@@ -1,5 +1,13 @@
 use crate::compiler::ast::{Node, NodeKind, Program};
-use crate::compiler::semantics::env::Env;
+use crate::compiler::semantics::env::{
+    Env,
+    EnvError,
+    GlobalBindError,
+    GlobalCopyError,
+    DefineError,
+    CopyError,
+    BindError,
+};
 use crate::compiler::semantics::truth::{truth_of, Truth};
 use crate::compiler::semantics::value::Value;
 use crate::compiler::error::Diagnostic;
@@ -21,6 +29,7 @@ fn local_name(node: &Node) -> Option<&str> {
         NodeKind::Copy(copy) => Some(&copy.name),
         NodeKind::Bind(bind) => Some(&bind.name),
         NodeKind::Guard(guard) => Some(&guard.target),
+        NodeKind::Func(func) => Some(&func.name),
         _ => None,
     }
 }
@@ -101,7 +110,18 @@ impl Evaluator {
                     },
                 );
 
-                self.env.define(func.name.clone(), value.clone());
+                self.env
+                    .define(func.name.clone(), value.clone())
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(value)
             }
@@ -157,7 +177,18 @@ impl Evaluator {
                             },
                         };
 
-                        self.env.define(param.name.clone(), value);
+                        self.env
+                            .define(param.name.clone(), value)
+                            .map_err(|error| {
+                                match error {
+                                    DefineError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            node.span,
+                                        )
+                                    }
+                                }
+                            })?;
                     }
 
                     let mut result = Value::Void;
@@ -547,40 +578,84 @@ impl Evaluator {
                 match &inner.kind {
                     NodeKind::Define(def) => {
                         let value = self.eval_value(&def.value)?;
-                        self.env.define(def.name.clone(), value);
+                        self.env
+                            .define(def.name.clone(), value)
+                            .map_err(|error| {
+                                match error {
+                                    DefineError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            node.span,
+                                        )
+                                    }
+                                }
+                            })?;
                     }
 
                     NodeKind::DefineEmpty(def) => {
-                        self.env.define(def.name.clone(), Value::Void);
+                        self.env
+                            .define(def.name.clone(), Value::Void)
+                            .map_err(|error| {
+                                match error {
+                                    DefineError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            node.span,
+                                        )
+                                    }
+                                }
+                            })?;
                     }
 
                     NodeKind::Copy(copy) => {
                         self.env
                             .copy(copy.name.clone(), &copy.target)
-                            .map_err(|_| {
-                                Diagnostic::error(
-                                    format!(
-                                        "undeclared identifier `{}`",
-                                        copy.target,
-                                    ),
-                                    inner.span,
-                                )
+                            .map_err(|error| {
+                                match error {
+                                    CopyError::UndefinedName(name) => {
+                                        Diagnostic::error(
+                                            format!("undeclared identifier `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    CopyError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            inner.span,
+                                        )
+                                    }
+                                }
                             })?;
                     }
 
                     NodeKind::Bind(bind) => {
                         self.env
-                            .bind(bind.name.clone(), &bind.target)
-                            .map_err(|_| {
-                                Diagnostic::error(
-                                    format!(
-                                        "undeclared identifier `{}`",
-                                        bind.target,
-                                    ),
-                                    inner.span,
-                                )
+                            .bind(
+                                bind.name.clone(),
+                                &bind.target,
+                            )
+                            .map_err(|error| match error {
+                                BindError::UndefinedName(name) => {
+                                    Diagnostic::error(
+                                        format!(
+                                            "undeclared identifier `{name}`",
+                                        ),
+                                        node.span,
+                                    )
+                                }
+
+                                BindError::AlreadyDefined(name) => {
+                                    Diagnostic::error(
+                                        format!(
+                                            "identifier `{name}` is already defined",
+                                        ),
+                                        node.span,
+                                    )
+                                }
                             })?;
                     }
+
 
                     NodeKind::Guard(guard) => {
                         let mut result = Value::Void;
@@ -594,7 +669,18 @@ impl Evaluator {
                             }
                         }
 
-                        self.env.define(guard.target.clone(), result);
+                        self.env
+                            .define(guard.target.clone(), result)
+                            .map_err(|error| {
+                                match error {
+                                    DefineError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            node.span,
+                                        )
+                                    }
+                                }
+                            })?;
                     }
 
                     _ => {
@@ -610,35 +696,16 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
-            NodeKind::Define(def) => {
-                let value = self.eval_value(&def.value)?;
+             NodeKind::Mutate(mutate) => {
+                let value = self.eval_value(&mutate.value)?;
 
                 self.env
-                    .define_nearest_or_current(def.name.clone(), value);
-
-                Ok(Control::Continue)
-            }
-
-            NodeKind::DefineEmpty(def) => {
-                self.env.define_nearest_or_current(
-                    def.name.clone(),
-                    Value::Void,
-                );
-
-                Ok(Control::Continue)
-            }
-
-            NodeKind::Copy(copy) => {
-                self.env
-                    .copy_nearest_or_current(
-                        copy.name.clone(),
-                        &copy.target,
-                    )
+                    .assign(&mutate.name, value)
                     .map_err(|_| {
                         Diagnostic::error(
                             format!(
                                 "undeclared identifier `{}`",
-                                copy.target,
+                                mutate.name,
                             ),
                             node.span,
                         )
@@ -647,20 +714,90 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
+            NodeKind::Define(def) => {
+                let value = self.eval_value(&def.value)?;
+
+                self.env
+                    .define(def.name.clone(), value)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
+            NodeKind::DefineEmpty(def) => {
+                self.env
+                    .define(def.name.clone(), Value::Void)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
+            NodeKind::Copy(copy) => {
+                self.env
+                    .copy(copy.name.clone(), &copy.target)
+                    .map_err(|error| {
+                        match error {
+                            CopyError::UndefinedName(name) => {
+                                Diagnostic::error(
+                                    format!("undeclared identifier `{name}`"),
+                                    node.span,
+                                )
+                            }
+
+                            CopyError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
             NodeKind::Bind(bind) => {
                 self.env
-                    .bind_nearest_or_current(
+                    .bind(
                         bind.name.clone(),
                         &bind.target,
                     )
-                    .map_err(|_| {
-                        Diagnostic::error(
-                            format!(
-                                "undeclared identifier `{}`",
-                                bind.target,
-                            ),
-                            node.span,
-                        )
+                    .map_err(|error| match error {
+                        BindError::UndefinedName(name) => {
+                            Diagnostic::error(
+                                format!(
+                                    "undeclared identifier `{name}`",
+                                ),
+                                node.span,
+                            )
+                        }
+
+                        BindError::AlreadyDefined(name) => {
+                            Diagnostic::error(
+                                format!(
+                                    "identifier `{name}` is already defined",
+                                ),
+                                node.span,
+                            )
+                        }
                     })?;
 
                 Ok(Control::Continue)
@@ -678,10 +815,18 @@ impl Evaluator {
                     }
                 }
 
-                self.env.define_nearest_or_current(
-                    guard.target.clone(),
-                    result,
-                );
+                self.env
+                    .define(guard.target.clone(), result)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(Control::Continue)
             }
@@ -695,15 +840,39 @@ impl Evaluator {
         node: &Node,
     ) -> Result<Control, Diagnostic> {
         match &node.kind {
+
             NodeKind::Define(def) => {
                 let value = self.eval_value(&def.value)?;
-                self.env.define(def.name.clone(), value);
+
+                self.env
+                    .define(def.name.clone(), value)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(Control::Continue)
             }
 
             NodeKind::DefineEmpty(def) => {
-                self.env.define(def.name.clone(), Value::Void);
+                self.env
+                    .define(def.name.clone(), Value::Void)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(Control::Continue)
             }
@@ -711,14 +880,22 @@ impl Evaluator {
             NodeKind::Copy(copy) => {
                 self.env
                     .copy(copy.name.clone(), &copy.target)
-                    .map_err(|_| {
-                        Diagnostic::error(
-                            format!(
-                                "undeclared identifier `{}`",
-                                copy.target,
-                            ),
-                            node.span,
-                        )
+                    .map_err(|error| {
+                        match error {
+                            CopyError::UndefinedName(name) => {
+                                Diagnostic::error(
+                                    format!("undeclared identifier `{name}`"),
+                                    node.span,
+                                )
+                            }
+
+                            CopyError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
                     })?;
 
                 Ok(Control::Continue)
@@ -740,6 +917,514 @@ impl Evaluator {
                 Ok(Control::Continue)
             }
 
+            NodeKind::Mutate(mutate) => {
+                let value = self.eval_value(&mutate.value)?;
+
+                self.env
+                    .assign(&mutate.name, value)
+                    .map_err(|error| {
+                        match error {
+                            EnvError::UndefinedName(name) => {
+                                Diagnostic::error(
+                                    format!("undeclared identifier `{name}`"),
+                                    node.span,
+                                )
+                            }
+
+                            EnvError::StoneBinding(name) => {
+                                Diagnostic::error(
+                                    format!("cannot mutate stone binding `{name}`"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
+
+                Ok(Control::Continue)
+            }
+
+            NodeKind::Global(inner) => {
+                match &inner.kind {
+                    NodeKind::Mutate(mutate) => {
+                        let value = self.eval_value(&mutate.value)?;
+
+                        self.env
+                            .assign_global(&mutate.name, value)
+                            .map_err(|error| {
+                                match error {
+                                    EnvError::UndefinedName(name) => {
+                                        Diagnostic::error(
+                                            format!("undeclared identifier `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    EnvError::StoneBinding(name) => {
+                                        Diagnostic::error(
+                                            format!("cannot mutate stone binding `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+
+                    NodeKind::Define(def) => {
+                        let value = self.eval_value(&def.value)?;
+
+                        self.env
+                            .define_global(def.name.clone(), value)
+                            .map_err(|error| match error {
+                                DefineError::AlreadyDefined(name) => {
+                                    Diagnostic::error(
+                                        format!("identifier `{name}` is already defined"),
+                                        inner.span,
+                                    )
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+
+                    NodeKind::DefineEmpty(def) => {
+                        self.env
+                            .define_global(def.name.clone(), Value::Void)
+                            .map_err(|error| match error {
+                                DefineError::AlreadyDefined(name) => {
+                                    Diagnostic::error(
+                                        format!("identifier `{name}` is already defined"),
+                                        inner.span,
+                                    )
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+
+                    NodeKind::Copy(copy) => {
+                        self.env
+                            .copy_global(copy.name.clone(), &copy.target)
+                            .map_err(|error| {
+                                match error {
+                                    GlobalCopyError::UndefinedName(name) => {
+                                        Diagnostic::error(
+                                            format!("undeclared identifier `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    GlobalCopyError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            inner.span,
+                                        )
+                                    }
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+
+                    NodeKind::Bind(bind) => {
+                        self.env
+                            .bind_global(bind.name.clone(), &bind.target)
+                            .map_err(|error| {
+                                match error {
+                                    GlobalBindError::UndefinedName(name) => {
+                                        Diagnostic::error(
+                                            format!("undeclared identifier `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    GlobalBindError::LocalIdentity(name) => {
+                                        Diagnostic::error(
+                                            format!(
+                                                "cannot create global bind to local identity `{name}`"
+                                            ),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    GlobalBindError::AlreadyDefined(name) => {
+                                        Diagnostic::error(
+                                            format!("identifier `{name}` is already defined"),
+                                            inner.span,
+                                        )
+                                    }
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+                    
+                    NodeKind::Guard(guard) => {
+                        let mut result = Value::Void;
+
+                        for branch in &guard.branches {
+                            let value = self.eval_value(&branch.expr)?;
+
+                            if truth_of(&value) == Truth::True {
+                                result = value;
+                                break;
+                            }
+                        }
+
+                        self.env
+                            .define_global(guard.target.clone(), result)
+                            .map_err(|error| match error {
+                                DefineError::AlreadyDefined(name) => {
+                                    Diagnostic::error(
+                                        format!("identifier `{name}` is already defined"),
+                                        inner.span,
+                                    )
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }
+
+                    _ => Err(
+                        Diagnostic::error(
+                            "global modifier is not implemented for this statement yet",
+                            node.span,
+                        ),
+                    ),
+                }
+            }
+
+            NodeKind::Stone(inner) => {
+                let target = match &inner.kind {
+                    NodeKind::Define(def) => def.name.as_str(),
+                    NodeKind::DefineEmpty(def) => def.name.as_str(),
+                    NodeKind::Copy(copy) => copy.name.as_str(),
+                    NodeKind::Bind(bind) => bind.name.as_str(),
+                    NodeKind::Guard(guard) => guard.target.as_str(),
+                    NodeKind::Mutate(mutate) => mutate.name.as_str(),
+
+                    NodeKind::Local(_) => {
+                        return Err(
+                            Diagnostic::error(
+                                "combined stone scope modifiers are not implemented yet",
+                                node.span,
+                            ),
+                        );
+                    }
+
+                    NodeKind::Global(global_inner) => {
+                        match &global_inner.kind {
+                            NodeKind::Mutate(mutate) => {
+                                let value = self.eval_value(&mutate.value)?;
+
+                                self.env
+                                    .assign_global(&mutate.name, value)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("cannot mutate stone binding `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                self.env
+                                    .mark_global_stone(&mutate.name)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+
+                            NodeKind::Define(def) => {
+                                let value = self.eval_value(&def.value)?;
+
+                                self.env
+                                    .define_global(def.name.clone(), value)
+                                    .map_err(|error| match error {
+                                        DefineError::AlreadyDefined(name) => {
+                                            Diagnostic::error(
+                                                format!("identifier `{name}` is already defined"),
+                                                inner.span,
+                                            )
+                                        }
+                                    })?;
+
+                                self.env
+                                    .mark_global_stone(&def.name)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+
+                            NodeKind::DefineEmpty(def) => {
+                                self.env
+                                    .define_global(def.name.clone(), Value::Void)
+                                    .map_err(|error| match error {
+                                        DefineError::AlreadyDefined(name) => {
+                                            Diagnostic::error(
+                                                format!("identifier `{name}` is already defined"),
+                                                inner.span,
+                                            )
+                                        }
+                                    })?;
+
+                                self.env
+                                    .mark_global_stone(&def.name)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+                            
+                            NodeKind::Copy(copy) => {
+                                self.env
+                                    .copy_global(copy.name.clone(), &copy.target)
+                                    .map_err(|error| {
+                                    match error {
+                                        GlobalCopyError::UndefinedName(name) => {
+                                            Diagnostic::error(
+                                                format!("undeclared identifier `{name}`"),
+                                                inner.span,
+                                            )
+                                        }
+
+                                        GlobalCopyError::AlreadyDefined(name) => {
+                                            Diagnostic::error(
+                                                format!("identifier `{name}` is already defined"),
+                                                inner.span,
+                                            )
+                                        }
+                                    }
+                                })?;
+
+                                self.env
+                                    .mark_global_stone(&copy.name)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+
+                            NodeKind::Bind(bind) => {
+                                self.env
+                                    .bind_global(bind.name.clone(), &bind.target)
+                                    .map_err(|error| {
+                                        match error {
+                                            GlobalBindError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            GlobalBindError::LocalIdentity(name) => {
+                                                Diagnostic::error(
+                                                    format!(
+                                                        "cannot create global bind to local identity `{name}`"
+                                                    ),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            GlobalBindError::AlreadyDefined(name) => {
+                                                Diagnostic::error(
+                                                    format!("identifier `{name}` is already defined"),
+                                                    inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                self.env
+                                    .mark_global_stone(&bind.name)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+                            
+                            NodeKind::Guard(guard) => {
+                                let mut result = Value::Void;
+
+                                for branch in &guard.branches {
+                                    let value = self.eval_value(&branch.expr)?;
+
+                                    if truth_of(&value) == Truth::True {
+                                        result = value;
+                                        break;
+                                    }
+                                }
+
+                                self.env
+                                    .define_global(guard.target.clone(), result)
+                                    .map_err(|error| match error {
+                                        DefineError::AlreadyDefined(name) => {
+                                            Diagnostic::error(
+                                                format!("identifier `{name}` is already defined"),
+                                                inner.span,
+                                            )
+                                        }
+                                    })?;
+
+                                self.env
+                                    .mark_global_stone(&guard.target)
+                                    .map_err(|error| {
+                                        match error {
+                                            EnvError::UndefinedName(name) => {
+                                                Diagnostic::error(
+                                                    format!("undeclared identifier `{name}`"),
+                                                    global_inner.span,
+                                                )
+                                            }
+
+                                            EnvError::StoneBinding(name) => {
+                                                Diagnostic::error(
+                                                    format!("binding `{name}` is already stone"),
+                                                    global_inner.span,
+                                                )
+                                            }
+                                        }
+                                    })?;
+
+                                return Ok(Control::Continue);
+                            }
+
+                            _ => {
+                                return Err(
+                                    Diagnostic::error(
+                                        "combined stone scope modifiers are not implemented yet",
+                                        node.span,
+                                    ),
+                                );
+                            }
+                        }
+                    }
+
+                    _ => {
+                        return Err(
+                            Diagnostic::error(
+                                "`stone` cannot modify this statement",
+                                node.span,
+                            ),
+                        );
+                    }
+                }
+                .to_string();
+
+                // The inner operation happens first.
+                let control = self.eval_node_ctrl(inner)?;
+
+                // Only stone the identity after successful completion.
+                self.env
+                    .mark_stone(&target)
+                    .map_err(|error| {
+                        match error {
+                            EnvError::UndefinedName(name) => {
+                                Diagnostic::error(
+                                    format!("undeclared identifier `{name}`"),
+                                    node.span,
+                                )
+                            }
+
+                            EnvError::StoneBinding(name) => {
+                                Diagnostic::error(
+                                    format!("binding `{name}` is already stone"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
+
+                Ok(control)
+            }
+
             NodeKind::Guard(guard) => {
                 let mut result = Value::Void;
 
@@ -752,7 +1437,18 @@ impl Evaluator {
                     }
                 }
 
-                self.env.define(guard.target.clone(), result);
+                self.env
+                    .define(guard.target.clone(), result)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(Control::Continue)
             }
@@ -820,19 +1516,429 @@ impl Evaluator {
                         let segment_result: Result<Control, Diagnostic> = (|| {
                             for segment_node in &segment.nodes {
                                 let control = match &segment_node.kind {
+                                    NodeKind::Stone(stone_inner) => {
+                                        if let NodeKind::Local(local_inner) = &stone_inner.kind {
+                                            if let NodeKind::Mutate(mutate) = &local_inner.kind {
+                                                // Evaluate before localization so the RHS sees the
+                                                // currently visible identity.
+                                                let value = self.eval_value(&mutate.value)?;
+
+                                                let localized_names = self
+                                                    .env
+                                                    .localize_identity(&mutate.name, value)
+                                                    .map_err(|_| {
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "undeclared identifier `{}`",
+                                                                mutate.name,
+                                                            ),
+                                                            local_inner.span,
+                                                        )
+                                                    })?;
+
+                                                // Register these before any later operation so normal
+                                                // segment cleanup restores the outer identity.
+                                                local_names.extend(localized_names);
+
+                                                // The mutation has already happened during localization.
+                                                // Now stone only the localized shared identity.
+                                                self.env
+                                                    .mark_stone(&mutate.name)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!(
+                                                                        "undeclared identifier `{name}`"
+                                                                    ),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!(
+                                                                        "binding `{name}` is already stone"
+                                                                    ),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }
+
+                                            if let NodeKind::Define(def) = &local_inner.kind {
+                                                if self.env.lookup(&def.name).is_some() {
+                                                    return Err(
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "identifier `{}` is already defined",
+                                                                def.name
+                                                            ),
+                                                            local_inner.span,
+                                                        ),
+                                                    );
+                                                }
+
+                                                let value = self.eval_value(&def.value)?;
+
+                                                local_names.push((
+                                                    def.name.clone(),
+                                                    None,
+                                                ));
+
+                                                self.env
+                                                    .define(def.name.clone(), value)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            DefineError::AlreadyDefined(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("identifier `{name}` is already defined"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                self.env
+                                                    .mark_stone(&def.name)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("binding `{name}` is already stone"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }
+
+                                            if let NodeKind::DefineEmpty(def) = &local_inner.kind {
+                                                if self.env.lookup(&def.name).is_some() {
+                                                    return Err(
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "identifier `{}` is already defined",
+                                                                def.name
+                                                            ),
+                                                            local_inner.span,
+                                                        ),
+                                                    );
+                                                }
+
+                                                local_names.push((
+                                                    def.name.clone(),
+                                                    None,
+                                                ));
+
+                                                self.env
+                                                    .define(def.name.clone(), Value::Void)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            DefineError::AlreadyDefined(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("identifier `{name}` is already defined"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                self.env
+                                                    .mark_stone(&def.name)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("binding `{name}` is already stone"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }
+                                            
+                                            if let NodeKind::Copy(copy) = &local_inner.kind {
+                                                if self.env.lookup(&copy.name).is_some() {
+                                                    return Err(
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "identifier `{}` is already defined",
+                                                                copy.name
+                                                            ),
+                                                            local_inner.span,
+                                                        ),
+                                                    );
+                                                }
+
+                                                local_names.push((
+                                                    copy.name.clone(),
+                                                    None,
+                                                ));
+
+                                                self.env
+                                                    .copy(copy.name.clone(), &copy.target)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            CopyError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            CopyError::AlreadyDefined(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("identifier `{name}` is already defined"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                self.env
+                                                    .mark_stone(&copy.name)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("binding `{name}` is already stone"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }
+                                            
+                                            if let NodeKind::Bind(bind) = &local_inner.kind {
+                                                if self.env.lookup(&bind.name).is_some() {
+                                                    return Err(
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "identifier `{}` is already defined",
+                                                                bind.name
+                                                            ),
+                                                            local_inner.span,
+                                                        ),
+                                                    );
+                                                }
+
+                                                let target_slot = self
+                                                    .env
+                                                    .lookup(&bind.target)
+                                                    .ok_or_else(|| {
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "undeclared identifier `{}`",
+                                                                bind.target
+                                                            ),
+                                                            local_inner.span,
+                                                        )
+                                                    })?;
+
+                                                let value = target_slot.borrow().value.clone();
+
+                                                // First create the local alias to the existing identity.
+                                                local_names.push((
+                                                    bind.name.clone(),
+                                                    None,
+                                                ));
+
+                                                self.env
+                                                    .bind(bind.name.clone(), &bind.target)
+                                                    .map_err(|_| {
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "undeclared identifier `{}`",
+                                                                bind.target
+                                                            ),
+                                                            local_inner.span,
+                                                        )
+                                                    })?;
+
+                                                // Then localize the entire shared identity. This makes every
+                                                // name referring to that identity inside this local lifetime
+                                                // point at the localized slot, while preserving the outer slot.
+                                                let localized_names = self
+                                                    .env
+                                                    .localize_identity(&bind.name, value)
+                                                    .map_err(|_| {
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "undeclared identifier `{}`",
+                                                                bind.name
+                                                            ),
+                                                            local_inner.span,
+                                                        )
+                                                    })?;
+
+                                                local_names.extend(localized_names);
+
+                                                // Stone only the localized shared identity.
+                                                self.env
+                                                    .mark_stone(&bind.name)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("binding `{name}` is already stone"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }
+                                            
+                                            if let NodeKind::Guard(guard) = &local_inner.kind {
+                                                if self.env.lookup(&guard.target).is_some() {
+                                                    return Err(
+                                                        Diagnostic::error(
+                                                            format!(
+                                                                "identifier `{}` is already defined",
+                                                                guard.target
+                                                            ),
+                                                            local_inner.span,
+                                                        ),
+                                                    );
+                                                }
+
+                                                let mut result = Value::Void;
+
+                                                for branch in &guard.branches {
+                                                    let value = self.eval_value(&branch.expr)?;
+
+                                                    if truth_of(&value) == Truth::True {
+                                                        result = value;
+                                                        break;
+                                                    }
+                                                }
+
+                                                local_names.push((
+                                                    guard.target.clone(),
+                                                    None,
+                                                ));
+
+                                                self.env
+                                                    .define(guard.target.clone(), result)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            DefineError::AlreadyDefined(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("identifier `{name}` is already defined"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                self.env
+                                                    .mark_stone(&guard.target)
+                                                    .map_err(|error| {
+                                                        match error {
+                                                            EnvError::UndefinedName(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("undeclared identifier `{name}`"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+
+                                                            EnvError::StoneBinding(name) => {
+                                                                Diagnostic::error(
+                                                                    format!("binding `{name}` is already stone"),
+                                                                    local_inner.span,
+                                                                )
+                                                            }
+                                                        }
+                                                    })?;
+
+                                                continue;
+                                            }                                            
+                                        }
+
+                                        self.eval_node_ctrl(segment_node)?
+                                    }
                                     NodeKind::Local(inner) => {
+                                        if let NodeKind::Mutate(mutate) = &inner.kind {
+                                            // Evaluate before localization so the RHS sees the
+                                            // currently visible identity.
+                                            let value = self.eval_value(&mutate.value)?;
+
+                                            let localized_names = self
+                                                .env
+                                                .localize_identity(&mutate.name, value)
+                                                .map_err(|_| {
+                                                    Diagnostic::error(
+                                                        format!(
+                                                            "undeclared identifier `{}`",
+                                                            mutate.name,
+                                                        ),
+                                                        inner.span,
+                                                    )
+                                                })?;
+
+                                            local_names.extend(localized_names);
+
+                                            continue;
+                                        }
                                         if let Some(name) = local_name(inner) {
-                                            let previous = self.env.take_current(name);
+                                            if self.env.lookup(name).is_some() {
+                                                return Err(
+                                                    Diagnostic::error(
+                                                        format!(
+                                                            "identifier `{name}` is already defined"
+                                                        ),
+                                                        inner.span,
+                                                    ),
+                                                );
+                                            }
 
                                             local_names.push((
                                                 name.to_string(),
-                                                previous,
+                                                None,
                                             ));
                                         }
 
                                         self.eval_node_ctrl(inner)?
                                     }
-
                                     _ => self.eval_node_ctrl(segment_node)?,
                                 };
 
@@ -844,7 +1950,7 @@ impl Evaluator {
                             Ok(Control::Continue)
                         })();
 
-                        for (name, previous) in local_names {
+                        for (name, previous) in local_names.into_iter().rev() {
                             self.env.remove_current(&name);
 
                             if let Some(slot) = previous {
@@ -874,7 +1980,18 @@ impl Evaluator {
                     },
                 );
 
-                self.env.define(func.name.clone(), value);
+                self.env
+                    .define(func.name.clone(), value)
+                    .map_err(|error| {
+                        match error {
+                            DefineError::AlreadyDefined(name) => {
+                                Diagnostic::error(
+                                    format!("identifier `{name}` is already defined"),
+                                    node.span,
+                                )
+                            }
+                        }
+                    })?;
 
                 Ok(Control::Continue)
             }

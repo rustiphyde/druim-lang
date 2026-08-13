@@ -1,13 +1,12 @@
 # Druim Canon (Living Document)
 
 ## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R005
+- Revision ID: DRUIM-CANON-R006
 - Status: Current
-- Effective Date: 2026-08-02
+- Effective Date: 2026-08-08
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R004
-- Notes: This revision adds and finalizes Druim loop structure, execution order, persistent loop scope, nested-loop behavior, and return propagation from loops inside functions.
-
+- Supersedes: DRUIM-CANON-R005
+- Notes: This revision separates definition from mutation, introduces Mutate (`<<`), `stone`, and `glo`, removes implicit redefinition through defining operators, and formalizes local, lexical, and global binding lifetime; localized identity; and Bind/Copy behavior across scope boundaries.
 
 ## Purpose
 
@@ -129,15 +128,17 @@ The following identifiers are lexed as **type keywords** when matched exactly:
 
 These keywords represent literal or type-level concepts.
 
-## Keywords (Control and Scope)
+## Keywords (Control, Scope, and Binding)
 
-The following identifiers are lexed as **control or scope keywords**:
+The following identifiers are lexed as **control, scope, or binding keywords** when matched exactly:
 
-- fn   → KwFn      (function definition)
-- ret  → KwRet     (function return)
-- loc  → KwLoc     (local scope)
+- fn     → KwFn      (function definition)
+- ret    → KwRet     (function return)
+- loc    → KwLoc     (local scope)
+- glo    → KwGlo     (global scope)
+- stone  → KwStone   (immutable binding identity)
 
-These keywords affect control flow or scope and are not expressions.
+These keywords affect control flow, scope, or binding semantics and are not expressions.
 
 ## Loop Structural Tokens
 
@@ -298,6 +299,7 @@ Invalid:
 a := b c;
 a :> b c;
 a = 12 13;
+a << 12 13;
 a ?= 12 13;
 a ?= 12 : 13 14;
 ```
@@ -310,11 +312,12 @@ Statement operators may not be chained within one statement.
 
 The statement operators are:
 
-• = — Define
-• =; — DefineEmpty
-• := — Copy
-• :> — Bind
-• ?= — Guard
+• `=` — Define  
+• `=;` — DefineEmpty  
+• `:=` — Copy  
+• `:>` — Bind  
+• `?=` — Guard  
+• `<<` — Mutate
 
 Invalid:
 
@@ -323,11 +326,31 @@ a = 12 = 13;
 a := b := c;
 a :> b :> c;
 a = 12 :> b;
+a << 12 << 13;
 a ?= b := c;
 ```
+
 Each operation must be written as a separate statement.
 
-## Local Modifier
+## Scope Modifiers
+
+Druim has two explicit scope modifiers:
+
+- `loc` — restricts a target or localized identity to the applicable local lifetime.
+- `glo` — places a newly established target in global scope regardless of where the statement executes.
+
+`loc` and `glo` are mutually exclusive on the same statement. A statement may not request both local and global lifetime.
+
+Invalid:
+
+```druim
+loc glo value = 10;
+glo loc value = 10;
+```
+
+Scope is a property of an established binding's lifetime. Once a binding exists, later unmodified operations on that binding continue to use the binding in its established scope. The programmer does not repeat `loc` or `glo` merely to preserve an already-established lifetime.
+
+### Local Modifier
 
 The **loc** keyword may appear at most once and only at the beginning of a statement form that supports local scope.
 
@@ -339,13 +362,212 @@ loc a =;
 loc a := b;
 loc a :> b;
 loc a ?= b : c;
+loc a << a + 1;
 ```
 
 Invalid:
+
 ```druim
 loc loc a = 12;
 a loc = 12;
 ```
+
+#### Local Target Rules
+
+For target-defining forms such as Define, DefineEmpty, Copy, Bind, Guard, and local function definitions:
+
+- `loc` creates a new local target name for the lifetime established by the containing structure.
+- A local target may not reuse a name that is already visible in the current or an enclosing scope.
+- Right-hand expressions and source identifiers still resolve normally through visible enclosing scopes.
+- `loc` therefore restricts the target's lifetime without preventing the statement from reading, copying, or binding to outer values.
+
+Example:
+
+```druim
+source = 10;
+
+:{
+    loc snapshot := source;
+    loc alias :> source;
+}:
+```
+
+Both `source` references are valid because they occur on the source side. `snapshot` and `alias` are new local names.
+
+#### Localized Identity
+
+`loc` takes precedence over mutation propagation across a local-scope boundary.
+
+When `loc` is applied to an operation that would otherwise expose mutation of a visible identity beyond the local lifetime, Druim creates a localized version of that identity for the applicable local lifetime. All names that refer to that identity **inside the local lifetime** observe the localized state. The identity outside that lifetime is unchanged.
+
+This rule preserves Bind's shared-identity behavior inside the local scope without allowing localized mutation to escape that scope.
+
+Example:
+
+```druim
+source = 10;
+
+:{
+    loc alias :> source;
+    alias << alias + 5;
+
+    // alias  == 15
+    // source == 15 inside this segment
+}:
+
+// source == 10 here
+```
+
+The local Bind keeps `alias` and `source` identity-linked inside the segment, but `loc` prevents that localized identity from replacing or mutating the outer `source` identity.
+
+A localized Mutate can also localize an already-visible identity directly:
+
+```druim
+count = 10;
+
+:{
+    loc count << count + 3;
+    // count == 13 inside this segment
+}:
+
+// count == 10 here
+```
+
+Without `loc`, Mutate affects the existing visible identity normally.
+
+### Global Modifier
+
+The **glo** keyword establishes a new target in global scope regardless of the lexical scope in which the statement executes.
+
+Examples:
+
+```druim
+:{
+    glo a = 10;
+}:
+
+fn establish :()(
+    glo b = 20;
+):
+```
+
+After the containing block or function scope ends, `a` and `b` remain globally visible because their target names were established in global scope.
+
+`glo` applies to target-establishing forms. It does not retroactively promote an already-existing binding to global scope, and it is not used to re-state the scope of an existing global binding during Mutate.
+
+Once a global binding exists, ordinary operations that resolve that name continue to operate on the global binding automatically:
+
+```druim
+:{
+    glo source = 10;
+    source << source + 5;
+}:
+
+// source == 15 here
+```
+
+#### Global Target and Source Resolution
+
+`glo` changes where the **new target** is established. It does not change how right-hand expressions or source identifiers are resolved.
+
+A statement executing in a local scope may therefore read or copy a local value while creating a distinct global target:
+
+```druim
+:{
+    local_source = 10;
+    glo snapshot := local_source;
+}:
+
+// snapshot remains globally visible
+```
+
+Because Copy creates a fresh independent identity, the target's lifetime may differ from the source's lifetime.
+
+#### Established Scope Cannot Be Requalified
+
+A later target-defining statement may not reuse an already-visible name merely to change that name's scope.
+
+Invalid:
+
+```druim
+glo source = 10;
+
+:{
+    loc source = 20;
+}:
+```
+
+Also invalid:
+
+```druim
+:{
+    loc source = 10;
+    glo source = 20;
+}:
+```
+
+Both fail because Define is attempting to establish a target name that is already visible. Scope modifiers do not turn definition into mutation and do not requalify an existing binding.
+
+### Binding Lifetime and Bind
+
+Bind shares identity, but every alias name also has its own visibility lifetime. An alias may not be established with a lifetime that exceeds the identity it references.
+
+Canonical lifetime rule:
+
+- a local alias may refer to a global identity;
+- a lexical-scope alias may refer to an identity that outlives that alias;
+- a global alias may refer to a global identity;
+- a global alias may **not** refer to an identity whose lifetime is only local or otherwise shorter than global;
+- more generally, a Bind alias may never outlive the identity it aliases.
+
+Valid:
+
+```druim
+glo source = 10;
+
+:{
+    alias :> source;
+}:
+```
+
+`alias` disappears with the block scope, while the global `source` identity survives.
+
+Also valid:
+
+```druim
+glo source = 10;
+
+:{
+    loc alias :> source;
+}:
+```
+
+Here `loc` creates the canonical localized-identity boundary. Inside the local lifetime, `alias` and `source` observe the localized identity. When that lifetime ends, the global `source` identity remains unchanged by localized mutations.
+
+Invalid:
+
+```druim
+:{
+    local_source = 10;
+    glo alias :> local_source;
+}:
+```
+
+A global alias would outlive `local_source`, so the Bind is invalid.
+
+This lifetime restriction applies to Bind specifically because Bind does not create an independent identity. Copy does create a fresh identity and therefore does not inherit the source's lifetime.
+
+### Scope Precedence and Existing Bindings
+
+The scope already established for a binding is honored automatically by later operations:
+
+- Mutating an established `glo` binding mutates its global identity.
+- Mutating an established `loc` binding mutates that local identity for the remainder of its local lifetime.
+- `loc Mutate` applied to a visible non-local identity creates a localized identity boundary and does not mutate the identity outside that boundary.
+- `glo` does not convert an existing local or lexical binding into a global binding.
+- `loc` and `glo` do not override the requirement that target-defining forms introduce a new target name.
+
+Scope and mutability are independent properties. A binding may be local, lexical, or global and may separately be mutable or `stone`.
 
 ## Parser Boundary Invariant
 
@@ -365,21 +587,25 @@ This captures the exact invariant exposed by the Copy, Bind, Define, and Guard t
 ## Define Operators
 
 ### Define (`=`)
-- The Define operator evaluates exactly one complete expression and defines the target identifier as the resulting value.
+
+The Define operator evaluates exactly one complete expression and creates a new target binding containing the resulting value.
 
 ```druim
 a = 12;
 b = 12 + 13;
 c = user::profile;
 ```
+
 Rules:
 
-• The left-hand side must be exactly one identifier.
-• The right-hand side must contain exactly one complete expression.
-• The right-hand side may not be empty.
-• A bare identifier may not be used as the entire right-hand side when Copy (:=) or Bind (:>) expresses the intended operation.
-• No unexpected tokens may remain between the expression and the terminating semicolon.
-• Define may not be chained with another statement operator.
+• The left-hand side must be exactly one identifier.  
+• The target name must not already be visible.  
+• The right-hand side must contain exactly one complete expression.  
+• The right-hand side may not be empty.  
+• A bare identifier may not be used as the entire right-hand side when Copy (`:=`) or Bind (`:>`) expresses the intended operation.  
+• No unexpected tokens may remain between the expression and the terminating semicolon.  
+• Define may not be chained with another statement operator.  
+• Define does **not** mutate or redefine an existing binding.
 
 Invalid:
 
@@ -389,6 +615,18 @@ a =;
 a = b;
 a = 12 13;
 a = 12 :> b;
+```
+
+If `a` already exists, this is also invalid:
+
+```druim
+a = 20;
+```
+
+To change the value of an existing mutable binding, use Mutate:
+
+```druim
+a << 20;
 ```
 
 To copy the current value of an existing identifier, use Copy:
@@ -403,26 +641,160 @@ To establish shared identity with an existing identifier, use Bind:
 a :> b;
 ```
 
+### Define Empty (`=;`)
 
-### Define Empty (=;)
-
-- The DefineEmpty operator explicitly defines the target identifier as void.
+The DefineEmpty operator explicitly creates a new target binding whose value is `void`.
 
 ```druim
 a =;
 ```
 
 It is equivalent in meaning to:
+
 ```druim
 a = void;
 ```
 
-Rules
-• **=;** is one lexically atomic token.
-• The left-hand side must be exactly one identifier.
-• **=;** completes the statement itself.
-• No separate semicolon follows it.
-• DefineEmpty may not be chained with another statement operator.
+Rules:
+
+• `=;` is one lexically atomic token.  
+• The left-hand side must be exactly one identifier.  
+• The target name must not already be visible.  
+• `=;` completes the statement itself.  
+• No separate semicolon follows it.  
+• DefineEmpty may not be chained with another statement operator.  
+• DefineEmpty does not mutate or clear an existing binding.
+
+## Mutate (`<<`)
+
+The `<<` operator is called **Mutate**.
+
+Mutate changes the value held by an existing mutable binding identity.
+
+```druim
+count = 10;
+count << count + 1;
+```
+
+After the Mutate statement, `count` is `11`.
+
+### Core Meaning
+
+```druim
+target << expression;
+```
+
+Means:
+
+- `target` must already resolve to a visible binding identity.
+- The right-hand side is evaluated as exactly one complete expression.
+- The resulting value replaces the current value of that existing identity.
+- Mutate never creates a new ordinary binding.
+- Mutate may not target a `stone` identity.
+
+Mutate is the only statement operator whose primary purpose is to change the value of an already-existing binding.
+
+Mutate respects the scope already established for its target. A target established with `glo` remains global when mutated; a target already established as local remains local for its existing lifetime. `glo` is not used to promote or requalify an existing Mutate target.
+
+### Bind Interaction
+
+Because Bind shares identity, ordinary mutation through any bound name is visible through every name that refers to that identity.
+
+```druim
+source = 10;
+alias :> source;
+alias << 15;
+```
+
+Afterward both `alias` and `source` evaluate to `15`.
+
+### Local Mutate
+
+`loc` changes the propagation boundary of Mutate.
+
+```druim
+count = 10;
+
+:{
+    loc count << count + 3;
+    // count == 13 here
+}:
+
+// count == 10 here
+```
+
+The right-hand side resolves against the visible value before the localized mutation is established. The mutation then applies to the localized identity for the remainder of that local lifetime.
+
+If the target participates in a Bind relationship, every name referring to that identity inside the local lifetime observes the localized mutation, while the identity outside that lifetime remains unchanged.
+
+`loc` does not bypass `stone`. A stone identity cannot be mutated even through Local Mutate.
+
+### Lexical Rule
+
+`<<` is one lexically atomic token. Longest-match rules require `<<` to be recognized before the single-character comparison token `<`.
+
+## Stone Bindings
+
+The `stone` keyword marks a binding identity as immutable.
+
+`stone` may prefix a target-defining form that creates a fresh independent binding identity. In this revision, that includes Define, DefineEmpty, Copy, and Guard.
+
+Bind is different: Bind does not create a fresh identity, so a Bind alias derives its mutability from the identity it joins rather than declaring an independent stone status.
+
+```druim
+stone source = 10;
+```
+
+Once an identity is stone, Mutate may not change it:
+
+```druim
+source << source + 10;
+```
+
+The statement above is invalid because `source` resolves to a stone identity.
+
+### Identity Semantics
+
+Stone belongs to the **binding identity**, not merely to one identifier spelling and not merely to the current value.
+
+Therefore Bind preserves stone status because Bind shares identity.
+
+```druim
+stone source = 10;
+alias :> source;
+```
+
+`alias` and `source` refer to the same stone identity. Mutating through either name is invalid.
+
+### Copy Semantics
+
+Copy does **not** automatically propagate stone status because Copy creates a new independent identity.
+
+```druim
+stone source = 10;
+copy := source;
+copy << 20;
+```
+
+This is valid. `copy` contains an independent value and is mutable; `source` remains stone and remains `10`.
+
+An immutable copy is explicit:
+
+```druim
+stone copy := source;
+```
+
+The copied value is placed into a new independent identity, and that new identity is stone.
+
+### Local Scope
+
+Localizing an identity does not remove its stone status. A stone identity remains immutable within every local scope and through every bound alias.
+
+### Global Scope
+
+Global placement does not alter mutability. A `glo` binding is mutable unless its identity is also declared `stone`. A global stone identity remains immutable everywhere it is visible, including through Bind aliases.
+
+Copy still creates a fresh identity: copying from a global stone source does not make the copy global or stone unless those properties are explicitly established for the new Copy target.
 
 ## Truth Evaluation (Flags)
 
@@ -497,9 +869,27 @@ The delimiter family is:
 - `}:` ends the block scope.
 - Block chaining does **not** introduce nesting.
 - Exactly one lexical scope exists per block chain.
-- Individual bindings may be restricted to a single block segment via the `loc` keyword.
+- Ordinary bindings created in one segment remain visible in later segments of the same chain.
+- A target introduced with `loc` is restricted to the segment in which it is introduced.
+- A localized identity created by Local Mutate or local identity-sharing exists only for that segment.
+- At the end of the segment, localized names and localized identity state are discarded without changing the corresponding outer identity.
+- A target introduced with `glo` is established in global scope and survives the block chain.
+- `glo` does not change source lookup; right-hand expressions and source identifiers still resolve from the executing block context.
 - Blocks do not evaluate to a value.
 - Blocks exist only to control name visibility and lifetime.
+
+### Block-Segment Locality
+
+A block segment is the source region between `:{` or `}{` and the next `}{` or `}:`.
+
+Within a segment:
+
+- local targets are visible after they are introduced;
+- local Bind relationships retain shared identity;
+- localized mutation is visible through every name participating in the localized identity;
+- enclosing values may still be read normally.
+
+When execution crosses `}{`, segment-local targets and localized identity state from the previous segment no longer exist.
 
 ### Block Nesting
 
@@ -541,8 +931,6 @@ Blocks impose no additional restrictions beyond general syntactic validity.
 
 Standalone expressions that have no structural effect (e.g. `1 + 2`) are rejected by the grammar, not by block semantics.
 
----
-
 ## Functions
 
 A function definition is an expression that produces a callable value.
@@ -573,6 +961,7 @@ fn my_function :(a, b)( body ):
 ### Rules
 
 - A function definition must use `fn`, followed by a `snake_case` identifier.
+- A function name must not reuse an already-visible identifier.
 - Exactly **one parameter block** and **one body block** must be present.
 - Each parameter must be a valid parameter form.
 - A parameter may be a plain identifier.
@@ -632,12 +1021,15 @@ The evaluator must implement scope handling with these guarantees:
 - On }: pop the lexical scope created by the matching `:{`.
 - On function call, push a function scope, bind parameters, then pop the function scope.
 - On loop entry, push one persistent loop scope; pop it when the loop exits.
+- A target established with `glo` is written to global scope regardless of the currently active lexical, function, or loop scope.
+- Global placement must not alter right-hand/source lookup from the scope where the statement executes.
 
 ### Canonical Guarantee
 
 - Blocks establish lexical scope.
 - Function body establishes function scope.
-- loc restricts visibility to a single block segment within a chain.
+- `loc` restricts block-local targets and localized identity state to a single block segment within a chain.
+- `loc` takes precedence over ordinary Bind mutation propagation across that segment boundary.
 
 This behavior is stable and locked.
 
@@ -677,7 +1069,7 @@ Example:
 ```druim
 :< index = 0;
 >?< index < 3
->?< index = index + 1;
+>?< index << index + 1;
 >:
 ```
 
@@ -715,24 +1107,51 @@ The loop does not create a new scope for each iteration.
 
 ### Binding Placement Inside Loops
 
-For an unmodified Define, DefineEmpty, Copy, Bind, or Guard executed inside a loop:
+Target-defining operators retain their normal definition rules inside loops.
 
-- If the target name already exists in any visible scope, the nearest visible binding is updated.
-- If the target name does not exist, a new binding is created in the current loop scope.
+For Define, DefineEmpty, Copy, Bind, and Guard:
+
+- the target must be a new name;
+- an already-visible target name may not be silently updated or replaced;
+- source identifiers and right-hand expressions may resolve through enclosing scopes normally.
+
+To change an existing visible binding, use Mutate.
+
+```druim
+count = 0;
+
+:<
+>?< count < 3
+>?< count << count + 1;
+>:
+```
+
+An ordinary Mutate changes the nearest visible binding identity resolved by its target.
 
 For a statement modified by `loc`:
 
-- The target binding is forced into the current loop scope.
-- An outer binding with the same name is shadowed rather than updated.
-- The local binding persists across loop iterations.
-- The local binding disappears when the loop scope ends.
+- a new target introduced by a target-defining form belongs to the persistent loop scope;
+- that local target persists across loop iterations and disappears when the loop exits;
+- the local target may not reuse an already-visible name;
+- Local Mutate localizes the targeted visible identity into the loop scope instead of mutating the identity outside the loop;
+- once localized, all names that refer to that identity inside the loop observe the localized state;
+- the outer identity is unchanged when the loop exits.
+
+For a target-defining statement modified by `glo`:
+
+- the new target is established in global scope even though the statement executes inside the loop;
+- the global target survives loop exit;
+- source identifiers and right-hand expressions still resolve through the loop's visible scope normally;
+- Bind may establish a global alias only when the referenced identity has global lifetime;
+- Copy may establish a global target from a shorter-lived source because Copy creates a fresh independent identity.
 
 Copy and Bind retain their canonical value and identity semantics regardless of placement:
 
-- Copy creates an independent snapshot.
+- Copy creates an independent snapshot identity.
 - Bind establishes shared identity.
+- `loc` takes precedence over Bind propagation across the loop-scope boundary.
 
-Guard evaluates its branches before storing the selected value in the binding chosen by these scope rules.
+Guard evaluates its branches before defining its new target.
 
 ### Nested Loops
 
@@ -740,8 +1159,9 @@ Loops may appear inside loop setup or process sections.
 
 - Each nested loop creates its own persistent child scope.
 - The child scope can read visible bindings from enclosing scopes.
-- Ordinary target operations update the nearest visible binding.
+- Ordinary Mutate resolves and changes the nearest visible mutable identity.
 - New child-loop bindings disappear when the child loop exits.
+- Localized child-loop identities do not propagate mutation back across their `loc` boundary.
 - The enclosing loop scope remains active after the nested loop completes.
 
 ### Loops in Functions
@@ -788,6 +1208,7 @@ The evaluator must implement loop handling with these guarantees:
 - Evaluate the condition before every iteration.
 - Execute the process only while the condition evaluates to true.
 - Preserve the same loop scope across all iterations.
+- Preserve localized identities only for the lifetime of that loop scope.
 - Propagate function returns through the loop.
 - Pop the loop scope on normal exit, diagnostic exit, or propagated return.
 
@@ -798,7 +1219,7 @@ The evaluator must implement loop handling with these guarantees:
 - Condition executes before every iteration.
 - One persistent lexical scope exists per loop execution.
 - Nested loops create persistent child scopes.
-- Loop-local bindings disappear after loop exit.
+- Loop-local bindings and localized identities disappear after loop exit.
 - Returns propagate from loops only through an enclosing function.
 
 This behavior is stable and locked.
@@ -825,7 +1246,7 @@ Bare `&`, `|`, are not legal tokens.
 - `>=` → Ge
 
 **Invariant:**  
-Compound comparison operators are always matched before single-character < or >.
+Compound operators beginning with `<` are always matched before the single-character `<` token. This includes `<<`, `<=`, and `<-`. Compound comparison operators are always matched before single-character `<` or `>`.
 
 ---
 
@@ -1303,6 +1724,7 @@ a := b;
 Means:
 
 - b **must already exist**
+- a must be a **new target name**
 - a receives the **current value** of b
 - a and b are **independent after copying**
 - Future mutations of b do **not** affect a
@@ -1322,6 +1744,7 @@ target := source;
 Rules:
 
 • **target** must be exactly one identifier.
+• **target** must not already be visible.
 • **source** must be exactly one identifier.
 • No expression may appear on either side.
 • No additional tokens may appear before the semicolon.
@@ -1413,29 +1836,38 @@ a := b;
 
 ---
 
-### Real-World Example
+### Stone Interaction
 
-Imagine a configuration that must remain stable:
+Copy duplicates the current value into a fresh identity. It does not inherit the source identity's mutability status.
 
 ```druim
-config = :{
-    retries = 3;
-}:
+stone source = 10;
+copy := source;
+copy << 20;
 ```
 
-You want to experiment locally without touching the original:
+The mutation of `copy` is valid because `copy` is an independent mutable identity. `source` remains stone.
+
+To create an immutable copy explicitly:
 
 ```druim
-testConfig := config;
-testConfig.retries = 5;
+stone copy := source;
+```
+
+### Real-World Example
+
+```druim
+source = 10;
+snapshot := source;
+source << 20;
 ```
 
 Result:
 
-- testConfig.retries → 5
-- config.retries → still 3
+- `source` → `20`
+- `snapshot` → `10`
 
-This behavior is **intentional**.
+The snapshot remains independent after Copy. This behavior is **intentional**.
 
 ---
 
@@ -1459,10 +1891,11 @@ Copy fills this gap cleanly.
 
 ### Design Principle
 
-- = defines
-- ?= decides
-- := copies
-- :> binds
+- `=` defines
+- `?=` decides
+- `:=` copies
+- `:>` binds
+- `<<` mutates
 
 Each operator has **one job**.
 
@@ -1491,6 +1924,7 @@ a :> b;
 Means:
 
 - `b` **must already exist**
+- `a` must be a **new target name**
 - `a` becomes an alias of `b`
 - `a` and `b` refer to the same underlying identity
 - Future mutations of either identifier affect the shared value
@@ -1512,6 +1946,7 @@ target :> source;
 Rules:
 
 • **target** must be exactly one identifier.
+• **target** must not already be visible.
 • **source** must be exactly one identifier.
 • No expression may appear on either side.
 • No additional tokens may appear before the semicolon.
@@ -1599,16 +2034,73 @@ a :> b;
 ```druim
 a = 10;
 b :> a;
-a = 20;
+a << 20;
 ```
 
 Result:
 
+- `a` evaluates to `20`
 - `b` evaluates to `20`
 
 Because `a` and `b` refer to the same identity.
 
 ---
+
+### Local Scope Interaction
+
+Bind shares identity, but `loc` defines the boundary across which localized mutation may propagate.
+
+```druim
+source = 10;
+
+:{
+    loc alias :> source;
+    alias << 15;
+
+    // alias  == 15
+    // source == 15 inside this segment
+}:
+
+// source == 10 here
+```
+
+Inside the local lifetime, `alias` and `source` still observe the same localized identity. Outside that lifetime, the original `source` identity is unchanged.
+
+A non-local Bind has no such isolation boundary; ordinary Mutate propagates through the shared identity normally.
+
+### Global Scope Interaction
+
+A Bind alias may have the same or a shorter lifetime than the identity it aliases, but never a longer lifetime.
+
+```druim
+glo source = 10;
+
+:{
+    alias :> source;
+}:
+```
+
+This is valid: `alias` is block-scoped while the shared `source` identity is global.
+
+A global Bind alias requires an identity whose lifetime is also global:
+
+```druim
+glo source = 10;
+glo alias :> source;
+```
+
+This is valid.
+
+The reverse lifetime relationship is invalid:
+
+```druim
+:{
+    local_source = 10;
+    glo alias :> local_source;
+}:
+```
+
+The global alias would outlive the identity it references.
 
 ### Why Bind Exists
 
@@ -1621,7 +2113,7 @@ Bind enables:
 
 Without Bind, developers are forced to choose between:
 - Snapshotting (`:=`)
-- Re-defining (`=`)
+- Creating independent state
 - Or duplicating state manually
 
 Bind provides explicit identity sharing.
@@ -1630,10 +2122,11 @@ Bind provides explicit identity sharing.
 
 ### Design Principle
 
-- = defines
-- ?= decides
-- := copies
-- :> binds
+- `=` defines
+- `?=` decides
+- `:=` copies
+- `:>` binds
+- `<<` mutates
 
 Each operator has **one job**.
 
@@ -1688,6 +2181,7 @@ The implicit terminal result of every Guard is **void**.
 ### Structural Rules
 
 • The target must be exactly one identifier.
+• The target name must not already be visible.
 • **?=** appears exactly once, immediately after the target.
 • At least one branch expression is required.
 • **:** separates subsequent branch expressions.

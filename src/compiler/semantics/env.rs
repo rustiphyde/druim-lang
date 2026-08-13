@@ -7,6 +7,7 @@ use super::value::Value;
 #[derive(Debug, Clone)]
 pub struct Slot {
     pub value: Value,
+    pub stone: bool,
 }
 
 pub type SlotRef = Rc<RefCell<Slot>>;
@@ -14,6 +15,37 @@ pub type SlotRef = Rc<RefCell<Slot>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvError {
     UndefinedName(String),
+    StoneBinding(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DefineError {
+    AlreadyDefined(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyError {
+    UndefinedName(String),
+    AlreadyDefined(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlobalCopyError {
+    UndefinedName(String),
+    AlreadyDefined(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BindError {
+    UndefinedName(String),
+    AlreadyDefined(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlobalBindError {
+    UndefinedName(String),
+    LocalIdentity(String),
+    AlreadyDefined(String),
 }
 
 #[derive(Debug, Default)]
@@ -47,38 +79,49 @@ impl Env {
     /// existing slot so all bound aliases observe the new value.
     ///
     /// Otherwise, create a fresh slot.
-    pub fn define(&mut self, name: String, value: Value) {
-        let scope = self
-            .scopes
-            .last_mut()
-            .expect("no scope");
-
-        if let Some(slot) = scope.names.get(&name) {
-            slot.borrow_mut().value = value;
-            return;
-        }
-
-        let slot = Rc::new(RefCell::new(Slot { value }));
-        scope.names.insert(name, slot);
-    }
-
-    /// Define through normal lexical resolution.
-    ///
-    /// If the name already exists in any visible scope, update the nearest
-    /// visible slot so existing aliases continue to observe that value.
-    ///
-    /// Otherwise, create a fresh slot in the current scope.
-    pub fn define_nearest_or_current(
+    pub fn define(
         &mut self,
         name: String,
         value: Value,
-    ) {
-        if let Some(slot) = self.lookup(&name) {
-            slot.borrow_mut().value = value;
-            return;
+    ) -> Result<(), DefineError> {
+        if self.lookup(&name).is_some() {
+            return Err(DefineError::AlreadyDefined(name));
         }
 
-        self.define(name, value);
+        let scope = self.scopes.last_mut().expect("no scope");
+
+        let slot = Rc::new(RefCell::new(Slot {
+            value,
+            stone: false,
+        }));
+
+        scope.names.insert(name, slot);
+
+        Ok(())
+    }
+
+    pub fn define_global(
+        &mut self,
+        name: String,
+        value: Value,
+    ) -> Result<(), DefineError> {
+        if self.lookup(&name).is_some() {
+            return Err(DefineError::AlreadyDefined(name));
+        }
+
+        let scope = self
+            .scopes
+            .first_mut()
+            .expect("no global scope");
+
+        let slot = Rc::new(RefCell::new(Slot {
+            value,
+            stone: false,
+        }));
+
+        scope.names.insert(name, slot);
+
+        Ok(())
     }
 
     /// Lookup a name, searching from innermost to outermost scope.
@@ -94,10 +137,14 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), EnvError> {
+    ) -> Result<(), BindError> {
+        if self.lookup(&name).is_some() {
+            return Err(BindError::AlreadyDefined(name));
+        }
+
         let slot = self
             .lookup(target)
-            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
+            .ok_or_else(|| BindError::UndefinedName(target.to_string()))?;
 
         self.scopes
             .last_mut()
@@ -108,37 +155,45 @@ impl Env {
         Ok(())
     }
 
-
-    /// Bind through normal lexical resolution.
-    ///
-    /// If the destination name exists in a visible scope, replace the nearest
-    /// visible binding with the target slot.
-    ///
-    /// Otherwise, create the binding in the current scope.
-    pub fn bind_nearest_or_current(
+    pub fn bind_global(
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), EnvError> {
-        let target_slot = self
-            .lookup(target)
-            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
-
-        if let Some(scope) = self
-            .scopes
-            .iter_mut()
-            .rev()
-            .find(|scope| scope.names.contains_key(&name))
-        {
-            scope.names.insert(name, target_slot);
-            return Ok(());
+    ) -> Result<(), GlobalBindError> {
+        if self.lookup(&name).is_some() {
+            return Err(GlobalBindError::AlreadyDefined(name));
         }
 
-        self.scopes
-            .last_mut()
-            .expect("no scope")
-            .names
-            .insert(name, target_slot);
+        let target_slot = self
+            .lookup(target)
+            .ok_or_else(|| {
+                GlobalBindError::UndefinedName(target.to_string())
+            })?;
+
+        let is_global_identity = {
+            let global = self
+                .scopes
+                .first()
+                .expect("no global scope");
+
+            global
+                .names
+                .values()
+                .any(|slot| Rc::ptr_eq(slot, &target_slot))
+        };
+
+        if !is_global_identity {
+            return Err(
+                GlobalBindError::LocalIdentity(target.to_string()),
+            );
+        }
+
+        let global = self
+            .scopes
+            .first_mut()
+            .expect("no global scope");
+
+        global.names.insert(name, target_slot);
 
         Ok(())
     }
@@ -148,33 +203,64 @@ impl Env {
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), EnvError> {
+    ) -> Result<(), CopyError> {
         let source = self
             .lookup(target)
-            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
+            .ok_or_else(|| CopyError::UndefinedName(target.to_string()))?;
 
         let value = source.borrow().value.clone();
-        self.define(name, value);
+
+        self.define(name, value)
+            .map_err(|error| {
+                match error {
+                    DefineError::AlreadyDefined(name) => {
+                        CopyError::AlreadyDefined(name)
+                    }
+                }
+            })?;
 
         Ok(())
     }
-    /// Copy through normal lexical resolution.
-    ///
-    /// If the destination name exists in a visible scope, update the nearest
-    /// visible slot with an independent snapshot of the target value.
-    ///
-    /// Otherwise, create the copied value in the current scope.
-    pub fn copy_nearest_or_current(
+
+    pub fn copy_global(
         &mut self,
         name: String,
         target: &str,
-    ) -> Result<(), EnvError> {
+    ) -> Result<(), GlobalCopyError> {
+        if self.lookup(&name).is_some() {
+            return Err(GlobalCopyError::AlreadyDefined(name));
+        }
+
         let source = self
             .lookup(target)
-            .ok_or_else(|| EnvError::UndefinedName(target.to_string()))?;
+            .ok_or_else(|| GlobalCopyError::UndefinedName(target.to_string()))?;
 
         let value = source.borrow().value.clone();
-        self.define_nearest_or_current(name, value);
+
+        let scope = self
+            .scopes
+            .first_mut()
+            .expect("no global scope");
+
+        let slot = Rc::new(RefCell::new(Slot {
+            value,
+            stone: false,
+        }));
+
+        scope.names.insert(name, slot);
+
+        Ok(())
+    }
+
+    pub fn mark_stone(
+        &mut self,
+        name: &str,
+    ) -> Result<(), EnvError> {
+        let slot = self
+            .lookup(name)
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
+        slot.borrow_mut().stone = true;
 
         Ok(())
     }
@@ -189,7 +275,50 @@ impl Env {
             .lookup(name)
             .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
 
+        if slot.borrow().stone {
+            return Err(EnvError::StoneBinding(name.to_string()));
+        }
+
         slot.borrow_mut().value = value;
+
+        Ok(())
+    }
+
+    pub fn assign_global(
+        &mut self,
+        name: &str,
+        value: Value,
+    ) -> Result<(), EnvError> {
+        let scope = self.scopes.first().expect("no global scope");
+
+        let slot = scope
+            .names
+            .get(name)
+            .cloned()
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
+        if slot.borrow().stone {
+            return Err(EnvError::StoneBinding(name.to_string()));
+        }
+
+        slot.borrow_mut().value = value;
+
+        Ok(())
+    }
+
+    pub fn mark_global_stone(
+        &mut self,
+        name: &str,
+    ) -> Result<(), EnvError> {
+        let scope = self.scopes.first().expect("no global scope");
+
+        let slot = scope
+            .names
+            .get(name)
+            .cloned()
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
+        slot.borrow_mut().stone = true;
 
         Ok(())
     }
@@ -228,5 +357,47 @@ impl Env {
     /// Convenience for tests: get the current value (if defined).
     pub fn get_value(&self, name: &str) -> Option<Value> {
         self.lookup(name).map(|s| s.borrow().value.clone())
+    }
+
+    pub fn localize_identity(
+        &mut self,
+        name: &str,
+        value: Value,
+    ) -> Result<Vec<(String, Option<SlotRef>)>, EnvError> {
+        let original = self
+            .lookup(name)
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
+        let mut names = Vec::new();
+
+        for scope in &self.scopes {
+            for (candidate, slot) in &scope.names {
+                if Rc::ptr_eq(slot, &original) && !names.contains(candidate) {
+                    names.push(candidate.clone());
+                }
+            }
+        }
+
+        let localized = Rc::new(RefCell::new(Slot {
+            value,
+            stone: false,
+        }));
+
+        let current = self
+            .scopes
+            .last_mut()
+            .expect("no scope");
+
+        let mut previous = Vec::new();
+
+        for alias in names {
+            let old = current
+                .names
+                .insert(alias.clone(), localized.clone());
+
+            previous.push((alias, old));
+        }
+
+        Ok(previous)
     }
 }

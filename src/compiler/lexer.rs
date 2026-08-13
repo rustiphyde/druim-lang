@@ -104,6 +104,8 @@ impl<'a> Lexer<'a> {
                     "fn" => TokenKind::KwFn,
                     "ret" => TokenKind::KwRet,
                     "loc" => TokenKind::KwLoc,
+                    "glo" => TokenKind::KwGlo,
+                    "stone" => TokenKind::KwStone,
                     "true" | "false" => TokenKind::FlagLit,
                     _ => TokenKind::Ident,
                 };
@@ -211,7 +213,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             if self.match_str("|>") {
-                tokens.push(tok(TokenKind::Pipe, "|>", start));
+                tokens.push(tok(TokenKind::Print, "|>", start));
                 continue;
             }
 
@@ -221,6 +223,10 @@ impl<'a> Lexer<'a> {
             }
             if self.match_str("!=") {
                 tokens.push(tok(TokenKind::Ne, "!=", start));
+                continue;
+            }
+            if self.match_str("<<") {
+                tokens.push(tok(TokenKind::Mutate, "<<", start));
                 continue;
             }
             if self.match_str("<=") {
@@ -238,15 +244,6 @@ impl<'a> Lexer<'a> {
             }
             if self.match_str("||") {
                 tokens.push(tok(TokenKind::Or, "||", start));
-                continue;
-            }
-
-            if self.match_str("->") {
-                tokens.push(tok(TokenKind::ArrowR, "->", start));
-                continue;
-            }
-            if self.match_str("<-") {
-                tokens.push(tok(TokenKind::ArrowL, "<-", start));
                 continue;
             }
 

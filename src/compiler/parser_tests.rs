@@ -3446,3 +3446,436 @@ fn return_is_rejected_outside_function() {
         rendered
     );
 }
+
+#[test]
+fn parses_mutate_node() {
+    let tokens = Lexer::new("count << count + 1;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Mutate(mutate) => {
+            assert_eq!(mutate.name, "count");
+        }
+        other => panic!("expected mutate node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_local_mutate_node() {
+    let tokens = Lexer::new("loc count << count + 1;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Local(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Mutate(_)));
+        }
+        other => panic!("expected local mutate node, got {other:?}"),
+    }
+}
+
+#[test]
+fn mutate_requires_rhs_value() {
+    let tokens = Lexer::new("count <<;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "mutate without a RHS must be rejected"
+    );
+}
+
+#[test]
+fn mutate_requires_semicolon() {
+    let tokens = Lexer::new("count << count + 1")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "unterminated mutate must be rejected"
+    );
+}
+
+#[test]
+fn mutate_cannot_be_chained() {
+    let tokens = Lexer::new("count << count + 1 << 2;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "mutate statements cannot be chained"
+    );
+}
+
+#[test]
+fn parses_stone_mutate_node() {
+    let tokens = Lexer::new("stone count << count + 1;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+    let node = parser.parse_node().expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Mutate(_)));
+        }
+        other => panic!("expected stone mutate node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_stone_local_mutate_node() {
+    let tokens = Lexer::new("stone loc count << count + 1;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+    let node = parser.parse_node().expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Local(_)));
+        }
+        other => panic!("expected stone local mutate node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_stone_global_mutate_node() {
+    let tokens = Lexer::new("stone glo count << count + 1;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            match inner.kind {
+                NodeKind::Global(inner) => {
+                    match inner.kind {
+                        NodeKind::Mutate(mutate) => {
+                            assert_eq!(mutate.name, "count");
+                        }
+
+                        other => {
+                            panic!(
+                                "expected mutate inside global, got {other:?}"
+                            );
+                        }
+                    }
+                }
+
+                other => {
+                    panic!(
+                        "expected global inside stone, got {other:?}"
+                    );
+                }
+            }
+        }
+
+        other => {
+            panic!(
+                "expected stone global mutate node, got {other:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn parses_stone_define_node() {
+    let tokens = Lexer::new("stone value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+    let node = parser.parse_node().expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Define(_)));
+        }
+        other => panic!("expected stone define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_global_define_node() {
+    let tokens = Lexer::new("glo value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+    let node = parser.parse_node().expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Global(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Define(_)));
+        }
+        other => panic!("expected global define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_stone_global_define_node() {
+    let tokens = Lexer::new("stone glo value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+    let node = parser.parse_node().expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            assert!(matches!(inner.kind, NodeKind::Global(_)));
+        }
+        other => panic!("expected stone global define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_stone_global_define_empty_node() {
+    let tokens = Lexer::new("stone glo value =;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            match inner.kind {
+                NodeKind::Global(inner) => {
+                    assert!(matches!(inner.kind, NodeKind::DefineEmpty(_)));
+                }
+
+                other => {
+                    panic!("expected global inside stone, got {other:?}");
+                }
+            }
+        }
+
+        other => {
+            panic!("expected stone global define-empty node, got {other:?}");
+        }
+    }
+}
+
+#[test]
+fn parses_stone_global_copy_node() {
+    let tokens = Lexer::new("stone glo snapshot := source;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            match inner.kind {
+                NodeKind::Global(inner) => {
+                    match inner.kind {
+                        NodeKind::Copy(copy) => {
+                            assert_eq!(copy.name, "snapshot");
+                            assert_eq!(copy.target, "source");
+                        }
+
+                        other => {
+                            panic!("expected copy inside global, got {other:?}");
+                        }
+                    }
+                }
+
+                other => {
+                    panic!("expected global inside stone, got {other:?}");
+                }
+            }
+        }
+
+        other => {
+            panic!("expected stone global copy node, got {other:?}");
+        }
+    }
+}
+
+#[test]
+fn parses_stone_global_bind_node() {
+    let tokens = Lexer::new("stone glo alias :> source;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            match inner.kind {
+                NodeKind::Global(inner) => {
+                    match inner.kind {
+                        NodeKind::Bind(bind) => {
+                            assert_eq!(bind.name, "alias");
+                            assert_eq!(bind.target, "source");
+                        }
+
+                        other => {
+                            panic!("expected bind inside global, got {other:?}");
+                        }
+                    }
+                }
+
+                other => {
+                    panic!("expected global inside stone, got {other:?}");
+                }
+            }
+        }
+
+        other => {
+            panic!("expected stone global bind node, got {other:?}");
+        }
+    }
+}
+
+#[test]
+fn parses_stone_global_guard_node() {
+    let tokens = Lexer::new("stone glo result ?= first : second;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let node = parser
+        .parse_node()
+        .expect("parsing should succeed");
+
+    match node.kind {
+        NodeKind::Stone(inner) => {
+            match inner.kind {
+                NodeKind::Global(inner) => {
+                    match inner.kind {
+                        NodeKind::Guard(guard) => {
+                            assert_eq!(guard.target, "result");
+                            assert_eq!(guard.branches.len(), 2);
+                        }
+
+                        other => {
+                            panic!("expected guard inside global, got {other:?}");
+                        }
+                    }
+                }
+
+                other => {
+                    panic!("expected global inside stone, got {other:?}");
+                }
+            }
+        }
+
+        other => {
+            panic!("expected stone global guard node, got {other:?}");
+        }
+    }
+}
+
+#[test]
+fn rejects_loc_stone_modifier_order() {
+    let tokens = Lexer::new("loc stone value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "`stone` must precede `loc`"
+    );
+}
+
+#[test]
+fn rejects_glo_stone_modifier_order() {
+    let tokens = Lexer::new("glo stone value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "`stone` must precede `glo`"
+    );
+}
+
+#[test]
+fn rejects_loc_glo_combination() {
+    let tokens = Lexer::new("loc glo value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "`loc` and `glo` cannot be combined"
+    );
+}
+
+#[test]
+fn rejects_glo_loc_combination() {
+    let tokens = Lexer::new("glo loc value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "`glo` and `loc` cannot be combined"
+    );
+}
+
+#[test]
+fn rejects_repeated_stone_modifier() {
+    let tokens = Lexer::new("stone stone value = 10;")
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    assert!(
+        parser.parse_node().is_err(),
+        "`stone` cannot be repeated"
+    );
+}

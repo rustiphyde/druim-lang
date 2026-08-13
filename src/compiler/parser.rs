@@ -1,6 +1,6 @@
 use crate::compiler::ast::{
     BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
-    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Node, NodeKind, Param,
+    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Mutate, Node, NodeKind, Param,
     Program, Ret,
 };
 use crate::compiler::error::{Span, Diagnostic};
@@ -11,6 +11,20 @@ pub struct Parser<'a> {
     index: usize,
     in_block: bool,
     in_func: bool, 
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct StatementModifiers {
+    stone: bool,
+    scope: StatementScope,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum StatementScope {
+    #[default]
+    Normal,
+    Local,
+    Global,
 }
 
 impl<'a> Parser<'a> {
@@ -47,7 +61,7 @@ impl<'a> Parser<'a> {
 
             TokenKind::LoopStart => {
                 self.parse_loop()
-            } 
+            }
 
             TokenKind::KwFn => {
                 // parse_func handles:
@@ -55,6 +69,28 @@ impl<'a> Parser<'a> {
                 // - parameter rules
                 // - body parsing
                 self.parse_func()
+            }
+
+            TokenKind::KwLoc
+                if matches!(
+                    self.tokens.get(self.index + 1).map(|token| &token.kind),
+                    Some(TokenKind::KwFn)
+                ) =>
+            {
+                let start = self.current_span().start;
+
+                self.bump(); // consume `loc`
+
+                let func = self.parse_func()?;
+                let end = func.span.end;
+
+                Ok(Node::new(
+                    NodeKind::Local(Box::new(func)),
+                    Span {
+                        start,
+                        end,
+                    },
+                ))
             }
 
             // ---------- everything else ----------
@@ -77,6 +113,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
+                | TokenKind::Mutate
                 | TokenKind::Guard => {
                     // DO NOT consume here
                     return match tok.kind {
@@ -84,6 +121,7 @@ impl<'a> Parser<'a> {
                         TokenKind::DefineEmpty => self.parse_define_empty(),
                         TokenKind::Copy        => self.parse_copy(),
                         TokenKind::Bind        => self.parse_bind(),
+                        TokenKind::Mutate      => self.parse_mutate(),
                         TokenKind::Guard       => self.parse_guard(),
                         _ => unreachable!(),
                     };
@@ -104,6 +142,58 @@ impl<'a> Parser<'a> {
         self.parse_call_statement()
     }
 
+    fn parse_statement_modifiers(&mut self) -> Result<StatementModifiers, Diagnostic> {
+        let mut modifiers = StatementModifiers::default();
+
+        if self.peek_kind() == TokenKind::KwStone {
+            self.bump();
+            modifiers.stone = true;
+
+            if self.peek_kind() == TokenKind::KwStone {
+                return Err(
+                    Diagnostic::error(
+                        "repeated `stone` modifier",
+                        self.current_span(),
+                    )
+                    .with_help("`stone` may appear at most once."),
+                );
+            }
+        }
+
+        match self.peek_kind() {
+            TokenKind::KwLoc => {
+                self.bump();
+                modifiers.scope = StatementScope::Local;
+            }
+
+            TokenKind::KwGlo => {
+                self.bump();
+                modifiers.scope = StatementScope::Global;
+            }
+
+            _ => {}
+        }
+
+        match self.peek_kind() {
+            TokenKind::KwLoc | TokenKind::KwGlo | TokenKind::KwStone => {
+                return Err(
+                    Diagnostic::error(
+                        "invalid statement modifier order",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Druim statement modifiers must use the form:\n\
+                        `[stone] [loc | glo] statement`",
+                    ),
+                );
+            }
+
+            _ => {}
+        }
+
+        Ok(modifiers)
+    }
+
     fn parse_ret(&mut self) -> Result<Node, Diagnostic> {
         // We are committing to parsing a return statement
          if !self.in_func {
@@ -119,7 +209,7 @@ impl<'a> Parser<'a> {
         // We are committing to parsing a return statement
         let start = self.current_span().start;
         self.bump(); // consume `ret`
-        
+
         // 🔒 REQUIRED: verify semicolon exists BEFORE parsing anything else
         let stmt_end = match self.tokens[self.index..]
             .iter()
@@ -174,6 +264,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
+                | TokenKind::Mutate
                 | TokenKind::Guard
                 | TokenKind::KwRet => {
                     return Err(
@@ -231,13 +322,7 @@ impl<'a> Parser<'a> {
     fn parse_define_empty(&mut self) -> Result<Node, Diagnostic> {
         let start = self.current_span().start;
 
-        // Optional `loc`
-        let is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump();
-            true
-        } else {
-            false
-        };
+        let modifiers = self.parse_statement_modifiers()?;
 
         // Identifier
         let ident_tok = match self.bump() {
@@ -290,6 +375,7 @@ impl<'a> Parser<'a> {
             | TokenKind::DefineEmpty
             | TokenKind::Copy
             | TokenKind::Bind
+            | TokenKind::Mutate
             | TokenKind::Guard => {
                 return Err(
                     Diagnostic::error(
@@ -311,9 +397,23 @@ impl<'a> Parser<'a> {
             statement_span,
         );
 
-        if is_local {
-            Ok(Node::new(
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
                 NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
                 statement_span,
             ))
         } else {
@@ -353,13 +453,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // Optional `loc`
-        let is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump();
-            true
-        } else {
-            false
-        };
+        let modifiers = self.parse_statement_modifiers()?;
 
         // Identifier (single assertion)
         let ident_tok = match self.bump() {
@@ -432,6 +526,7 @@ impl<'a> Parser<'a> {
                 TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
+                | TokenKind::Mutate
                 | TokenKind::Guard => {
                     return Err(
                         Diagnostic::error(
@@ -524,9 +619,23 @@ impl<'a> Parser<'a> {
             statement_span,
         );
 
-        if is_local {
-            Ok(Node::new(
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
                 NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
                 statement_span,
             ))
         } else {
@@ -565,13 +674,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // 2️⃣ Optional `loc`
-        let is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump();
-            true
-        } else {
-            false
-        };
+        let modifiers = self.parse_statement_modifiers()?;
 
         // 3️⃣ Left-hand identifier (single assertion)
         let lhs_tok = match self.bump() {
@@ -660,6 +763,7 @@ impl<'a> Parser<'a> {
                     | TokenKind::DefineEmpty
                     | TokenKind::Copy
                     | TokenKind::Bind
+                    | TokenKind::Mutate
                     | TokenKind::Guard
             );
 
@@ -701,9 +805,23 @@ impl<'a> Parser<'a> {
             statement_span,
         );
 
-        if is_local {
-            Ok(Node::new(
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
                 NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
                 statement_span,
             ))
         } else {
@@ -742,13 +860,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Optional `loc`
-        let is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump();
-            true
-        } else {
-            false
-        };
+        let modifiers = self.parse_statement_modifiers()?;
 
         // Left-hand identifier
         let lhs_tok = match self.bump() {
@@ -838,6 +950,7 @@ impl<'a> Parser<'a> {
                     | TokenKind::DefineEmpty
                     | TokenKind::Copy
                     | TokenKind::Bind
+                    | TokenKind::Mutate
                     | TokenKind::Guard
             );
 
@@ -879,9 +992,218 @@ impl<'a> Parser<'a> {
             statement_span,
         );
 
-        if is_local {
-            Ok(Node::new(
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
                 NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
+                statement_span,
+            ))
+        } else {
+            Ok(node)
+        }
+    }
+
+    fn parse_mutate(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
+        let stmt_end = match self.tokens[self.index..]
+            .iter()
+            .position(|t| t.kind == TokenKind::Semicolon)
+        {
+            Some(off) => self.index + off,
+            None => {
+                let end = self
+                    .tokens
+                    .last()
+                    .map(|token| token.pos + token.lexeme.len())
+                    .unwrap_or(0);
+
+                return Err(
+                    Diagnostic::error(
+                        "unterminated mutate statement",
+                        Span {
+                            start: end,
+                            end,
+                        },
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` to terminate this mutate statement.\n\
+                        Example: `count << count + 1;`",
+                    ),
+                );
+            }
+        };
+
+        let modifiers = self.parse_statement_modifiers()?;
+
+        // Left-hand identifier
+        let ident_tok = match self.bump() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error(
+                        "invalid mutate statement",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Druim mutate statements must begin with an identifier.\n\
+                        Example: `count << count + 1;`",
+                    ),
+                );
+            }
+        };
+
+        if ident_tok.kind != TokenKind::Ident {
+            return Err(
+                Diagnostic::error(
+                    "invalid mutate statement",
+                    Span {
+                        start: ident_tok.pos,
+                        end: ident_tok.pos + ident_tok.lexeme.len(),
+                    },
+                )
+                .with_help(
+                    "Druim mutate statements must begin with an identifier.\n\
+                    Example: `count << count + 1;`",
+                ),
+            );
+        }
+
+        let name = ident_tok.lexeme.clone();
+
+        // Consume `<<`
+        self.bump();
+
+        // RHS must exist
+        if self.peek_kind() == TokenKind::Semicolon {
+            return Err(
+                Diagnostic::error(
+                    "invalid mutate statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "A mutate statement requires a value after `<<`.\n\
+                    Example: `count << count + 1;`",
+                ),
+            );
+        }
+
+        // Statement operators cannot appear inside the RHS.
+        let mut i = self.index;
+
+        while i < stmt_end {
+            match self.tokens[i].kind {
+                TokenKind::Define
+                | TokenKind::DefineEmpty
+                | TokenKind::Copy
+                | TokenKind::Bind
+                | TokenKind::Mutate
+                | TokenKind::Guard => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid mutate statement",
+                            Span {
+                                start: self.tokens[i].pos,
+                                end: self.tokens[i].pos + self.tokens[i].lexeme.len(),
+                            },
+                        )
+                        .with_help(
+                            "Mutate statements cannot contain other statement operators.\n\
+                            Split this into separate statements.",
+                        ),
+                    );
+                }
+
+                _ => {}
+            }
+
+            i += 1;
+        }
+
+        // Mutate accepts one complete expression.
+        let value = self.parse_expr()?;
+
+        // The complete RHS must be consumed.
+        let next_tok = match self.peek() {
+            Some(tok) => tok,
+            None => {
+                return Err(
+                    Diagnostic::error(
+                        "unterminated mutate statement",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Druim expected a semicolon `;` after the mutated value.\n\
+                        Example: `count << count + 1;`",
+                    ),
+                );
+            }
+        };
+
+        if next_tok.kind != TokenKind::Semicolon {
+            return Err(
+                Diagnostic::error(
+                    "invalid mutate statement",
+                    Span {
+                        start: next_tok.pos,
+                        end: next_tok.pos + next_tok.lexeme.len(),
+                    },
+                )
+                .with_help(
+                    "A Druim mutate statement must contain exactly one complete expression.\n\
+                    Unexpected tokens remain after the mutated value.\n\
+                    Example: `count << count + 1;`",
+                ),
+            );
+        }
+
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
+
+        let statement_span = Span {
+            start,
+            end: semicolon.pos + semicolon.lexeme.len(),
+        };
+
+        let node = Node::new(
+            NodeKind::Mutate(Mutate {
+                name,
+                value: Box::new(value),
+            }),
+            statement_span,
+        );
+
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
+                NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
                 statement_span,
             ))
         } else {
@@ -921,13 +1243,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // Optional `loc`
-        let is_local = if self.peek_kind() == TokenKind::KwLoc {
-            self.bump();
-            true
-        } else {
-            false
-        };
+        let modifiers = self.parse_statement_modifiers()?;
 
         // Identifier (single assertion)
         let ident_tok = match self.bump() {
@@ -987,6 +1303,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
+                | TokenKind::Mutate
                 | TokenKind::Guard => {
                     return Err(
                         Diagnostic::error(
@@ -1082,9 +1399,23 @@ impl<'a> Parser<'a> {
             statement_span,
         );
 
-        if is_local {
-            Ok(Node::new(
+        let node = match modifiers.scope {
+            StatementScope::Normal => node,
+
+            StatementScope::Local => Node::new(
                 NodeKind::Local(Box::new(node)),
+                statement_span,
+            ),
+
+            StatementScope::Global => Node::new(
+                NodeKind::Global(Box::new(node)),
+                statement_span,
+            ),
+        };
+
+        if modifiers.stone {
+            Ok(Node::new(
+                NodeKind::Stone(Box::new(node)),
                 statement_span,
             ))
         } else {
@@ -1652,6 +1983,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DefineEmpty
                 | TokenKind::Copy
                 | TokenKind::Bind
+                | TokenKind::Mutate
                 | TokenKind::Guard => {
                     return Err(
                         Diagnostic::error(
@@ -1940,6 +2272,7 @@ impl<'a> Parser<'a> {
             | TokenKind::DefineEmpty
             | TokenKind::Copy
             | TokenKind::Bind
+            | TokenKind::Mutate
             | TokenKind::Guard => {
                 Err(
                     Diagnostic::error(
@@ -2539,9 +2872,6 @@ enum Infix {
     // Colon semantics
     Get,
     Has,
-
-    // Flow
-    Pipe,
 }
 
 fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
@@ -2574,9 +2904,6 @@ fn infix_binding_power(op: TokenKind) -> Option<(u8, u8, Infix)> {
         TokenKind::Get => (22, 23, Get),
         TokenKind::Has => (22, 23, Has),
 
-        // pipe
-        TokenKind::Pipe => (20, 21, Pipe),
-
         _ => return None,
     })
 }
@@ -2608,8 +2935,6 @@ fn build_infix(kind: Infix, lhs: Node, rhs: Node) -> Node {
 
         Get => NodeKind::Get(Box::new(lhs), Box::new(rhs)),
         Has => NodeKind::Has(Box::new(lhs), Box::new(rhs)),
-
-        Pipe => NodeKind::Pipe(Box::new(lhs), Box::new(rhs)),
     };
 
     Node::new(kind, span)

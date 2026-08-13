@@ -32,14 +32,13 @@ mod tests {
 
     #[test]
     fn keyword_vs_identifier() {
-        let ks = kinds("num numx text void fn ret loc");
+        let ks = kinds("num numx text void fn ret");
         assert_eq!(ks[0], KwNum);
         assert_eq!(ks[1], Ident);
         assert_eq!(ks[2], KwText);
         assert_eq!(ks[3], KwVoid);
         assert_eq!(ks[4], KwFn);
         assert_eq!(ks[5], KwRet);
-        assert_eq!(ks[6], KwLoc);
     }
 
     #[test]
@@ -232,6 +231,45 @@ mod tests {
                 TokenKind::Eof,
             ],
         );
+    }
+
+    #[test]
+    fn scope_and_binding_keywords() {
+        let tokens = Lexer::new("loc glo stone")
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::KwLoc);
+        assert_eq!(tokens[1].kind, TokenKind::KwGlo);
+        assert_eq!(tokens[2].kind, TokenKind::KwStone);
+        assert_eq!(tokens[3].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn mutate_token() {
+        let tokens = Lexer::new("value << value + 1;")
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::Ident);
+        assert_eq!(tokens[1].kind, TokenKind::Mutate);
+        assert_eq!(tokens[2].kind, TokenKind::Ident);
+        assert_eq!(tokens[3].kind, TokenKind::Add);
+        assert_eq!(tokens[4].kind, TokenKind::NumLit);
+        assert_eq!(tokens[5].kind, TokenKind::Semicolon);
+        assert_eq!(tokens[6].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn print_token() {
+        let tokens = Lexer::new("|> value;")
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::Print);
+        assert_eq!(tokens[1].kind, TokenKind::Ident);
+        assert_eq!(tokens[2].kind, TokenKind::Semicolon);
+        assert_eq!(tokens[3].kind, TokenKind::Eof);
     }
 
 }

@@ -66,15 +66,17 @@ pub enum NodeKind {
     Index(Box<Node>),
 
     // ===== Flow =====
-    Pipe(Box<Node>, Box<Node>),
     Block(Block),
     Loop(Loop),
     Local(Box<Node>),
+    Global(Box<Node>),
+    Stone(Box<Node>),
     Ret(Ret),
     Define(Define),
     DefineEmpty(DefineEmpty),
     Copy(Copy),
     Bind(Bind),
+    Mutate(Mutate),
     Guard(Guard),
     Func(Func),
     Call(Call),
@@ -97,6 +99,7 @@ impl Node {
 pub struct BoxLiteral {
     pub values: Vec<Node>,
 }
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BagLiteral {
@@ -176,6 +179,12 @@ pub struct Copy {
 pub struct Bind {
     pub name: String,
     pub target: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mutate {
+    pub name: String,
+    pub value: Box<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

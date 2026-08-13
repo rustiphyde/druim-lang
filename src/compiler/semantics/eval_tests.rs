@@ -1,4 +1,6 @@
-use crate::compiler::ast::{Guard, GuardBranch, Literal, Node, NodeKind};
+use crate::compiler::ast::{
+    Guard, GuardBranch, Literal, Node, NodeKind,
+};
 use crate::compiler::error::Span;
 use crate::compiler::semantics::eval::Evaluator;
 use crate::compiler::semantics::value::Value;
@@ -4228,9 +4230,9 @@ fn bind_from_undeclared_identifier_uses_statement_source_span() {
 }
 
 #[test]
-fn bind_preserves_shared_identity_after_source_redefinition() {
+fn bind_preserves_shared_identity_after_source_mutation() {
     use crate::compiler::ast::{
-        Bind, Define, Literal, Node, NodeKind, Program,
+        Bind, Define, Literal, Mutate, Node, NodeKind, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4255,7 +4257,7 @@ fn bind_preserves_shared_identity_after_source_redefinition() {
                 test_span(),
             ),
             Node::new(
-                NodeKind::Define(Define {
+                NodeKind::Mutate(Mutate {
                     name: "source".to_string(),
                     value: Box::new(Node::new(
                         NodeKind::Lit(Literal::Num(20)),
@@ -4280,9 +4282,9 @@ fn bind_preserves_shared_identity_after_source_redefinition() {
 }
 
 #[test]
-fn bind_preserves_shared_identity_after_alias_redefinition() {
+fn bind_preserves_shared_identity_after_alias_mutation() {
     use crate::compiler::ast::{
-        Bind, Define, Literal, Node, Program,
+        Bind, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4299,9 +4301,12 @@ fn bind_preserves_shared_identity_after_alias_redefinition() {
                 target: "source".to_string(),
             }), test_span()),
 
-            Node::new(NodeKind::Define(Define {
+           Node::new(NodeKind::Mutate(Mutate {
                 name: "alias".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+                value: Box::new(Node::new(
+                    NodeKind::Lit(Literal::Num(20)),
+                    test_span(),
+                )),
             }), test_span()),
         ],
     };
@@ -4319,9 +4324,9 @@ fn bind_preserves_shared_identity_after_alias_redefinition() {
 }
 
 #[test]
-fn copy_remains_independent_after_source_redefinition() {
+fn copy_remains_independent_after_source_mutation() {
     use crate::compiler::ast::{
-        Copy, Define, Literal, Node, Program,
+        Copy, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4337,10 +4342,12 @@ fn copy_remains_independent_after_source_redefinition() {
                 name: "snapshot".to_string(),
                 target: "source".to_string(),
             }), test_span()),
-
-            Node::new(NodeKind::Define(Define {
+            Node::new(NodeKind::Mutate(Mutate {
                 name: "source".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
+                value: Box::new(Node::new(
+                    NodeKind::Lit(Literal::Num(20)),
+                    test_span(),
+                )),
             }), test_span()),
         ],
     };
@@ -4363,9 +4370,9 @@ fn copy_remains_independent_after_source_redefinition() {
 }
 
 #[test]
-fn copy_redefinition_does_not_affect_source() {
+fn copy_mutation_does_not_affect_source() {
     use crate::compiler::ast::{
-        Copy, Define, Literal, Node, Program,
+        Copy, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4382,7 +4389,7 @@ fn copy_redefinition_does_not_affect_source() {
                 target: "source".to_string(),
             }), test_span()),
 
-            Node::new(NodeKind::Define(Define {
+            Node::new(NodeKind::Mutate(Mutate {
                 name: "snapshot".to_string(),
                 value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
             }), test_span()),
@@ -4407,9 +4414,9 @@ fn copy_redefinition_does_not_affect_source() {
 }
 
 #[test]
-fn bind_preserves_transitive_shared_identity() {
+fn bind_preserves_transitive_shared_identity_after_mutation() {
     use crate::compiler::ast::{
-        Bind, Define, Literal, Node, Program,
+        Bind, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4431,7 +4438,7 @@ fn bind_preserves_transitive_shared_identity() {
                 target: "b".to_string(),
             }), test_span()),
 
-            Node::new(NodeKind::Define(Define {
+            Node::new(NodeKind::Mutate(Mutate {
                 name: "c".to_string(),
                 value: Box::new(Node::new(NodeKind::Lit(Literal::Num(30)), test_span())),
             }), test_span()),
@@ -4450,9 +4457,9 @@ fn bind_preserves_transitive_shared_identity() {
 }
 
 #[test]
-fn copy_from_bound_alias_remains_independent() {
+fn copy_from_bound_alias_remains_independent_after_source_mutation() {
     use crate::compiler::ast::{
-        Bind, Copy, Define, Literal, Node, Program,
+        Bind, Copy, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4474,7 +4481,7 @@ fn copy_from_bound_alias_remains_independent() {
                 target: "alias".to_string(),
             }), test_span()),
 
-            Node::new(NodeKind::Define(Define {
+            Node::new(NodeKind::Mutate(Mutate {
                 name: "source".to_string(),
                 value: Box::new(Node::new(NodeKind::Lit(Literal::Num(20)), test_span())),
             }), test_span()),
@@ -4506,7 +4513,7 @@ fn copy_from_bound_alias_remains_independent() {
 #[test]
 fn multiple_bind_aliases_share_identity() {
     use crate::compiler::ast::{
-        Bind, Define, Literal, Node, Program,
+        Bind, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4528,9 +4535,12 @@ fn multiple_bind_aliases_share_identity() {
                 target: "source".to_string(),
             }), test_span()),
 
-            Node::new(NodeKind::Define(Define {
+            Node::new(NodeKind::Mutate(Mutate {
                 name: "alias_one".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(40)), test_span())),
+                value: Box::new(Node::new(
+                    NodeKind::Lit(Literal::Num(40)),
+                    test_span(),
+                )),
             }), test_span()),
         ],
     };
@@ -4558,12 +4568,11 @@ fn multiple_bind_aliases_share_identity() {
 }
 
 #[test]
-fn inner_scope_shadowing_does_not_mutate_outer_bind_identity() {
+fn inner_scope_define_rejects_visible_bound_source() {
     use crate::compiler::ast::{
         Bind, Block, BlockSegment, Define, Literal, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -4596,28 +4605,22 @@ fn inner_scope_shadowing_does_not_mutate_outer_bind_identity() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("program evaluation should succeed");
+        .expect_err("inner scope should not redefine a visible binding");
 
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(10)),
-    );
-
-    assert_eq!(
-        evaluator.get("alias"),
-        Some(Value::Num(10)),
+    assert!(
+        error.message.contains("identifier `source` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn inner_scope_alias_shadowing_does_not_mutate_outer_bind_identity() {
+fn inner_scope_define_rejects_visible_bound_alias() {
     use crate::compiler::ast::{
         Bind, Block, BlockSegment, Define, Literal, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -4650,25 +4653,20 @@ fn inner_scope_alias_shadowing_does_not_mutate_outer_bind_identity() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
-        .eval_program(&program)
-        .expect("program evaluation should succeed");
+    let error = evaluator
+    .eval_program(&program)
+    .expect_err("inner scope should not redefine a visible binding");
 
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(10)),
-    );
-
-    assert_eq!(
-        evaluator.get("alias"),
-        Some(Value::Num(10)),
+    assert!(
+        error.message.contains("identifier `alias` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn inner_scope_bind_can_update_outer_identity() {
+fn inner_scope_bound_alias_mutation_updates_outer_identity() {
     use crate::compiler::ast::{
-        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+        Bind, Block, BlockSegment, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4689,7 +4687,7 @@ fn inner_scope_bind_can_update_outer_identity() {
                                 target: "source".to_string(),
                             }), test_span()),
 
-                            Node::new(NodeKind::Define(Define {
+                            Node::new(NodeKind::Mutate(Mutate {
                                 name: "alias".to_string(),
                                 value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
@@ -4720,9 +4718,9 @@ fn inner_scope_bind_can_update_outer_identity() {
 }
 
 #[test]
-fn inner_scope_copy_does_not_mutate_outer_source() {
+fn inner_scope_copy_mutation_does_not_mutate_outer_source() {
     use crate::compiler::ast::{
-        Block, BlockSegment, Copy, Define, Literal, Node, Program,
+        Block, BlockSegment, Copy, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4743,7 +4741,7 @@ fn inner_scope_copy_does_not_mutate_outer_source() {
                                 target: "source".to_string(),
                             }), test_span()),
 
-                            Node::new(NodeKind::Define(Define {
+                            Node::new(NodeKind::Mutate(Mutate {
                                 name: "snapshot".to_string(),
                                 value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
@@ -4889,9 +4887,9 @@ fn local_binding_is_available_within_its_block_segment() {
 }
 
 #[test]
-fn local_bind_updates_source_before_segment_cleanup() {
+fn local_bind_mutation_updates_source_before_segment_cleanup() {
     use crate::compiler::ast::{
-        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+        Bind, Block, BlockSegment, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4914,7 +4912,7 @@ fn local_bind_updates_source_before_segment_cleanup() {
                                 }), test_span()),
                             )), test_span()),
 
-                            Node::new(NodeKind::Define(Define {
+                            Node::new(NodeKind::Mutate(Mutate {
                                 name: "alias".to_string(),
                                 value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
@@ -4956,9 +4954,9 @@ fn local_bind_updates_source_before_segment_cleanup() {
 }
 
 #[test]
-fn local_copy_remains_independent_and_is_removed_after_segment() {
+fn local_copy_mutation_remains_independent_and_is_removed_after_segment() {
     use crate::compiler::ast::{
-        Block, BlockSegment, Copy, Define, Literal, Node, Program,
+        Block, BlockSegment, Copy, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -4981,7 +4979,7 @@ fn local_copy_remains_independent_and_is_removed_after_segment() {
                                 }), test_span()),
                             )), test_span()),
 
-                            Node::new(NodeKind::Define(Define {
+                            Node::new(NodeKind::Mutate(Mutate {
                                 name: "snapshot".to_string(),
                                 value: Box::new(Node::new(NodeKind::Lit(
                                     Literal::Num(20),
@@ -5073,187 +5071,59 @@ fn local_empty_definition_is_void_within_segment_and_removed_afterward() {
 }
 
 #[test]
-fn local_shadow_is_restored_after_segment_diagnostic() {
-    use crate::compiler::ast::{
-        Block, BlockSegment, Define, Literal, Node, Program,
-    };
-    use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
-
-    let program = Program {
-        nodes: vec![
-            Node::new(NodeKind::Define(Define {
-                name: "value".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
-            }), test_span()),
-
-            Node::new(NodeKind::Block(Block {
-                segments: vec![
-                    BlockSegment {
-                        nodes: vec![
-                            Node::new(NodeKind::Define(Define {
-                                name: "value".to_string(),
-                                value: Box::new(Node::new(NodeKind::Lit(
-                                    Literal::Num(20),
-                                ), test_span())),
-                            }), test_span()),
-
-                            Node::new(NodeKind::Local(Box::new(
-                                Node::new(NodeKind::Define(Define {
-                                    name: "value".to_string(),
-                                    value: Box::new(Node::new(NodeKind::Lit(
-                                        Literal::Num(30),
-                                    ), test_span())),
-                                }), test_span()),
-                            )), test_span()),
-
-                            Node::new(NodeKind::Ident(
-                                "missing".to_string(),
-                            ), test_span()),
-                        ],
-                    },
-                ],
-            }), test_span()),
-        ],
-    };
-
-    let mut evaluator = Evaluator::new();
-
-    let err = evaluator
-        .eval_program(&program)
-        .expect_err("the missing identifier should produce a diagnostic");
-
-    assert_eq!(
-        err.message,
-        "undeclared identifier `missing`",
-    );
-
-    assert_eq!(
-        evaluator.get("value"),
-        Some(Value::Num(10)),
-    );
-}
-
-#[test]
-fn local_shadow_is_restored_before_return_propagates() {
-    use crate::compiler::ast::{
-        Block, BlockSegment, Define, Func, Literal, Node, Param, Program, Ret,
-    };
-    use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
-
-    let program = Program {
-        nodes: vec![
-            Node::new(NodeKind::Define(Define {
-                name: "value".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
-            }), test_span()),
-
-            Node::new(NodeKind::Func(Func {
-                name: "read_value".to_string(),
-                params: Vec::<Param>::new(),
-                body: vec![
-                    Node::new(NodeKind::Block(Block {
-                        segments: vec![
-                            BlockSegment {
-                                nodes: vec![
-                                    Node::new(NodeKind::Define(Define {
-                                        name: "value".to_string(),
-                                        value: Box::new(Node::new(NodeKind::Lit(
-                                            Literal::Num(20),
-                                        ), test_span())),
-                                    }), test_span()),
-
-                                    Node::new(NodeKind::Local(Box::new(
-                                        Node::new(NodeKind::Define(Define {
-                                            name: "value".to_string(),
-                                            value: Box::new(Node::new(NodeKind::Lit(
-                                                Literal::Num(30),
-                                            ), test_span())),
-                                        }), test_span()),
-                                    )), test_span()),
-
-                                    Node::new(NodeKind::Ret(Ret {
-                                        value: Some(Box::new(Node::new(NodeKind::Ident(
-                                            "value".to_string(),
-                                        ), test_span()))),
-                                    }), test_span()),
-                                ],
-                            },
-                        ],
-                    }), test_span()),
-                ],
-            }), test_span()),
-
-            Node::new(NodeKind::Define(Define {
-                name: "result".to_string(),
-                value: Box::new(Node::new(NodeKind::Call(
-                    crate::compiler::ast::Call {
-                        callee: Box::new(Node::new(NodeKind::Ident(
-                            "read_value".to_string(),
-                        ), test_span())),
-                        args: vec![],
-                    },
-                ), test_span())),
-            }), test_span()),
-        ],
-    };
-
-    let mut evaluator = Evaluator::new();
-
-    evaluator
-        .eval_program(&program)
-        .expect("return should propagate after local cleanup");
-
-    assert_eq!(
-        evaluator.get("result"),
-        Some(Value::Num(30)),
-    );
-
-    assert_eq!(
-        evaluator.get("value"),
-        Some(Value::Num(10)),
-    );
-}
-
-#[test]
 fn ordinary_statement_block_binding_remains_available_across_segments() {
     use crate::compiler::ast::{
-        Bind, Block, BlockSegment, Define, Literal, Node, Program,
+        Bind, Block, BlockSegment, Define, Literal, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
-            Node::new(NodeKind::Define(Define {
-                name: "source".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(Literal::Num(10)), test_span())),
-            }), test_span()),
+            Node::new(
+                NodeKind::Define(Define {
+                    name: "source".to_string(),
+                    value: Box::new(Node::new(
+                        NodeKind::Lit(Literal::Num(10)),
+                        test_span(),
+                    )),
+                }),
+                test_span(),
+            ),
 
-            Node::new(NodeKind::Block(Block {
-                segments: vec![
-                    BlockSegment {
-                        nodes: vec![
-                            Node::new(NodeKind::Bind(Bind {
-                                name: "alias".to_string(),
-                                target: "source".to_string(),
-                            }), test_span()),
-                        ],
-                    },
+            Node::new(
+                NodeKind::Block(Block {
+                    segments: vec![
+                        BlockSegment {
+                            nodes: vec![
+                                Node::new(
+                                    NodeKind::Bind(Bind {
+                                        name: "alias".to_string(),
+                                        target: "source".to_string(),
+                                    }),
+                                    test_span(),
+                                ),
+                            ],
+                        },
 
-                    BlockSegment {
-                        nodes: vec![
-                            Node::new(NodeKind::Define(Define {
-                                name: "alias".to_string(),
-                                value: Box::new(Node::new(NodeKind::Lit(
-                                    Literal::Num(20),
-                                ), test_span())),
-                            }), test_span()),
-                        ],
-                    },
-                ],
-            }), test_span()),
+                        BlockSegment {
+                            nodes: vec![
+                                Node::new(
+                                    NodeKind::Mutate(Mutate {
+                                        name: "alias".to_string(),
+                                        value: Box::new(Node::new(
+                                            NodeKind::Lit(Literal::Num(20)),
+                                            test_span(),
+                                        )),
+                                    }),
+                                    test_span(),
+                                ),
+                            ],
+                        },
+                    ],
+                }),
+                test_span(),
+            ),
         ],
     };
 
@@ -5277,7 +5147,7 @@ fn ordinary_statement_block_binding_remains_available_across_segments() {
 #[test]
 fn loop_updates_outer_binding_until_condition_is_false() {
     use crate::compiler::ast::{
-        Define, Literal, Loop, Node, Program,
+        Define, Literal, Loop, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -5311,7 +5181,7 @@ fn loop_updates_outer_binding_until_condition_is_false() {
                 ), test_span())),
 
                 process: vec![
-                    Node::new(NodeKind::Define(Define {
+                    Node::new(NodeKind::Mutate(Mutate {
                         name: "count".to_string(),
                         value: Box::new(Node::new(NodeKind::Add(
                             Box::new(Node::new(NodeKind::Ident(
@@ -5345,9 +5215,9 @@ fn loop_updates_outer_binding_until_condition_is_false() {
 }
 
 #[test]
-fn loop_process_binding_persists_across_iterations() {
+fn loop_binding_persists_across_iterations() {
     use crate::compiler::ast::{
-        Define, Literal, Loop, Node, Program,
+        Define, Literal, Loop, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
@@ -5362,7 +5232,15 @@ fn loop_process_binding_persists_across_iterations() {
             }), test_span()),
 
             Node::new(NodeKind::Loop(Loop {
-                setup: vec![],
+                setup: vec![
+                    Node::new(NodeKind::Define(Define {
+                        name: "carried".to_string(),
+                        value: Box::new(Node::new(
+                            NodeKind::Lit(Literal::Num(0)),
+                            test_span(),
+                        )),
+                    }), test_span()),
+                ],
 
                 condition: Box::new(Node::new(NodeKind::Or(
                     Box::new(Node::new(NodeKind::Eq(
@@ -5384,7 +5262,7 @@ fn loop_process_binding_persists_across_iterations() {
                 ), test_span())),
 
                 process: vec![
-                    Node::new(NodeKind::Define(Define {
+                    Node::new(NodeKind::Mutate(Mutate {
                         name: "carried".to_string(),
                         value: Box::new(Node::new(NodeKind::Add(
                             Box::new(Node::new(NodeKind::Ident(
@@ -5396,7 +5274,7 @@ fn loop_process_binding_persists_across_iterations() {
                         ), test_span())),
                     }), test_span()),
 
-                    Node::new(NodeKind::Define(Define {
+                    Node::new(NodeKind::Mutate(Mutate {
                         name: "count".to_string(),
                         value: Box::new(Node::new(NodeKind::Add(
                             Box::new(Node::new(NodeKind::Ident(
@@ -5432,99 +5310,172 @@ fn loop_process_binding_persists_across_iterations() {
 #[test]
 fn nested_loops_use_independent_persistent_scopes() {
     use crate::compiler::ast::{
-        Define, Literal, Loop, Node, Program,
+        Define, Literal, Loop, Mutate, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
-            Node::new(NodeKind::Define(Define {
-                name: "total".to_string(),
-                value: Box::new(Node::new(NodeKind::Lit(
-                    Literal::Num(0),
-                ), test_span())),
-            }), test_span()),
+            Node::new(
+                NodeKind::Define(Define {
+                    name: "total".to_string(),
+                    value: Box::new(Node::new(
+                        NodeKind::Lit(Literal::Num(0)),
+                        test_span(),
+                    )),
+                }),
+                test_span(),
+            ),
 
-            Node::new(NodeKind::Loop(Loop {
-                setup: vec![
-                    Node::new(NodeKind::Define(Define {
-                        name: "outer_index".to_string(),
-                        value: Box::new(Node::new(NodeKind::Lit(
-                            Literal::Num(0),
-                        ), test_span())),
-                    }), test_span()),
-                ],
+            Node::new(
+                NodeKind::Loop(Loop {
+                    setup: vec![
+                        Node::new(
+                            NodeKind::Define(Define {
+                                name: "outer_index".to_string(),
+                                value: Box::new(Node::new(
+                                    NodeKind::Lit(Literal::Num(0)),
+                                    test_span(),
+                                )),
+                            }),
+                            test_span(),
+                        ),
+                    ],
 
-                condition: Box::new(Node::new(NodeKind::Lt(
-                    Box::new(Node::new(NodeKind::Ident(
-                        "outer_index".to_string(),
-                    ), test_span())),
-                    Box::new(Node::new(NodeKind::Lit(
-                        Literal::Num(2),
-                    ), test_span())),
-                ), test_span())),
+                    condition: Box::new(Node::new(
+                        NodeKind::Lt(
+                            Box::new(Node::new(
+                                NodeKind::Ident(
+                                    "outer_index".to_string(),
+                                ),
+                                test_span(),
+                            )),
+                            Box::new(Node::new(
+                                NodeKind::Lit(Literal::Num(2)),
+                                test_span(),
+                            )),
+                        ),
+                        test_span(),
+                    )),
 
-                process: vec![
-                    Node::new(NodeKind::Loop(Loop {
-                        setup: vec![
-                            Node::new(NodeKind::Define(Define {
-                                name: "inner_index".to_string(),
-                                value: Box::new(Node::new(NodeKind::Lit(
-                                    Literal::Num(0),
-                                ), test_span())),
-                            }), test_span()),
-                        ],
+                    process: vec![
+                        Node::new(
+                            NodeKind::Loop(Loop {
+                                setup: vec![
+                                    Node::new(
+                                        NodeKind::Define(Define {
+                                            name: "inner_index".to_string(),
+                                            value: Box::new(Node::new(
+                                                NodeKind::Lit(
+                                                    Literal::Num(0),
+                                                ),
+                                                test_span(),
+                                            )),
+                                        }),
+                                        test_span(),
+                                    ),
+                                ],
 
-                        condition: Box::new(Node::new(NodeKind::Lt(
-                            Box::new(Node::new(NodeKind::Ident(
-                                "inner_index".to_string(),
-                            ), test_span())),
-                            Box::new(Node::new(NodeKind::Lit(
-                                Literal::Num(2),
-                            ), test_span())),
-                        ), test_span())),
+                                condition: Box::new(Node::new(
+                                    NodeKind::Lt(
+                                        Box::new(Node::new(
+                                            NodeKind::Ident(
+                                                "inner_index".to_string(),
+                                            ),
+                                            test_span(),
+                                        )),
+                                        Box::new(Node::new(
+                                            NodeKind::Lit(
+                                                Literal::Num(2),
+                                            ),
+                                            test_span(),
+                                        )),
+                                    ),
+                                    test_span(),
+                                )),
 
-                        process: vec![
-                            Node::new(NodeKind::Define(Define {
-                                name: "total".to_string(),
-                                value: Box::new(Node::new(NodeKind::Add(
-                                    Box::new(Node::new(NodeKind::Ident(
-                                        "total".to_string(),
-                                    ), test_span())),
-                                    Box::new(Node::new(NodeKind::Lit(
-                                        Literal::Num(1),
-                                    ), test_span())),
-                                ), test_span())),
-                            }), test_span()),
+                                process: vec![
+                                    Node::new(
+                                        NodeKind::Mutate(Mutate {
+                                            name: "total".to_string(),
+                                            value: Box::new(Node::new(
+                                                NodeKind::Add(
+                                                    Box::new(Node::new(
+                                                        NodeKind::Ident(
+                                                            "total".to_string(),
+                                                        ),
+                                                        test_span(),
+                                                    )),
+                                                    Box::new(Node::new(
+                                                        NodeKind::Lit(
+                                                            Literal::Num(1),
+                                                        ),
+                                                        test_span(),
+                                                    )),
+                                                ),
+                                                test_span(),
+                                            )),
+                                        }),
+                                        test_span(),
+                                    ),
 
-                            Node::new(NodeKind::Define(Define {
-                                name: "inner_index".to_string(),
-                                value: Box::new(Node::new(NodeKind::Add(
-                                    Box::new(Node::new(NodeKind::Ident(
-                                        "inner_index".to_string(),
-                                    ), test_span())),
-                                    Box::new(Node::new(NodeKind::Lit(
-                                        Literal::Num(1),
-                                    ), test_span())),
-                                ), test_span())),
-                            }), test_span()),
-                        ],
-                    }), test_span()),
+                                    Node::new(
+                                        NodeKind::Mutate(Mutate {
+                                            name: "inner_index".to_string(),
+                                            value: Box::new(Node::new(
+                                                NodeKind::Add(
+                                                    Box::new(Node::new(
+                                                        NodeKind::Ident(
+                                                            "inner_index"
+                                                                .to_string(),
+                                                        ),
+                                                        test_span(),
+                                                    )),
+                                                    Box::new(Node::new(
+                                                        NodeKind::Lit(
+                                                            Literal::Num(1),
+                                                        ),
+                                                        test_span(),
+                                                    )),
+                                                ),
+                                                test_span(),
+                                            )),
+                                        }),
+                                        test_span(),
+                                    ),
+                                ],
+                            }),
+                            test_span(),
+                        ),
 
-                    Node::new(NodeKind::Define(Define {
-                        name: "outer_index".to_string(),
-                        value: Box::new(Node::new(NodeKind::Add(
-                            Box::new(Node::new(NodeKind::Ident(
-                                "outer_index".to_string(),
-                            ), test_span())),
-                            Box::new(Node::new(NodeKind::Lit(
-                                Literal::Num(1),
-                            ), test_span())),
-                        ), test_span())),
-                    }), test_span()),
-                ],
-            }), test_span()),
+                        Node::new(
+                            NodeKind::Mutate(Mutate {
+                                name: "outer_index".to_string(),
+                                value: Box::new(Node::new(
+                                    NodeKind::Add(
+                                        Box::new(Node::new(
+                                            NodeKind::Ident(
+                                                "outer_index".to_string(),
+                                            ),
+                                            test_span(),
+                                        )),
+                                        Box::new(Node::new(
+                                            NodeKind::Lit(
+                                                Literal::Num(1),
+                                            ),
+                                            test_span(),
+                                        )),
+                                    ),
+                                    test_span(),
+                                )),
+                            }),
+                            test_span(),
+                        ),
+                    ],
+                }),
+                test_span(),
+            ),
         ],
     };
 
@@ -5551,12 +5502,11 @@ fn nested_loops_use_independent_persistent_scopes() {
 }
 
 #[test]
-fn local_loop_binding_shadows_outer_binding_until_loop_ends() {
+fn local_loop_define_rejects_visible_binding() {
     use crate::compiler::ast::{
         Define, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -5607,13 +5557,13 @@ fn local_loop_binding_shadows_outer_binding_until_loop_ends() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("local loop binding should evaluate successfully");
+        .expect_err("local loop definition should not shadow a visible binding");
 
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(100)),
+    assert!(
+        error.message.contains("identifier `count` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
@@ -5709,12 +5659,11 @@ fn return_inside_loop_exits_enclosing_function() {
 }
 
 #[test]
-fn loop_copy_updates_nearest_binding_with_independent_snapshot() {
+fn loop_copy_rejects_existing_destination_binding() {
     use crate::compiler::ast::{
         Copy, Define, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -5763,28 +5712,22 @@ fn loop_copy_updates_nearest_binding_with_independent_snapshot() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("loop copy should evaluate successfully");
+        .expect_err("loop copy should not reuse an existing destination binding");
 
-    assert_eq!(
-        evaluator.get("snapshot"),
-        Some(Value::Num(10)),
-    );
-
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(20)),
+    assert!(
+        error.message.contains("identifier `snapshot` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn loop_bind_updates_nearest_binding_and_preserves_shared_identity() {
+fn loop_bind_rejects_existing_destination_binding() {
     use crate::compiler::ast::{
         Bind, Define, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -5852,33 +5795,22 @@ fn loop_bind_updates_nearest_binding_and_preserves_shared_identity() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("loop bind should evaluate successfully");
+        .expect_err("loop bind should not reuse an existing destination binding");
 
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(20)),
-    );
-
-    assert_eq!(
-        evaluator.get("alias"),
-        Some(Value::Num(20)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `alias` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn loop_guard_updates_nearest_visible_binding() {
+fn loop_guard_rejects_existing_target_binding() {
     use crate::compiler::ast::{
         Define, Guard, GuardBranch, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -5943,28 +5875,22 @@ fn loop_guard_updates_nearest_visible_binding() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("loop guard should evaluate successfully");
+        .expect_err("loop guard should not reuse an existing target binding");
 
-    assert_eq!(
-        evaluator.get("result"),
-        Some(Value::Num(7)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `result` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn local_loop_copy_uses_loop_scope_and_preserves_outer_binding() {
+fn local_loop_copy_rejects_visible_binding() {
     use crate::compiler::ast::{
         Copy, Define, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -6034,33 +5960,22 @@ fn local_loop_copy_uses_loop_scope_and_preserves_outer_binding() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("local loop copy should evaluate successfully");
+        .expect_err("local loop copy should not reuse a visible binding");
 
-    assert_eq!(
-        evaluator.get("snapshot"),
-        Some(Value::Num(99)),
-    );
-
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(10)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `snapshot` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn local_loop_bind_uses_loop_scope_and_preserves_outer_alias() {
+fn local_loop_bind_rejects_visible_alias() {
     use crate::compiler::ast::{
         Bind, Define, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -6130,33 +6045,22 @@ fn local_loop_bind_uses_loop_scope_and_preserves_outer_alias() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("local loop bind should evaluate successfully");
+        .expect_err("local loop bind should not reuse a visible binding");
 
-    assert_eq!(
-        evaluator.get("source"),
-        Some(Value::Num(20)),
-    );
-
-    assert_eq!(
-        evaluator.get("alias"),
-        Some(Value::Num(99)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `alias` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn local_loop_guard_uses_loop_scope_and_preserves_outer_binding() {
+fn local_loop_guard_rejects_visible_binding() {
     use crate::compiler::ast::{
         Define, Guard, GuardBranch, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -6230,28 +6134,22 @@ fn local_loop_guard_uses_loop_scope_and_preserves_outer_binding() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("local loop guard should evaluate successfully");
+        .expect_err("local loop guard should not reuse a visible binding");
 
-    assert_eq!(
-        evaluator.get("result"),
-        Some(Value::Num(99)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `result` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
 #[test]
-fn local_empty_loop_definition_uses_loop_scope_and_preserves_outer_binding() {
+fn local_empty_loop_definition_rejects_visible_binding() {
     use crate::compiler::ast::{
         Define, DefineEmpty, Literal, Loop, Node, Program,
     };
     use crate::compiler::semantics::eval::Evaluator;
-    use crate::compiler::semantics::value::Value;
 
     let program = Program {
         nodes: vec![
@@ -6313,18 +6211,13 @@ fn local_empty_loop_definition_uses_loop_scope_and_preserves_outer_binding() {
 
     let mut evaluator = Evaluator::new();
 
-    evaluator
+    let error = evaluator
         .eval_program(&program)
-        .expect("local empty loop definition should evaluate successfully");
+        .expect_err("local loop definition should not shadow a visible binding");
 
-    assert_eq!(
-        evaluator.get("value"),
-        Some(Value::Num(99)),
-    );
-
-    assert_eq!(
-        evaluator.get("count"),
-        Some(Value::Num(1)),
+    assert!(
+        error.message.contains("identifier `value` is already defined"),
+        "unexpected error: {error:?}",
     );
 }
 
@@ -6467,5 +6360,2083 @@ fn negative_box_index_uses_index_expression_span() {
             start: 33,
             end: 35,
         },
+    );
+}
+
+#[test]
+fn function_defined_inside_block_can_be_called() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            fn answer :()(
+                ret 42;
+            ):
+
+            answer();
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("function defined inside a block should be callable");
+
+    assert_eq!(
+        evaluator.get("answer"),
+        None,
+        "block-scoped function should not survive after the block ends",
+    );
+}
+
+#[test]
+fn function_defined_inside_block_is_unavailable_after_block() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            fn answer :()(
+                ret 42;
+            ):
+        }:
+
+        result = answer();
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("block-scoped function should be unavailable after the block ends");
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `answer`",
+    );
+}
+
+#[test]
+fn function_defined_in_block_segment_is_available_in_later_segment() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            fn answer :()(
+                ret 42;
+            ):
+        }{
+            result = answer();
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("function should remain available in later block segments");
+}
+
+#[test]
+fn local_function_defined_in_block_segment_is_unavailable_in_later_segment() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            loc fn answer :()(
+                ret 42;
+            ):
+        }{
+            result = answer();
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("local function should not survive into a later block segment");
+
+    assert_eq!(
+        err.message,
+        "undeclared identifier `answer`",
+    );
+}
+
+#[test]
+fn local_define_rejects_existing_visible_name() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        value = 10;
+
+        :{
+            loc value = 20;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("local define must not reuse an existing visible name");
+
+    assert!(
+        err.message.contains("value")
+            && err.message.contains("already"),
+        "unexpected diagnostic: {:?}",
+        err,
+    );
+}
+
+#[test]
+fn local_bind_can_target_outer_binding_without_changing_outer_value() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            loc alias :> source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(evaluator.get("source"), Some(Value::Num(10)));
+    assert_eq!(evaluator.get("alias"), None);
+}
+
+#[test]
+fn mutate_updates_existing_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        count = 10;
+        count << count + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(evaluator.get("count"), Some(Value::Num(11)));
+}
+
+#[test]
+fn mutate_through_bind_updates_shared_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        alias :> source;
+        alias << alias + 5;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(evaluator.get("source"), Some(Value::Num(15)));
+    assert_eq!(evaluator.get("alias"), Some(Value::Num(15)));
+}
+
+#[test]
+fn local_mutate_changes_value_only_within_local_scope() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        observed = 0;
+
+        :{
+            loc source << source + 5;
+            observed << source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(evaluator.get("source"), Some(Value::Num(10)));
+    assert_eq!(evaluator.get("observed"), Some(Value::Num(15)));
+}
+
+#[test]
+fn local_mutate_preserves_local_bind_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        observed = 0;
+
+        :{
+            loc alias :> source;
+            loc alias << alias + 5;
+
+            observed << source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(evaluator.get("source"), Some(Value::Num(10)));
+    assert_eq!(evaluator.get("observed"), Some(Value::Num(15)));
+    assert_eq!(evaluator.get("alias"), None);
+}
+
+#[test]
+fn stone_define_rejects_later_mutation() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        stone value = 10;
+        value << value + 5;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone binding must reject mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `value`"
+    );
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn stone_bind_makes_shared_identity_immutable() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        stone alias :> source;
+        source << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone bind must make the shared identity immutable");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `source`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn copy_from_stone_source_remains_mutable() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        stone source = 10;
+        copy := source;
+        copy << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("copy of a stone binding should remain mutable");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("copy"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn stone_copy_creates_immutable_fresh_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        stone copy := source;
+        copy << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone copy must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `copy`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("copy"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn stone_mutate_applies_mutation_then_makes_identity_immutable() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        count = 10;
+        stone count << count + 5;
+        count << count + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone mutate must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `count`"
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn stone_mutate_through_bind_stones_shared_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        alias :> source;
+        stone alias << alias + 5;
+        source << source + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone mutate through a bind must stone the shared identity");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `source`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn stone_local_mutate_stones_only_localized_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        observed = 0;
+
+        :{
+            stone loc source << source + 5;
+            observed << source;
+        }:
+
+        source << source + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("outer identity should remain mutable");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(11))
+    );
+
+    assert_eq!(
+        evaluator.get("observed"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn stone_local_mutate_preserves_local_bind_identity_and_restores_outer() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        observed = 0;
+
+        :{
+            loc alias :> source;
+            stone loc alias << alias + 5;
+            observed << source;
+        }:
+
+        source << source + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("outer shared identity should be restored mutable");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(11))
+    );
+
+    assert_eq!(
+        evaluator.get("observed"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        None
+    );
+}
+
+#[test]
+fn stone_global_mutate_targets_global_identity_then_stones_it() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        count = 10;
+
+        :{
+            stone glo count << count + 5;
+        }:
+
+        count << count + 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("global identity should become stone");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `count`"
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn global_mutate_targets_global_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        count = 10;
+
+        :{
+            glo count << count + 5;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global mutation should succeed");
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn global_mutate_rejects_stone_global_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        stone count = 10;
+
+        :{
+            glo count << count + 5;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("global mutation must respect stone");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `count`"
+    );
+
+    assert_eq!(
+        evaluator.get("count"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn global_define_creates_binding_in_global_scope() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            glo created = 42;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global definition should succeed");
+
+    assert_eq!(
+        evaluator.get("created"),
+        Some(Value::Num(42))
+    );
+}
+
+#[test]
+fn global_define_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        existing = 10;
+
+        :{
+            glo existing = 42;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let error = evaluator
+        .eval_program(&program)
+        .expect_err("global definition should reject an existing visible binding");
+
+    assert!(
+        error.message.contains("identifier `existing` is already defined"),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[test]
+fn global_define_empty_creates_void_binding_in_global_scope() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            glo created =;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global empty definition should succeed");
+
+    assert_eq!(
+        evaluator.get("created"),
+        Some(Value::Void)
+    );
+}
+
+#[test]
+fn global_copy_creates_fresh_identity_in_global_scope() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            glo snapshot := source;
+        }:
+
+        source << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global copy should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn global_copy_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        snapshot = 99;
+
+        :{
+            glo snapshot := source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let error = evaluator
+        .eval_program(&program)
+        .expect_err("global copy should reject an existing visible binding");
+
+    assert!(
+        error.message.contains("identifier `snapshot` is already defined"),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[test]
+fn global_bind_can_alias_global_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            glo alias :> source;
+        }:
+
+        alias << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global bind to global identity should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(15))
+    );
+}
+
+#[test]
+fn global_bind_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        alias = 99;
+
+        :{
+            glo alias :> source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let error = evaluator
+        .eval_program(&program)
+        .expect_err("global bind should reject an existing visible binding");
+
+    assert!(
+        error.message.contains("identifier `alias` is already defined"),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[test]
+fn global_bind_rejects_local_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            local_source = 10;
+            glo alias :> local_source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("global bind to local identity must fail");
+
+    assert_eq!(
+        err.message,
+        "cannot create global bind to local identity `local_source`"
+    );
+}
+
+#[test]
+fn global_bind_can_follow_local_alias_to_global_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            loc temporary :> source;
+            glo alias :> temporary;
+        }:
+
+        alias << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global bind through local alias to global identity should succeed");
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(15))
+    );
+
+    assert_eq!(
+        evaluator.get("temporary"),
+        None
+    );
+}
+
+#[test]
+fn global_guard_creates_result_in_global_scope() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            candidate = 42;
+            glo result ?= candidate : 0;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("global guard should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(42))
+    );
+
+    assert_eq!(
+        evaluator.get("candidate"),
+        None
+    );
+}
+
+#[test]
+fn global_guard_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        result = 99;
+
+        :{
+            candidate = 42;
+            glo result ?= candidate : 0;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let error = evaluator
+        .eval_program(&program)
+        .expect_err("global guard should reject an existing visible binding");
+
+    assert!(
+        error.message.contains("identifier `result` is already defined"),
+        "unexpected error: {error:?}",
+    );
+}
+
+#[test]
+fn stone_global_define_creates_global_immutable_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            stone glo created = 42;
+        }:
+
+        created << 43;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global definition must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `created`"
+    );
+
+    assert_eq!(
+        evaluator.get("created"),
+        Some(Value::Num(42))
+    );
+}
+
+#[test]
+fn stone_global_define_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        created = 10;
+
+        :{
+            stone glo created = 42;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global definition should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `created` is already defined"
+    );
+}
+
+#[test]
+fn stone_global_define_empty_creates_global_immutable_void_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            stone glo created =;
+        }:
+
+        created << 1;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global empty definition must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `created`"
+    );
+
+    assert_eq!(
+        evaluator.get("created"),
+        Some(Value::Void)
+    );
+}
+
+#[test]
+fn stone_global_define_empty_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        created = 10;
+
+        :{
+            stone glo created =;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global empty definition should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `created` is already defined"
+    );
+}
+
+#[test]
+fn stone_global_copy_creates_global_immutable_fresh_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            stone glo snapshot := source;
+        }:
+
+        snapshot << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global copy must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `snapshot`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn stone_global_copy_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        snapshot = 99;
+
+        :{
+            stone glo snapshot := source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global copy should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `snapshot` is already defined"
+    );
+}
+
+#[test]
+fn stone_global_bind_stones_shared_global_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            stone glo alias :> source;
+        }:
+
+        source << 15;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global bind must stone the shared identity");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `source`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn stone_global_bind_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+        alias = 99;
+
+        :{
+            stone glo alias :> source;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global bind should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `alias` is already defined"
+    );
+}
+
+#[test]
+fn stone_global_guard_creates_global_immutable_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            candidate = 42;
+            stone glo result ?= candidate : 0;
+        }:
+
+        result << 43;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global guard must reject later mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `result`"
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(42))
+    );
+
+    assert_eq!(
+        evaluator.get("candidate"),
+        None
+    );
+}
+
+#[test]
+fn stone_global_guard_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        result = 99;
+
+        :{
+            candidate = 42;
+            stone glo result ?= candidate : 0;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone global guard should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `result` is already defined"
+    );
+}
+
+#[test]
+fn stone_local_define_creates_immutable_local_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            stone loc created = 42;
+            created << 43;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local definition must reject mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `created`"
+    );
+
+    // Segment cleanup must still remove the localized name,
+    // even though evaluation exited with a diagnostic.
+    assert_eq!(
+        evaluator.get("created"),
+        None
+    );
+}
+
+#[test]
+fn stone_local_define_empty_creates_immutable_local_void_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            stone loc created =;
+            created << 1;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local empty definition must reject mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `created`"
+    );
+
+    assert_eq!(
+        evaluator.get("created"),
+        None
+    );
+}
+
+#[test]
+fn stone_local_copy_creates_immutable_local_fresh_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            stone loc snapshot := source;
+            snapshot << 15;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local copy must reject mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `snapshot`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("snapshot"),
+        None
+    );
+}
+
+#[test]
+fn stone_local_bind_stones_local_shared_identity_only() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        source = 10;
+        observed = 0;
+
+        :{
+            stone loc alias :> source;
+            observed << alias;
+            alias << 15;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local bind must reject mutation through local shared identity");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `alias`"
+    );
+
+    assert_eq!(
+        evaluator.get("source"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("observed"),
+        Some(Value::Num(10))
+    );
+
+    assert_eq!(
+        evaluator.get("alias"),
+        None
+    );
+}
+
+#[test]
+fn stone_local_guard_creates_immutable_local_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        observed = 0;
+
+        :{
+            candidate = 42;
+            stone loc result ?= candidate : 0;
+            observed << result;
+            result << 43;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("stone local guard must reject mutation");
+
+    assert_eq!(
+        err.message,
+        "cannot mutate stone binding `result`"
+    );
+
+    assert_eq!(
+        evaluator.get("observed"),
+        Some(Value::Num(42))
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        None
+    );
+
+    assert_eq!(
+        evaluator.get("candidate"),
+        None
+    );
+}
+
+#[test]
+fn define_rejects_existing_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        value = 10;
+        value = 20;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("Define must reject an existing binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `value` is already defined"
+    );
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn define_empty_rejects_existing_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        value = 10;
+        value =;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("DefineEmpty must reject an existing binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `value` is already defined"
+    );
+
+    assert_eq!(
+        evaluator.get("value"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn guard_rejects_existing_target_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        result = 10;
+        result ?= 42 : 0;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("Guard must reject an existing target binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `result` is already defined"
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(10))
+    );
+}
+
+#[test]
+fn function_definition_rejects_existing_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        thing = 10;
+        fn thing :()():
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("function definition must reject an existing binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `thing` is already defined"
+    );
+
+    assert_eq!(
+        evaluator.get("thing"),
+        Some(Value::Num(10))
     );
 }
