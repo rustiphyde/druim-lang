@@ -8623,3 +8623,301 @@ fn function_definition_rejects_existing_binding() {
         Some(Value::Num(10))
     );
 }
+
+#[test]
+fn global_function_defined_in_block_remains_available() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        :{
+            glo fn answer :()(ret 42;):
+        }:
+
+        result = answer();
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(42))
+    );
+}
+
+#[test]
+fn global_function_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        answer = 99;
+
+        :{
+            glo fn answer :()(ret 42;):
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("global function should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `answer` is already defined"
+    );
+}
+
+#[test]
+fn local_function_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        answer = 99;
+
+        :{
+            loc fn answer :()(ret 42;):
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("local function should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `answer` is already defined"
+    );
+}
+
+#[test]
+fn local_function_exists_only_inside_block() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let src = r#"
+        observed = 0;
+
+        :{
+            loc fn answer :()(ret 42;):
+            observed << answer();
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("observed"),
+        Some(Value::Num(42))
+    );
+
+    assert_eq!(
+        evaluator.get("answer"),
+        None
+    );
+}
+
+#[test]
+fn function_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        answer = 99;
+
+        fn answer :()(ret 42;):
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("function should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `answer` is already defined"
+    );
+}
+
+#[test]
+fn function_parameter_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        existing = 10;
+
+        fn use_value :(existing)(
+            ret existing;
+        ):
+
+        result = use_value(42);
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("function parameter should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `existing` is already defined"
+    );
+}
+
+#[test]
+fn default_function_parameter_rejects_existing_visible_binding() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        existing = 10;
+
+        fn use_value :(existing = 42)(
+            ret existing;
+        ):
+
+        result = use_value();
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("default parameter should reject an existing visible binding");
+
+    assert_eq!(
+        err.message,
+        "identifier `existing` is already defined"
+    );
+}
+
+#[test]
+fn function_parameter_rejects_function_name_collision() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        fn calculate :(calculate)(
+            ret calculate;
+        ):
+
+        result = calculate(42);
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("parameter should reject collision with the visible function name");
+
+    assert_eq!(
+        err.message,
+        "identifier `calculate` is already defined"
+    );
+}

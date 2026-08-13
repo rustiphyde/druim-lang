@@ -1086,6 +1086,29 @@ impl Evaluator {
                         Ok(Control::Continue)
                     }
 
+                    NodeKind::Func(func) => {
+                        let value = Value::Func(
+                            crate::compiler::semantics::value::Func {
+                                name: func.name.clone(),
+                                params: func.params.clone(),
+                                body: func.body.clone(),
+                            },
+                        );
+
+                        self.env
+                            .define_global(func.name.clone(), value)
+                            .map_err(|error| match error {
+                                DefineError::AlreadyDefined(name) => {
+                                    Diagnostic::error(
+                                        format!("identifier `{name}` is already defined"),
+                                        inner.span,
+                                    )
+                                }
+                            })?;
+
+                        Ok(Control::Continue)
+                    }                    
+
                     _ => Err(
                         Diagnostic::error(
                             "global modifier is not implemented for this statement yet",

@@ -63,6 +63,25 @@ impl<'a> Parser<'a> {
                 self.parse_loop()
             }
 
+            TokenKind::KwStone
+                if matches!(
+                    (
+                        self.tokens.get(self.index + 1).map(|token| &token.kind),
+                        self.tokens.get(self.index + 2).map(|token| &token.kind),
+                    ),
+                    (Some(TokenKind::KwFn), _)
+                        | (Some(TokenKind::KwLoc), Some(TokenKind::KwFn))
+                        | (Some(TokenKind::KwGlo), Some(TokenKind::KwFn))
+                ) =>
+            {
+                Err(
+                    Diagnostic::error(
+                        "`stone` cannot modify a function definition",
+                        self.current_span(),
+                    ),
+                )
+            }
+
             TokenKind::KwFn => {
                 // parse_func handles:
                 // - full function structure validation
@@ -86,6 +105,28 @@ impl<'a> Parser<'a> {
 
                 Ok(Node::new(
                     NodeKind::Local(Box::new(func)),
+                    Span {
+                        start,
+                        end,
+                    },
+                ))
+            }
+
+            TokenKind::KwGlo
+                if matches!(
+                    self.tokens.get(self.index + 1).map(|token| &token.kind),
+                    Some(TokenKind::KwFn)
+                ) =>
+            {
+                let start = self.current_span().start;
+
+                self.bump(); // consume `glo`
+
+                let func = self.parse_func()?;
+                let end = func.span.end;
+
+                Ok(Node::new(
+                    NodeKind::Global(Box::new(func)),
                     Span {
                         start,
                         end,

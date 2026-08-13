@@ -3879,3 +3879,78 @@ fn rejects_repeated_stone_modifier() {
         "`stone` cannot be repeated"
     );
 }
+
+#[test]
+fn stone_function_is_rejected() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+
+    let src = r#"
+        stone fn answer :()(ret 42;):
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_program()
+        .expect_err("stone must not be allowed on function definitions");
+
+    assert_eq!(
+        err.message,
+        "`stone` cannot modify a function definition"
+    );
+}
+
+#[test]
+fn stone_local_function_is_rejected() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+
+    let src = r#"
+        stone loc fn answer :()(ret 42;):
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_program()
+        .expect_err("stone must not be allowed on local function definitions");
+
+    assert_eq!(
+        err.message,
+        "`stone` cannot modify a function definition"
+    );
+}
+
+#[test]
+fn stone_global_function_is_rejected() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+
+    let src = r#"
+        stone glo fn answer :()(ret 42;):
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_program()
+        .expect_err("stone must not be allowed on global function definitions");
+
+    assert_eq!(
+        err.message,
+        "`stone` cannot modify a function definition"
+    );
+}
