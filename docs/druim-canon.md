@@ -1,12 +1,12 @@
 # Druim Canon (Living Document)
 
 ## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R006
+- Revision ID: DRUIM-CANON-R010
 - Status: Current
-- Effective Date: 2026-08-08
+- Effective Date: 2026-08-13
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R005
-- Notes: This revision separates definition from mutation, introduces Mutate (`<<`), `stone`, and `glo`, removes implicit redefinition through defining operators, and formalizes local, lexical, and global binding lifetime; localized identity; and Bind/Copy behavior across scope boundaries.
+- Supersedes: DRUIM-CANON-R009
+- Notes: This revision canonizes function scope modifiers: `loc fn` and `glo fn`, and explicitly forbids `stone` on function definitions. All R009 canon content is preserved unchanged except for this addition.
 
 ## Purpose
 
@@ -111,8 +111,124 @@ All tokens described here are **lexically atomic**: the lexer will never emit pa
 
 ### Text Literals
 - **TextLit**
-- Enclosed in double quotes (")
-- Unterminated text literals are a lexical error
+- Enclosed in double quotes (`"`)
+- Unterminated text literals are a lexical error.
+- Text literals may contain interpolated Druim expressions using `:.` to open interpolation and `.:` to close it.
+
+#### Text Interpolation
+
+Druim text interpolation embeds a Druim expression inside a text literal.
+
+```druim
+name = "Rusty";
+message = "Hello, :.name.:!";
+```
+
+The interpolation delimiters are:
+
+- `:.` — opens an interpolation region inside a text literal.
+- `.:` — closes the interpolation region.
+
+Rules:
+
+- `:.` has interpolation meaning only while scanning a text literal.
+- After `:.` opens interpolation, normal Druim expression syntax applies until the matching `.:`.
+- The interpolation body contains one complete Druim expression.
+- Whitespace immediately inside the delimiters is insignificant, so `:.name.:` and `:. name .:` are equivalent.
+- Ordinary periods remain ordinary text unless they form the exact closing sequence `.:` while an interpolation region is open.
+- A text literal containing periods but no opening `:.` is ordinary text and is not interpreted as interpolation.
+- Multiple interpolation regions may appear in one text literal.
+- An interpolation region must be explicitly closed with `.:`.
+
+Examples:
+
+```druim
+name = "Rusty";
+price = 10;
+tax = 2;
+
+greeting = "Hello, :.name.:!";
+total = "Total: :.price + tax.:";
+version = "Version 1.2 is current.";
+sentence = "Hello :.name.:. Welcome back.";
+```
+
+In the final example, `.:` closes the interpolation and the following `.` remains ordinary sentence punctuation.
+
+---
+
+## Source File Boundaries
+
+A complete Druim source file uses the same canonical boundary delimiter at both ends of the file:
+
+```druim
+:-:-:
+    ...program...
+:-:-:
+```
+
+### Boundary Delimiter
+
+- `:-:-:` is the Druim source-file boundary delimiter.
+- The first `:-:-:` opens the Druim program.
+- The final `:-:-:` closes the Druim program.
+- The source program is contained between these two boundaries.
+- Druim source files use the `.drm` file extension.
+
+### Lexical Matching
+
+`:-:-:` is lexically distinct from Druim comment syntax. Because it begins with the same `:-` sequence used by single-line comments, the lexer must recognize the complete `:-:-:` boundary delimiter before attempting to recognize `:--` or `:-` comment openers.
+
+The source-file boundary is structural syntax. It is not a comment, expression, statement operator, or runtime value.
+
+---
+
+## Comments
+
+Druim comments are lexical constructs. Comment contents are ignored by the lexer and do not produce parser-visible tokens.
+
+### Single-Line Comments
+
+A single-line comment begins with `:-` and ends with `-:`.
+
+```druim
+:- this is a single-line comment -:
+```
+
+Rules:
+
+- `:-` begins a single-line comment.
+- `-:` explicitly closes the comment.
+- The closing `-:` is required.
+- A single-line comment may not cross a newline.
+- Reaching the end of the line or end of input before `-:` is a lexical error.
+- Comment delimiters appearing inside a text literal are part of the text literal and do not begin or end a comment.
+
+### Multiline Comments
+
+A multiline comment begins with `:--` and ends with `--:`.
+
+```druim
+:--
+    This is a multiline comment.
+    It may span multiple lines.
+--:
+```
+
+Rules:
+
+- `:--` begins a multiline comment.
+- `--:` explicitly closes the comment.
+- The closing `--:` is required.
+- A multiline comment may span any number of lines.
+- Reaching end of input before `--:` is a lexical error.
+- Comment delimiters appearing inside a text literal are part of the text literal and do not begin or end a comment.
+
+### Lexical Matching
+
+Comment delimiters participate in Druim's longest-match lexical rules. The multiline opening delimiter `:--` must be recognized before the single-line opening delimiter `:-`, and the multiline closing delimiter `--:` must be recognized before the single-line closing delimiter `-:` when scanning comment contents.
+
+Comments have no runtime value and no AST representation. They are removed during lexical analysis before parsing.
 
 ---
 
@@ -317,7 +433,8 @@ The statement operators are:
 • `:=` — Copy  
 • `:>` — Bind  
 • `?=` — Guard  
-• `<<` — Mutate
+• `<<` — Mutate  
+• `|>` — Print
 
 Invalid:
 
@@ -958,6 +1075,38 @@ These delimiters are structural and must appear exactly once each in a valid fun
 fn my_function :(a, b)( body ):
 ```
 
+### Function Scope Modifiers
+
+Function definitions may be preceded by one scope modifier. The modifier controls the lifetime and placement of the function binding; it does not alter the function body syntax.
+
+Valid forms:
+
+```druim
+fn helper :()(ret 1;):
+
+loc fn helper :()(ret 1;):
+
+glo fn helper :()(ret 1;):
+```
+
+- `fn` establishes the function binding in the ordinary scope where the definition executes.
+- `loc fn` establishes the function binding with the applicable local lifetime. It follows the same local target rules as other target-defining forms: the function name must be new and may not reuse an already-visible identifier.
+- `glo fn` establishes the function binding in global scope regardless of the lexical, function, or loop scope where the definition executes. The function name must still be new and may not reuse an already-visible identifier.
+- `loc` and `glo` remain mutually exclusive.
+- Function scope modifiers must appear before `fn`. Forms such as `fn loc` and `fn glo` are invalid.
+
+Functions are already structurally non-mutable definitions. `stone` therefore has no valid function form and may not modify a function definition.
+
+Invalid:
+
+```druim
+stone fn helper :()(ret 1;):
+stone loc fn helper :()(ret 1;):
+stone glo fn helper :()(ret 1;):
+loc glo fn helper :()(ret 1;):
+glo loc fn helper :()(ret 1;):
+```
+
 ### Rules
 
 - A function definition must use `fn`, followed by a `snake_case` identifier.
@@ -1246,7 +1395,7 @@ Bare `&`, `|`, are not legal tokens.
 - `>=` → Ge
 
 **Invariant:**  
-Compound operators beginning with `<` are always matched before the single-character `<` token. This includes `<<`, `<=`, and `<-`. Compound comparison operators are always matched before single-character `<` or `>`.
+Compound operators beginning with `<` are always matched before the single-character `<` token. This includes `<<` and `<=`. Compound comparison operators are always matched before single-character `<` or `>`.
 
 ---
 
@@ -1260,11 +1409,40 @@ Compound operators beginning with `<` are always matched before the single-chara
 
 ---
 
-## Flow and Direction Operators
+## Print Operator
 
-- `|>` → Pipe
-- `->` → ArrowR
-- `<-` → ArrowL
+- `|>` → Print
+
+`|>` is the Druim **Print** statement operator.
+
+Canonical syntax:
+
+```druim
+|> (expression);
+```
+
+Example:
+
+```druim
+|> ("Hello World!");
+```
+
+Rules:
+
+- Print is a statement.
+- `|>` is followed by `(`, one complete Druim expression, `)`, and the terminating `;`.
+- The parentheses are part of Print statement syntax; they are not ordinary mathematical-grouping parentheses.
+- The expression may be a text literal, including a text literal containing `:. ... .:` interpolation.
+- Print may appear in a function body anywhere an ordinary statement is valid.
+- Automatic newline behavior is not yet canonized and remains unresolved.
+
+Example with interpolation:
+
+```druim
+name = "World";
+|> ("Hello :.name.:!");
+```
+
 
 ---
 

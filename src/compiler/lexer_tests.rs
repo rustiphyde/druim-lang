@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::compiler::lexer::Lexer;
+    use crate::compiler::lexer::{LexError, Lexer};
     use crate::compiler::token::TokenKind;
     use crate::compiler::token::TokenKind::*;
 
@@ -270,6 +270,69 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::Ident);
         assert_eq!(tokens[2].kind, TokenKind::Semicolon);
         assert_eq!(tokens[3].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn lexes_program_boundary() {
+        let tokens = Lexer::new(":-:-:")
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::ProgramBoundary);
+        assert_eq!(tokens[0].lexeme, ":-:-:");
+        assert_eq!(tokens[1].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn skips_single_line_comment() {
+        let tokens = Lexer::new(":- this is ignored -: value = 42;")
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::Ident);
+        assert_eq!(tokens[0].lexeme, "value");
+    }
+
+    #[test]
+    fn skips_multiline_comment() {
+        let src = r#"
+    :--
+        x = 99;
+        fn fake :()(ret 42;):
+    --:
+    value = 42;
+    "#;
+
+        let tokens = Lexer::new(src)
+            .tokenize()
+            .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TokenKind::Ident);
+        assert_eq!(tokens[0].lexeme, "value");
+    }
+
+    #[test]
+    fn rejects_unterminated_single_line_comment() {
+        let err = Lexer::new(":- this never closes")
+            .tokenize()
+            .expect_err("unterminated comment should fail");
+
+        assert!(matches!(
+            err,
+            LexError::UnterminatedSingleComment { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_unterminated_multiline_comment() {
+        let err = Lexer::new(":-- this never closes")
+            .tokenize()
+            .expect_err("unterminated comment should fail");
+
+        assert!(matches!(
+            err,
+            LexError::UnterminatedMultiComment { .. }
+        ));
     }
 
 }

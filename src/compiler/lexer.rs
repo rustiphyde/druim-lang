@@ -4,6 +4,8 @@ use crate::compiler::token::{Token, TokenKind};
 pub enum LexError {
     UnexpectedChar { ch: char, pos: usize },
     UnterminatedText { pos: usize },
+    UnterminatedSingleComment { pos: usize },
+    UnterminatedMultiComment { pos: usize },
 }
 
 pub struct Lexer<'a> {
@@ -131,6 +133,31 @@ impl<'a> Lexer<'a> {
             }
 
             // ===== Multi-char operators (longest first) =====
+
+            // ===== Program boundary =====
+            if self.match_str(":-:-:") {
+                tokens.push(tok(
+                    TokenKind::ProgramBoundary,
+                    ":-:-:",
+                    start,
+                ));
+                continue;
+            }
+
+            // ===== Comments =====
+            //
+            // Comments are consumed by the lexer and never emitted as tokens.
+            // Longest form must be checked first because `:--` begins with `:-`.
+
+            if self.match_str(":--") {
+                self.skip_comment("--:", start, true)?;
+                continue;
+            }
+
+            if self.match_str(":-") {
+                self.skip_comment("-:", start, false)?;
+                continue;
+            }
 
             // ===== Block delimiters (must be before single ':') =====
             if self.match_str(":[") {
@@ -312,6 +339,38 @@ impl<'a> Lexer<'a> {
     }
 
     // ===== helpers =====
+
+    fn skip_comment(
+    &mut self,
+    closing: &str,
+    start_pos: usize,
+    multiline: bool,
+) -> Result<(), LexError> {
+    while !self.eof() {
+        if self.src[self.pos..].starts_with(closing) {
+            self.pos += closing.len();
+            return Ok(());
+        }
+
+        if !multiline && self.peek_char() == '\n' {
+            return Err(LexError::UnterminatedSingleComment {
+                pos: start_pos,
+            });
+        }
+
+        self.bump_char();
+    }
+
+    if multiline {
+        Err(LexError::UnterminatedMultiComment {
+            pos: start_pos,
+        })
+    } else {
+        Err(LexError::UnterminatedSingleComment {
+            pos: start_pos,
+        })
+    }
+}
 
     fn skip_whitespace(&mut self) {
         while !self.eof() && self.peek_char().is_whitespace() {

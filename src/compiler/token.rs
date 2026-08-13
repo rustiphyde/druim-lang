@@ -86,6 +86,10 @@ pub enum TokenKind {
     FuncStart, // :(
     FuncEnd,   // ):
     FuncChain, // )(
+
+    // ===== Program boundary =====
+    ProgramBoundary, // :-:-:
+
     // ===== Special =====
     Eof,
 }

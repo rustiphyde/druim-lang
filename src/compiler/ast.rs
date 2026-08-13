@@ -72,6 +72,7 @@ pub enum NodeKind {
     Global(Box<Node>),
     Stone(Box<Node>),
     Ret(Ret),
+    Print(Print),
     Define(Define),
     DefineEmpty(DefineEmpty),
     Copy(Copy),
@@ -156,6 +157,11 @@ pub struct Param {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ret {
     pub value: Option<Box<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Print {
+    pub value: Box<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

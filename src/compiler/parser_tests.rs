@@ -28,6 +28,13 @@ fn parse_program(src: &str) -> Program {
     parser.parse_program().expect("failed to parse program")
 }
 
+fn parse_file(src: &str) -> Program {
+    let mut lexer = Lexer::new(src);
+    let tokens = lexer.tokenize().expect("lexing failed");
+    let mut parser = Parser::new(&tokens);
+    parser.parse_file().expect("failed to parse Druim file")
+}
+
 #[test]
 fn parses_multiple_nodes() {
     let src = r#"
@@ -42,6 +49,146 @@ fn parses_multiple_nodes() {
     let program = parser.parse_program().expect("failed to parse program");
 
     assert_eq!(program.nodes.len(), 2);
+}
+
+#[test]
+fn parses_valid_druim_file() {
+    let program = parse_file(
+        r#"
+            :-:-:
+
+            :{
+                fn answer :()(
+                    ret 42;
+                ):
+
+                result = answer();
+            }:
+
+            :-:-:
+        "#,
+    );
+
+    assert_eq!(program.nodes.len(), 1);
+
+    assert!(matches!(
+        &program.nodes[0].kind,
+        NodeKind::Block(_)
+    ));
+}
+
+#[test]
+fn parses_empty_druim_file() {
+    let program = parse_file(
+        r#"
+            :-:-:
+            :-:-:
+        "#,
+    );
+
+    assert!(program.nodes.is_empty());
+}
+
+#[test]
+fn druim_file_requires_opening_boundary() {
+    let src = r#"
+        value = 42;
+        :-:-:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_file()
+        .expect_err("missing opening boundary must fail");
+
+    assert_eq!(
+        err.message,
+        "missing Druim file opening boundary"
+    );
+}
+
+#[test]
+fn druim_file_requires_closing_boundary() {
+    let src = r#"
+        :-:-:
+        value = 42;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_file()
+        .expect_err("missing closing boundary must fail");
+
+    assert_eq!(
+        err.message,
+        "missing Druim file closing boundary"
+    );
+}
+
+#[test]
+fn druim_file_rejects_content_after_closing_boundary() {
+    let src = r#"
+        :-:-:
+        value = 42;
+        :-:-:
+
+        other = 13;
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_file()
+        .expect_err("content after closing boundary must fail");
+
+    assert_eq!(
+        err.message,
+        "unexpected content after Druim file boundary"
+    );
+}
+
+#[test]
+fn druim_file_rejects_extra_boundary_inside_file() {
+    let src = r#"
+        :-:-:
+
+        value = 42;
+
+        :-:-:
+
+        other = 13;
+
+        :-:-:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let err = parser
+        .parse_file()
+        .expect_err("extra file boundary must fail");
+
+    assert_eq!(
+        err.message,
+        "unexpected content after Druim file boundary"
+    );
 }
 
 // Empty Definition Tests

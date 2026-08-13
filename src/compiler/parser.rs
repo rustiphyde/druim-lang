@@ -37,6 +37,58 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_file(&mut self) -> Result<Program, Diagnostic> {
+        // A complete .drm file must begin with the Druim file boundary.
+        if self.peek_kind() != TokenKind::ProgramBoundary {
+            return Err(
+                Diagnostic::error(
+                    "missing Druim file opening boundary",
+                    self.current_span(),
+                )
+                .with_help(
+                    "A Druim source file must begin with `:-:-:`.",
+                ),
+            );
+        }
+
+        self.bump(); // consume opening `:-:-:`
+
+        let mut nodes = Vec::new();
+
+        while self.peek_kind() != TokenKind::ProgramBoundary {
+            if self.peek_kind() == TokenKind::Eof {
+                return Err(
+                    Diagnostic::error(
+                        "missing Druim file closing boundary",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "A Druim source file must end with `:-:-:`.",
+                    ),
+                );
+            }
+
+            nodes.push(self.parse_node()?);
+        }
+
+        self.bump(); // consume closing `:-:-:`
+
+        // The closing file boundary must be the final structural token.
+        if self.peek_kind() != TokenKind::Eof {
+            return Err(
+                Diagnostic::error(
+                    "unexpected content after Druim file boundary",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Nothing may appear after the closing `:-:-:` boundary.",
+                ),
+            );
+        }
+
+        Ok(Program { nodes })
+    }
+
     pub fn parse_program(&mut self) -> Result<Program, Diagnostic> {
         let mut nodes = Vec::new();
 
@@ -47,6 +99,7 @@ impl<'a> Parser<'a> {
 
         Ok(Program { nodes })
     }
+
 
     pub fn parse_node(&mut self) -> Result<Node, Diagnostic> {
         match self.peek_kind() {
