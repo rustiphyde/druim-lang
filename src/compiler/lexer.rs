@@ -4,6 +4,7 @@ use crate::compiler::token::{Token, TokenKind};
 pub enum LexError {
     UnexpectedChar { ch: char, pos: usize },
     UnterminatedText { pos: usize },
+    UnterminatedInterpolation { pos: usize },
     UnterminatedSingleComment { pos: usize },
     UnterminatedMultiComment { pos: usize },
 }
@@ -123,15 +124,9 @@ impl<'a> Lexer<'a> {
 
             // ===== Text literal =====
             if ch == '"' {
-                let text = self.read_text(start)?;
-                tokens.push(Token {
-                    kind: TokenKind::TextLit,
-                    lexeme: text,
-                    pos: start,
-                });
+                tokens.extend(self.read_text_tokens(start)?);
                 continue;
             }
-
             // ===== Multi-char operators (longest first) =====
 
             // ===== Program boundary =====
@@ -390,22 +385,174 @@ impl<'a> Lexer<'a> {
     }
 
 
-    fn read_text(&mut self, start_pos: usize) -> Result<String, LexError> {
-        // consume opening quote
-        self.bump_char();
-        let start = self.pos;
+    fn read_text_tokens(
+        &mut self,
+        start_pos: usize,
+    ) -> Result<Vec<Token>, LexError> {
+        self.bump_char(); // opening `"`
 
-        while !self.eof() && self.peek_char() != '"' {
+        let content_start = self.pos;
+        let mut segment_start = self.pos;
+        let mut tokens = Vec::new();
+        let mut interpolated = false;
+
+        while !self.eof() {
+            // Interpolation only has special meaning while we are inside text.
+            if self.src[self.pos..].starts_with(":.") {
+                if !interpolated {
+                    interpolated = true;
+
+                    tokens.push(Token {
+                        kind: TokenKind::TextStart,
+                        lexeme: "\"".to_string(),
+                        pos: start_pos,
+                    });
+                }
+
+                if segment_start < self.pos {
+                    tokens.push(Token {
+                        kind: TokenKind::TextLit,
+                        lexeme: self.src[segment_start..self.pos].to_string(),
+                        pos: segment_start,
+                    });
+                }
+
+                let interpolation_start = self.pos;
+
+                tokens.push(Token {
+                    kind: TokenKind::InterpStart,
+                    lexeme: ":.".to_string(),
+                    pos: interpolation_start,
+                });
+
+                self.pos += 2; // consume `:.`
+
+                let expression_start = self.pos;
+
+                let expression_end = self
+                    .find_interpolation_end(expression_start)
+                    .ok_or(
+                        LexError::UnterminatedInterpolation {
+                            pos: interpolation_start,
+                        },
+                    )?;
+
+                let expression_source =
+                    &self.src[expression_start..expression_end];
+
+                let mut expression_lexer =
+                    Lexer::new(expression_source);
+
+                let mut expression_tokens =
+                    expression_lexer
+                        .tokenize()
+                        .map_err(|error| {
+                            offset_lex_error(
+                                error,
+                                expression_start,
+                            )
+                        })?;
+
+                // The nested lexer always adds Eof. It belongs to the
+                // interpolation substring, not the surrounding program.
+                if expression_tokens
+                    .last()
+                    .is_some_and(|token| token.kind == TokenKind::Eof)
+                {
+                    expression_tokens.pop();
+                }
+
+                for token in &mut expression_tokens {
+                    token.pos += expression_start;
+                }
+
+                tokens.extend(expression_tokens);
+
+                self.pos = expression_end;
+
+                tokens.push(Token {
+                    kind: TokenKind::InterpEnd,
+                    lexeme: ".:".to_string(),
+                    pos: self.pos,
+                });
+
+                self.pos += 2; // consume `.:`
+
+                segment_start = self.pos;
+
+                continue;
+            }
+
+            if self.peek_char() == '"' {
+                let closing_quote = self.pos;
+                self.bump_char();
+
+                // No interpolation occurred. Preserve the original
+                // one-token representation for ordinary text.
+                if !interpolated {
+                    return Ok(vec![Token {
+                        kind: TokenKind::TextLit,
+                        lexeme: self.src[
+                            content_start..closing_quote
+                        ]
+                        .to_string(),
+                        pos: start_pos,
+                    }]);
+                }
+
+                if segment_start < closing_quote {
+                    tokens.push(Token {
+                        kind: TokenKind::TextLit,
+                        lexeme: self.src[
+                            segment_start..closing_quote
+                        ]
+                        .to_string(),
+                        pos: segment_start,
+                    });
+                }
+
+                tokens.push(Token {
+                    kind: TokenKind::TextEnd,
+                    lexeme: "\"".to_string(),
+                    pos: closing_quote,
+                });
+
+                return Ok(tokens);
+            }
+
             self.bump_char();
         }
 
-        if self.eof() {
-            return Err(LexError::UnterminatedText { pos: start_pos });
+        Err(LexError::UnterminatedText {
+            pos: start_pos,
+        })
+    }
+
+    fn find_interpolation_end(
+        &self,
+        start_pos: usize,
+    ) -> Option<usize> {
+        let mut pos = start_pos;
+        let mut in_text = false;
+
+        while pos < self.src.len() {
+            let rest = &self.src[pos..];
+            let ch = rest.chars().next().unwrap();
+
+            if ch == '"' {
+                in_text = !in_text;
+                pos += ch.len_utf8();
+                continue;
+            }
+
+            if !in_text && rest.starts_with(".:") {
+                return Some(pos);
+            }
+
+            pos += ch.len_utf8();
         }
 
-        let text = self.src[start..self.pos].to_string();
-        self.bump_char(); // closing quote
-        Ok(text)
+        None
     }
 
     fn match_str(&mut self, s: &str) -> bool {
@@ -437,6 +584,44 @@ impl<'a> Lexer<'a> {
 
     fn eof(&self) -> bool {
         self.pos >= self.src.len()
+    }
+}
+
+fn offset_lex_error(
+    error: LexError,
+    offset: usize,
+) -> LexError {
+    match error {
+        LexError::UnexpectedChar { ch, pos } => {
+            LexError::UnexpectedChar {
+                ch,
+                pos: pos + offset,
+            }
+        }
+
+        LexError::UnterminatedText { pos } => {
+            LexError::UnterminatedText {
+                pos: pos + offset,
+            }
+        }
+
+        LexError::UnterminatedInterpolation { pos } => {
+            LexError::UnterminatedInterpolation {
+                pos: pos + offset,
+            }
+        }
+
+        LexError::UnterminatedSingleComment { pos } => {
+            LexError::UnterminatedSingleComment {
+                pos: pos + offset,
+            }
+        }
+
+        LexError::UnterminatedMultiComment { pos } => {
+            LexError::UnterminatedMultiComment {
+                pos: pos + offset,
+            }
+        }
     }
 }
 

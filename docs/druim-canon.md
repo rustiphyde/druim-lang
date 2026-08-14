@@ -1,12 +1,12 @@
 # Druim Canon (Living Document)
 
 ## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R010
+- Revision ID: DRUIM-CANON-R011
 - Status: Current
 - Effective Date: 2026-08-13
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R009
-- Notes: This revision canonizes function scope modifiers: `loc fn` and `glo fn`, and explicitly forbids `stone` on function definitions. All R009 canon content is preserved unchanged except for this addition.
+- Supersedes: DRUIM-CANON-R010
+- Notes: This revision canonizes Druim command-line source execution and diagnostic behavior, resolves Print as line-oriented output that appends a newline, and records the textual conversion rules used by Print and text interpolation. All R010 canon content is preserved unchanged except for these additions and the previously unresolved Print newline rule.
 
 ## Purpose
 
@@ -139,6 +139,14 @@ Rules:
 - A text literal containing periods but no opening `:.` is ordinary text and is not interpreted as interpolation.
 - Multiple interpolation regions may appear in one text literal.
 - An interpolation region must be explicitly closed with `.:`.
+- Each interpolation expression is evaluated normally before being converted to text.
+- Canonical textual conversion for interpolation is:
+  - `num` → its decimal integer representation.
+  - `dec` → its stored decimal representation.
+  - `flag` → `true` or `false`.
+  - `text` → its contained text.
+  - `void` → `void`.
+- `Box`, `Bag`, and function values do not currently have a canonical textual representation for interpolation. Attempting to interpolate one produces a diagnostic.
 
 Examples:
 
@@ -180,6 +188,61 @@ A complete Druim source file uses the same canonical boundary delimiter at both 
 `:-:-:` is lexically distinct from Druim comment syntax. Because it begins with the same `:-` sequence used by single-line comments, the lexer must recognize the complete `:-:-:` boundary delimiter before attempting to recognize `:--` or `:-` comment openers.
 
 The source-file boundary is structural syntax. It is not a comment, expression, statement operator, or runtime value.
+
+---
+
+## Command-Line Execution and Diagnostics
+
+Druim source files are executed through the `druim` command.
+
+Canonical invocation:
+
+```text
+druim <file.drm>
+```
+
+### Invocation Rules
+
+- The Druim command accepts exactly one source-file path.
+- The source file must use the `.drm` extension.
+- A missing source-file argument is a command-line error.
+- Supplying more than one source-file argument is a command-line error.
+- A source path that does not exist is a command-line error.
+- A source file that cannot be read because of permission or invalid text encoding is a command-line error.
+- Successful execution exits with status code `0`.
+- Command-line, lexical, parser, or evaluator failure exits with a non-zero status code.
+
+### Source Execution Pipeline
+
+A `.drm` file executed through the Druim command proceeds through the canonical source pipeline in this order:
+
+1. Read the source file.
+2. Lex the source into tokens.
+3. Parse the complete file using the Druim source-file boundary rules.
+4. Evaluate the resulting program.
+5. Emit runtime output produced by statements such as Print.
+
+The command-line entry point must parse complete source files with the file-level parser rather than the snippet/program parser used internally by tests or tooling.
+
+### Diagnostic Presentation
+
+Druim compiler diagnostics are source-aware.
+
+Lexical, parser, and evaluator failures use the shared diagnostic-rendering system whenever the failure refers to source code. A rendered source diagnostic identifies the error, points to the relevant source span, and may include a help message describing the required Druim form.
+
+Canonical lexical diagnostic categories currently include:
+
+- unexpected character;
+- unterminated text literal;
+- unterminated text interpolation;
+- unterminated single-line comment;
+- unterminated multiline comment.
+
+For example, an unterminated text literal must identify the opening text delimiter in the source and explain that Druim expected a closing `"`.
+
+Command-line failures that occur before source compilation, such as a missing file argument, invalid `.drm` extension, or nonexistent path, are reported directly as command-line diagnostics because no source span exists to render.
+
+The diagnostic system must not expose raw Rust debug representations as the normal user-facing Druim error format.
 
 ---
 
@@ -1434,7 +1497,14 @@ Rules:
 - The parentheses are part of Print statement syntax; they are not ordinary mathematical-grouping parentheses.
 - The expression may be a text literal, including a text literal containing `:. ... .:` interpolation.
 - Print may appear in a function body anywhere an ordinary statement is valid.
-- Automatic newline behavior is not yet canonized and remains unresolved.
+- Print is line-oriented output: after emitting the textual representation of its expression, it appends a newline automatically.
+- Canonical textual conversion for Print is:
+  - `num` → its decimal integer representation.
+  - `dec` → its stored decimal representation.
+  - `flag` → `true` or `false`.
+  - `text` → its contained text.
+  - `void` → `void`.
+- `Box`, `Bag`, and function values do not currently have a canonical printable textual representation. Attempting to Print one produces a diagnostic.
 
 Example with interpolation:
 

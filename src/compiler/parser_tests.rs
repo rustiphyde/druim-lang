@@ -1,7 +1,7 @@
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
 use crate::compiler::ast::{
-    Bind, Block, Call, Copy, Define, DefineEmpty, Func, Guard, Literal, Node,
+    TextPart, Bind, Block, Call, Copy, Define, DefineEmpty, Func, Guard, Literal, Node,
     NodeKind, Program, Ret,
 };
 use crate::compiler::diagnostic::render;
@@ -4100,4 +4100,70 @@ fn stone_global_function_is_rejected() {
         err.message,
         "`stone` cannot modify a function definition"
     );
+}
+
+#[test]
+fn parses_print_text_statement() {
+    let node = parse_node(r#"|> ("Hello World!");"#);
+
+    match &node.kind {
+        NodeKind::Print(print) => {
+            assert!(matches!(
+                &print.value.kind,
+                NodeKind::Lit(Literal::Text(value))
+                    if value == "Hello World!"
+            ));
+        }
+
+        other => panic!("expected Print node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_interpolated_text() {
+    let node = parse_node(
+        r#"message = "Hello, :.name.:!";"#
+    );
+
+    match &node.kind {
+        NodeKind::Define(def) => {
+            match &def.value.kind {
+                NodeKind::InterpolatedText(text) => {
+                    assert_eq!(text.parts.len(), 3);
+
+                    assert!(matches!(
+                        &text.parts[0],
+                        TextPart::Text(value)
+                            if value == "Hello, "
+                    ));
+
+                    assert!(matches!(
+                        &text.parts[1],
+                        TextPart::Expr(Node {
+                            kind: NodeKind::Ident(name),
+                            ..
+                        }) if name == "name"
+                    ));
+
+                    assert!(matches!(
+                        &text.parts[2],
+                        TextPart::Text(value)
+                            if value == "!"
+                    ));
+                }
+
+                other => {
+                    panic!(
+                        "expected InterpolatedText value, got {other:?}"
+                    );
+                }
+            }
+        }
+
+        other => {
+            panic!(
+                "expected Define node, got {other:?}"
+            );
+        }
+    }
 }

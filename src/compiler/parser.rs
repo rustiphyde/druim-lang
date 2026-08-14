@@ -1,7 +1,7 @@
 use crate::compiler::ast::{
-    BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
+    InterpolatedText, TextPart, BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
     DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Mutate, Node, NodeKind, Param,
-    Program, Ret,
+    Program, Print, Ret,
 };
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
@@ -200,6 +200,10 @@ impl<'a> Parser<'a> {
                 // statement-defining keywords
                 TokenKind::KwRet => {
                     return self.parse_ret();
+                }
+
+                TokenKind::Print => {
+                    return self.parse_print();
                 }
 
                 // statement-defining operators
@@ -405,6 +409,83 @@ impl<'a> Parser<'a> {
         Ok(Node::new(
             NodeKind::Ret(Ret {
                 value: Some(Box::new(value)),
+            }),
+            Span {
+                start,
+                end: semicolon.pos + semicolon.lexeme.len(),
+            },
+        ))
+    }
+
+    fn parse_print(&mut self) -> Result<Node, Diagnostic> {
+        let start = self.current_span().start;
+
+        self.bump(); // consume `|>`
+
+        if self.peek_kind() != TokenKind::LParen {
+            return Err(
+                Diagnostic::error(
+                    "invalid print statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim Print requires `(` after `|>`.\n\
+                    Example: `|> (\"Hello World!\");`",
+                ),
+            );
+        }
+
+        self.bump(); // consume `(`
+
+        if self.peek_kind() == TokenKind::RParen {
+            return Err(
+                Diagnostic::error(
+                    "empty print statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim Print requires a value inside `(` and `)`.\n\
+                    Example: `|> (\"Hello World!\");`",
+                ),
+            );
+        }
+
+        let value = self.parse_expr()?;
+
+        if self.peek_kind() != TokenKind::RParen {
+            return Err(
+                Diagnostic::error(
+                    "invalid print statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim Print accepts one complete expression inside `(` and `)`.",
+                ),
+            );
+        }
+
+        self.bump(); // consume `)`
+
+        if self.peek_kind() != TokenKind::Semicolon {
+            return Err(
+                Diagnostic::error(
+                    "unterminated print statement",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim expected `;` after the Print statement.\n\
+                    Example: `|> (\"Hello World!\");`",
+                ),
+            );
+        }
+
+        let semicolon = self
+            .bump()
+            .expect("terminating semicolon must exist");
+
+        Ok(Node::new(
+            NodeKind::Print(Print {
+                value: Box::new(value),
             }),
             Span {
                 start,
@@ -2276,6 +2357,10 @@ impl<'a> Parser<'a> {
                 token_span,
             )),
 
+            TokenKind::TextStart => {
+                return self.parse_interpolated_text(tok.pos);
+            }
+
             TokenKind::FlagLit => {
                 let value = match tok.lexeme.as_str() {
                     "true" => true,
@@ -2406,6 +2491,93 @@ impl<'a> Parser<'a> {
                 .with_help("Druim expected a value here."),
             ),
         }
+    }
+
+    fn parse_interpolated_text(
+        &mut self,
+        start: usize,
+    ) -> Result<Node, Diagnostic> {
+        let mut parts = Vec::new();
+
+        while self.peek_kind() != TokenKind::TextEnd {
+            match self.peek_kind() {
+                TokenKind::TextLit => {
+                    let token = self
+                        .bump()
+                        .expect("TextLit token must exist");
+
+                    parts.push(TextPart::Text(
+                        token.lexeme.clone(),
+                    ));
+                }
+
+                TokenKind::InterpStart => {
+                    self.bump(); // consume `:.`
+
+                    if self.peek_kind() == TokenKind::InterpEnd {
+                        return Err(
+                            Diagnostic::error(
+                                "empty text interpolation",
+                                self.current_span(),
+                            )
+                            .with_help(
+                                "Text interpolation requires a Druim expression between `:.` and `.:`.",
+                            ),
+                        );
+                    }
+
+                    let expr = self.parse_expr()?;
+
+                    if self.peek_kind() != TokenKind::InterpEnd {
+                        return Err(
+                            Diagnostic::error(
+                                "invalid text interpolation",
+                                self.current_span(),
+                            )
+                            .with_help(
+                                "Druim expected `.:` after the interpolated expression.",
+                            ),
+                        );
+                    }
+
+                    self.bump(); // consume `.:`
+
+                    parts.push(TextPart::Expr(expr));
+                }
+
+                TokenKind::Eof => {
+                    return Err(
+                        Diagnostic::error(
+                            "unterminated interpolated text",
+                            self.current_span(),
+                        ),
+                    );
+                }
+
+                _ => {
+                    return Err(
+                        Diagnostic::error(
+                            "invalid token inside interpolated text",
+                            self.current_span(),
+                        ),
+                    );
+                }
+            }
+        }
+
+        let end_token = self
+            .bump()
+            .expect("TextEnd token must exist");
+
+        Ok(Node::new(
+            NodeKind::InterpolatedText(
+                InterpolatedText { parts }
+            ),
+            Span {
+                start,
+                end: end_token.pos + end_token.lexeme.len(),
+            },
+        ))
     }
 
     fn parse_box_literal(&mut self, start: usize) -> Result<Node, Diagnostic> {

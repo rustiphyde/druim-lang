@@ -1,0 +1,12 @@
+:-:-:
+
+:{
+    fn hello :()(
+        name = "World";
+        |> ("Hello :.name.:!");
+    ):
+
+    hello();
+}:
+
+:-:-:

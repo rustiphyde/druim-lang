@@ -1,6 +1,8 @@
 use crate::compiler::ast::{
-    Guard, GuardBranch, Literal, Node, NodeKind,
+    Guard, GuardBranch, Literal, Node, NodeKind, Program,
 };
+use crate::compiler::lexer::Lexer;
+use crate::compiler::parser::Parser;
 use crate::compiler::error::Span;
 use crate::compiler::semantics::eval::Evaluator;
 use crate::compiler::semantics::value::Value;
@@ -14,6 +16,20 @@ fn branch(v: Literal) -> GuardBranch {
     GuardBranch {
         expr: Node::new(NodeKind::Lit(v), test_span()),
     }
+}
+
+fn parse_program(src: &str) -> Program {
+    let mut lexer = Lexer::new(src);
+
+    let tokens = lexer
+        .tokenize()
+        .expect("lexing failed");
+
+    let mut parser = Parser::new(&tokens);
+
+    parser
+        .parse_program()
+        .expect("failed to parse program")
 }
 
 #[test]
@@ -8919,5 +8935,28 @@ fn function_parameter_rejects_function_name_collision() {
     assert_eq!(
         err.message,
         "identifier `calculate` is already defined"
+    );
+}
+
+#[test]
+fn evaluates_interpolated_text_value() {
+    let program = parse_program(
+        r#"
+        name = "World";
+        message = "Hello :.name.:!";
+        "#,
+    );
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("evaluation should succeed");
+
+    assert_eq!(
+        evaluator.get("message"),
+        Some(Value::Text(
+            "Hello World!".to_string()
+        ))
     );
 }

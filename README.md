@@ -14,8 +14,10 @@ Its design emphasizes:
 - Early diagnostics over silent coercion
 - Intentional absence through `void`
 - Distinct operators for distinct value relationships
+- Explicit scope and binding lifetime
+- Source-aware compiler diagnostics
 
-This repository contains the reference compiler implementation.
+This repository contains the reference compiler and evaluator implementation.
 
 The authoritative definition of the language is maintained in:
 
@@ -29,23 +31,73 @@ When the README, implementation, tests, comments, or prior discussion conflict w
 
 Druim is under active development.
 
-The current canonical revision, **DRUIM-CANON-R005**, defines stable language rules for:
+The current canonical revision, **DRUIM-CANON-R011**, defines stable language rules for:
 
-- Lexical structure
-- Statement boundaries
-- Definition, copying, binding, and guarded selection
-- Blocks and lexical scope
-- Function structure and return propagation
-- Loop structure, execution, nesting, and persistent loop scope
+- Source-file boundaries and `.drm` execution
+- Single-line and multiline comments
+- Lexical structure and longest-match rules
+- Definition, mutation, copying, binding, and guarded selection
+- Local, global, and stone binding behavior
+- Block and block-segment lifetime
+- Function definitions, calls, defaults, returns, and scope modifiers
+- Loop structure, persistent loop scope, nesting, and return propagation
 - Truth evaluation
+- Text interpolation
+- Print output
 - Box and Bag collections
 - Named and indexed traversal
 - Missing-member behavior
 - Invalid-selector diagnostics
+- Command-line execution and source-aware diagnostics
 
-Runtime semantics explicitly defined by the canon are authoritative. Type-system rules, library design, and undocumented runtime behavior are still evolving.
+Runtime semantics explicitly defined by the canon are authoritative. Type-system rules, standard-library design, and undocumented behavior are still evolving.
 
 Any behavior not defined by the canon should be treated as unsupported unless explicitly introduced by a later revision.
+
+---
+
+## Quick Start
+
+Druim source files use the `.drm` extension and are enclosed by the canonical file boundary:
+
+```druim
+:-:-:
+
+...program...
+
+:-:-:
+```
+
+A complete Hello World program can define and call a function, interpolate a value into text, and print the result:
+
+```druim
+:-:-:
+
+:{
+    fn hello :()(
+        name = "World";
+        |> ("Hello :.name.:!");
+    ):
+
+    hello();
+}:
+
+:-:-:
+```
+
+Run a Druim source file with:
+
+```text
+druim hello.drm
+```
+
+Output:
+
+```text
+Hello World!
+```
+
+`|>` is line-oriented Print and appends a newline automatically.
 
 ---
 
@@ -76,9 +128,10 @@ At the language level, Druim rejects:
 - Silent token consumption
 - Undefined values
 - Implicit fallback behavior
-- Implicit scope creation
+- Implicit scope requalification
 - Selector coercion
 - Invalid traversal being treated as missing data
+- Definition being used as mutation
 
 Every valid construct should be:
 
@@ -90,21 +143,130 @@ Every valid construct should be:
 
 ---
 
-## Compiler Pipeline
+## Compiler and Execution Pipeline
 
-The reference implementation is organized as a staged compiler and evaluator pipeline:
+A `.drm` file executed by the Druim command follows this pipeline:
 
 ```text
-token → lexer → parser → AST → evaluator → diagnostics
+source file
+    ↓
+lexer
+    ↓
+tokens
+    ↓
+file parser
+    ↓
+AST
+    ↓
+evaluator
+    ↓
+runtime output / diagnostics
 ```
 
 Each stage has a distinct responsibility:
 
-- The lexer recognizes atomic token forms.
-- The parser validates complete structural forms.
+- The command-line entry point validates and reads the source file.
+- The lexer recognizes atomic token forms and removes comments.
+- The file parser validates complete `.drm` structure, including file boundaries.
 - The AST represents parsed language constructs.
 - The evaluator executes canonical runtime semantics.
 - Diagnostics report invalid programs without silent recovery.
+
+Complete source files use the file-level parser. Internal tests and tooling may use program/snippet parsing where appropriate.
+
+---
+
+## Command-Line Execution
+
+Canonical invocation:
+
+```text
+druim <file.drm>
+```
+
+The Druim command:
+
+- Accepts exactly one source-file path
+- Requires the `.drm` extension
+- Reports missing files explicitly
+- Reports unreadable or invalid source files explicitly
+- Exits successfully with status code `0`
+- Exits non-zero on command-line, lexical, parser, or evaluator failure
+
+Examples:
+
+```text
+druim hello.drm
+druim C:\path\to\program.drm
+```
+
+---
+
+## Source File Boundaries
+
+Every complete `.drm` source file uses the same delimiter to open and close the program:
+
+```druim
+:-:-:
+
+...program...
+
+:-:-:
+```
+
+Rules:
+
+- The first `:-:-:` opens the Druim program.
+- The final `:-:-:` closes the Druim program.
+- Executable source belongs between those boundaries.
+- The opening boundary is the first structural token.
+- The closing boundary is the final structural token.
+- Nested or extra program boundaries are invalid.
+
+The boundary is structural syntax, not a comment or runtime value.
+
+---
+
+## Comments
+
+Comments are consumed by the lexer and do not appear in the AST.
+
+### Single-Line Comments
+
+```druim
+:- this is a single-line comment -:
+```
+
+A single-line comment:
+
+- Begins with `:-`
+- Must end with `-:`
+- May not cross a newline
+- Produces a lexical diagnostic if its closing delimiter is missing
+
+### Multiline Comments
+
+```druim
+:--
+    this comment
+    spans multiple lines
+--:
+```
+
+A multiline comment:
+
+- Begins with `:--`
+- Must end with `--:`
+- May span multiple lines
+- Produces a lexical diagnostic if its closing delimiter is missing
+
+Because the file boundary and comments share prefixes, longest-match rules require the lexer to recognize:
+
+1. `:-:-:`
+2. `:--`
+3. `:-`
+
+in the appropriate lexical context.
 
 ---
 
@@ -140,7 +302,7 @@ All-digit sequences are numeric literals rather than identifiers.
 
 ### Numeric Literals
 
-Druim supports whole-number and decimal literals.
+Druim supports integer and decimal literals.
 
 ```druim
 0
@@ -152,7 +314,7 @@ Druim supports whole-number and decimal literals.
 
 Decimal literals require digits on both sides of the decimal point.
 
-Invalid forms include:
+Invalid:
 
 ```druim
 .
@@ -169,7 +331,43 @@ Text literals are enclosed in double quotes:
 "hello"
 ```
 
-Unterminated text literals produce lexical diagnostics.
+Unterminated text literals produce source-aware lexical diagnostics.
+
+### Text Interpolation
+
+Text literals may embed Druim expressions with `:.` and `.:`:
+
+```druim
+name = "Rusty";
+message = "Hello :.name.:!";
+```
+
+The opening delimiter `:.` has interpolation meaning only inside a text literal. Normal Druim expression syntax applies until the matching `.:`.
+
+Full expressions may be interpolated:
+
+```druim
+price = 10;
+tax = 2;
+total = "Total: :.price + tax.:";
+```
+
+Periods remain ordinary text unless they participate in the exact closing delimiter while interpolation is open:
+
+```druim
+version = "Version 1.2 is current.";
+sentence = "Hello :.name.:. Welcome back.";
+```
+
+Canonical text conversion currently supports:
+
+- `num`
+- `dec`
+- `flag`
+- `text`
+- `void`
+
+Box, Bag, and function values do not yet have canonical interpolation text forms and produce a diagnostic if interpolated.
 
 ### Loop Structural Tokens
 
@@ -182,8 +380,6 @@ Druim loops use three lexically atomic structural tokens:
 | `>:` | LoopEnd | Ends a loop |
 
 A valid loop contains exactly two identical `>?<` separators. Their meaning is determined by position.
-
-These delimiters are structural tokens, not expressions or statement operators.
 
 ---
 
@@ -202,6 +398,8 @@ a = 12;
 b := a;
 c :> a;
 d ?= first : second;
+count << count + 1;
+|> ("Hello World!");
 empty =;
 ```
 
@@ -212,6 +410,7 @@ a = 12 13;
 a := b c;
 a :> b :> c;
 a ?= x : y z;
+a << 12 13;
 ```
 
 The parser may not accept a valid prefix while silently ignoring unexpected tokens that remain in the same statement.
@@ -224,11 +423,13 @@ Druim uses separate operators for separate value relationships.
 
 | Operator | Name | Purpose |
 |---|---|---|
-| `=` | Define | Evaluates one complete expression and defines the target |
-| `=;` | DefineEmpty | Defines the target as `void` |
-| `:=` | Copy | Copies the current value of an existing identifier |
+| `=` | Define | Evaluates one complete expression and defines a new target |
+| `=;` | DefineEmpty | Defines a new target as `void` |
+| `:=` | Copy | Copies the current value of an existing identifier into a fresh identity |
 | `:>` | Bind | Creates shared identity with an existing identifier |
 | `?=` | Guard | Selects the first truthy branch or defines `void` |
+| `<<` | Mutate | Changes the value held by an existing mutable identity |
+| `|>` | Print | Emits one expression as line-oriented output |
 
 Statement operators cannot be chained inside one statement.
 
@@ -240,7 +441,9 @@ b = 12 + 13;
 c = user::profile;
 ```
 
-The left-hand side must be one identifier. The right-hand side must be one complete expression.
+Define creates a **new** target binding.
+
+The target name must not already be visible. Define does not redefine or mutate an existing binding.
 
 A bare identifier should use Copy or Bind when those forms express the intended relationship.
 
@@ -250,11 +453,31 @@ A bare identifier should use Copy or Bind when those forms express the intended 
 value =;
 ```
 
-This is equivalent to:
+Equivalent in meaning to:
 
 ```druim
 value = void;
 ```
+
+DefineEmpty also requires a new target name.
+
+### Mutate
+
+```druim
+count = 10;
+count << count + 1;
+```
+
+Mutate changes the value of an existing mutable binding identity.
+
+It:
+
+- Requires an existing target
+- Evaluates exactly one complete expression
+- Never creates a normal binding
+- Cannot mutate a stone identity
+
+Because Bind shares identity, mutation through any alias is visible through every name bound to that identity.
 
 ### Copy
 
@@ -262,9 +485,9 @@ value = void;
 snapshot := source;
 ```
 
-Copy takes the current resolved value of `source` and gives `snapshot` an independent value.
+Copy creates a fresh, independent identity containing the current value of `source`.
 
-Future changes to `source` do not affect `snapshot`.
+Future mutations of `source` do not affect `snapshot`.
 
 ### Bind
 
@@ -272,9 +495,11 @@ Future changes to `source` do not affect `snapshot`.
 alias :> source;
 ```
 
-Bind makes both identifiers refer to the same underlying identity.
+Bind makes both names refer to the same underlying identity.
 
-Future changes through either name are visible through the other.
+Future mutations through either name are visible through the other.
+
+An alias may not be established with a lifetime longer than the identity it aliases.
 
 ### Guard
 
@@ -288,13 +513,176 @@ If no branch converts to `true`, the target becomes `void`.
 
 Every written branch is conditional. The final written branch is not an unconditional fallback.
 
+Guard defines a new target and therefore cannot reuse an already-visible target name.
+
+### Print
+
+```druim
+|> ("Hello World!");
+```
+
+Print syntax is:
+
+```druim
+|> (expression);
+```
+
+The parentheses are part of Print syntax; they are not ordinary expression-grouping parentheses.
+
+Print:
+
+- Evaluates one expression
+- Converts the supported value to text
+- Emits that text
+- Appends a newline automatically
+
+Interpolation composes directly with Print:
+
+```druim
+name = "World";
+|> ("Hello :.name.:!");
+```
+
+Canonical printable values currently include `num`, `dec`, `flag`, `text`, and `void`.
+
+---
+
+## Scope Modifiers
+
+Druim has two explicit scope modifiers:
+
+- `loc`
+- `glo`
+
+They are mutually exclusive.
+
+Ordinary statement modifier order is:
+
+```text
+[stone] [loc | glo] statement
+```
+
+Valid examples:
+
+```druim
+loc value = 10;
+glo value = 10;
+stone value = 10;
+stone loc value = 10;
+stone glo value = 10;
+```
+
+Invalid ordering:
+
+```druim
+loc stone value = 10;
+glo stone value = 10;
+loc glo value = 10;
+glo loc value = 10;
+```
+
+### `loc`
+
+For target-defining forms, `loc` establishes a new target with the applicable local lifetime.
+
+A local target **may not shadow or reuse an already-visible name**.
+
+```druim
+source = 10;
+
+:{
+    loc snapshot := source;
+}:
+```
+
+The source may resolve from an enclosing scope, but `snapshot` must be a new name.
+
+`loc Mutate` is the intentional localization exception:
+
+```druim
+count = 10;
+
+:{
+    loc count << count + 3;
+    // count == 13 here
+}:
+
+// count == 10 here
+```
+
+The visible identity is localized for the applicable local lifetime, and mutation does not escape that boundary.
+
+### `glo`
+
+`glo` establishes a new target in global scope regardless of where the statement executes.
+
+```druim
+:{
+    glo value = 10;
+}:
+```
+
+The target survives the local structure.
+
+`glo` changes target placement, not source lookup. A local value may therefore be copied into a fresh global identity:
+
+```druim
+:{
+    local_source = 10;
+    glo snapshot := local_source;
+}:
+```
+
+`glo` does not promote or requalify an already-existing binding.
+
+---
+
+## Stone Bindings
+
+`stone` marks a binding identity immutable.
+
+```druim
+stone source = 10;
+```
+
+Mutation is then invalid:
+
+```druim
+source << 20;
+```
+
+Stone belongs to the underlying identity.
+
+Because Bind shares identity:
+
+```druim
+stone source = 10;
+alias :> source;
+```
+
+both names refer to the same stone identity.
+
+Copy creates a new identity, so stone does not propagate automatically:
+
+```druim
+stone source = 10;
+copy := source;
+copy << 20;
+```
+
+An explicitly immutable copy is:
+
+```druim
+stone copy := source;
+```
+
 ---
 
 ## Truth Evaluation
 
 Druim does not use implicit C- or JavaScript-style truthiness.
 
-Truth conversion is explicit and defined by type.
+Truth conversion is explicitly defined by type.
 
 | Value | Result |
 |---|---|
@@ -328,7 +716,7 @@ empty =;
 
 When explicitly evaluated as a flag, `void` becomes `false`.
 
-Druim has no undefined value. Referencing an undeclared or uninitialized identifier must produce a diagnostic.
+Druim has no undefined value. Referencing an undeclared identifier must produce a diagnostic.
 
 ---
 
@@ -339,7 +727,7 @@ Druim blocks exist to establish lexical scope.
 A block chain uses:
 
 - `:{` to begin a block scope
-- `}{` to continue the same block scope
+- `}{` to continue the same block chain
 - `}:` to end the block scope
 
 Example:
@@ -352,16 +740,17 @@ Example:
 }:
 ```
 
-A block chain creates exactly one lexical scope.
+A block chain creates one lexical scope, but `loc` lifetimes are segment-local.
+
+A block segment is the source region between `:{` or `}{` and the next `}{` or `}:`.
 
 Blocks:
 
 - Do not evaluate to values
-- Do not create new scopes between chained segments
 - Cannot be nested
-- Exist only to control visibility and lifetime
-
-The `loc` modifier forces a supported target operation into the current lexical scope, shadowing an outer binding with the same name rather than updating it.
+- May contain statements and function definitions
+- Preserve ordinary bindings across chained segments
+- Discard segment-local targets and localized identity state when crossing `}{`
 
 ---
 
@@ -377,30 +766,58 @@ fn multiply :(left, right)(
 
 A valid function definition:
 
-- Uses the `fn` keyword
-- Uses a snake_case identifier
+- Uses `fn`
+- Uses a `snake_case` identifier
 - Contains exactly one parameter block
 - Contains exactly one body block
 - Defines parameters in function-local scope
+- May not reuse an already-visible function name
+- May not be nested inside another function
 
-Parameters may be plain identifiers or valid parameter forms with defaults.
-
-Example:
+Parameters may be plain identifiers or may include defaults using `=` without a semicolon:
 
 ```druim
-fn scale :(value, factor = 2;)(
+fn scale :(value, factor = 2)(
     ret value * factor;
 ):
 ```
 
-Function calls use parentheses and comma-separated argument expressions:
+Required and defaulted parameters may appear in any order.
+
+Function calls use parentheses and comma-separated expressions:
 
 ```druim
 scale(12)
 scale(12, 4)
 ```
 
-If a function finishes without executing `ret`, it returns `void`.
+If a function completes without `ret`, it returns `void`.
+
+### Function Scope Modifiers
+
+Valid function forms are:
+
+```druim
+fn helper :()(ret 1;):
+
+loc fn helper :()(ret 1;):
+
+glo fn helper :()(ret 1;):
+```
+
+- `fn` establishes the function in the ordinary executing scope.
+- `loc fn` gives the function binding the applicable local lifetime.
+- `glo fn` establishes the function binding globally.
+
+`stone` does not apply to function definitions because functions are already structurally non-mutable definitions.
+
+Invalid:
+
+```druim
+stone fn helper :()(ret 1;):
+stone loc fn helper :()(ret 1;):
+stone glo fn helper :()(ret 1;):
+```
 
 ---
 
@@ -417,16 +834,16 @@ A Druim loop is a structural statement with three ordered sections:
 
 The sections are:
 
-- **setup** — zero or more statements or nested loops, executed once
+- **setup** — zero or more valid statements or nested loops, executed once
 - **condition** — exactly one complete expression, evaluated before every iteration
-- **process** — zero or more statements or nested loops, executed while the condition evaluates to `true`
+- **process** — zero or more valid statements or nested loops, executed while the condition evaluates to `true`
 
 Example:
 
 ```druim
 :< index = 0;
 >?< index < 3
->?< index = index + 1;
+>?< index << index + 1;
 >:
 ```
 
@@ -440,70 +857,32 @@ A valid loop:
 - Contains exactly one complete condition expression
 - Is a statement and does not evaluate to a value
 
-A loop therefore cannot appear where an expression value is required.
+### Execution and Scope
 
-### Execution
+Each loop creates exactly one persistent lexical scope for the entire loop execution.
 
-Loop execution proceeds in this order:
+- Setup executes once.
+- The condition runs before every iteration.
+- The same loop scope remains active across iterations.
+- Loop-owned bindings disappear on exit.
+- Nested loops create persistent child scopes.
 
-1. Create one loop scope.
-2. Execute setup once.
-3. Evaluate the condition using Druim's canonical truth-conversion rules.
-4. If the condition is `false`, exit the loop.
-5. If the condition is `true`, execute the process in source order.
-6. Return to condition evaluation.
+Target-defining operators such as Define, DefineEmpty, Copy, Bind, and Guard still require a **new target name** inside loops.
 
-No process execution occurs when the first condition evaluation is false.
+To change an already-visible binding, use Mutate:
 
-### Persistent Loop Scope
+```druim
+count = 0;
 
-Each loop creates exactly one lexical scope for its entire execution.
+:<
+>?< count < 3
+>?< count << count + 1;
+>:
+```
 
-- The scope is created before setup runs.
-- The same scope remains active across all condition checks and iterations.
-- A binding created during one iteration remains visible in later iterations.
-- The loop does not create a new scope per iteration.
-- Loop-owned bindings disappear when the loop exits.
+`loc Mutate` localizes an outer identity into the loop scope instead of mutating the outer identity.
 
-For an unmodified Define, DefineEmpty, Copy, Bind, or Guard inside a loop:
-
-- The nearest visible target binding is updated when one exists.
-- Otherwise, a new target binding is created in the loop scope.
-
-For a statement modified by `loc`:
-
-- The target is forced into the loop scope.
-- An outer binding with the same name is shadowed.
-- The local binding persists across iterations.
-- The local binding disappears when the loop exits.
-
-Copy remains an independent snapshot operation, Bind remains a shared-identity operation, and Guard retains its ordered truth-selection behavior.
-
-### Nested Loops
-
-Loops may appear inside loop setup or process sections.
-
-Each nested loop:
-
-- Creates its own persistent child scope
-- Can read visible bindings from enclosing scopes
-- Updates the nearest visible target for ordinary operations
-- Removes its own loop-local bindings when it exits
-- Leaves the enclosing loop scope active
-
-### Loops in Functions
-
-Loops are valid statements inside function bodies.
-
-A `ret` executed inside a loop:
-
-- Stops the remaining loop process
-- Exits the loop
-- Propagates to the enclosing function
-- Returns the specified value from that function
-- Removes the loop scope before control returns to the caller
-
-A loop does not create its own return context. `ret` remains valid only within a function.
+A `ret` inside a loop propagates to the enclosing function after the loop scope is removed.
 
 ---
 
@@ -564,13 +943,6 @@ Box index expressions must evaluate to a non-negative `num`.
 - Negative index → diagnostic
 - Non-numeric index → diagnostic
 - Named selector against a Box → diagnostic
-
-Computed indexes are valid:
-
-```druim
-index = 1;
-value = numbers::[index];
-```
 
 ---
 
@@ -647,12 +1019,6 @@ Traversal evaluates left to right.
 
 Get may continue through retrieved container values. Has is terminal because it evaluates to a `flag`.
 
-```druim
-world::player:?name
-```
-
-Once `:?` is evaluated, traversal ends.
-
 ---
 
 ## Get and Has
@@ -661,7 +1027,7 @@ Druim uses one traversal model for both named and indexed containers.
 
 ### Get (`::`)
 
-Get retrieves a member.
+Get retrieves a member:
 
 ```druim
 container::member
@@ -670,11 +1036,9 @@ container::[index]
 
 A valid selector that does not identify an existing member evaluates to `void`.
 
-An invalid selector form or selector value produces a diagnostic.
-
 ### Has (`:?`)
 
-Has checks whether a member exists.
+Has checks whether a member exists:
 
 ```druim
 container:?member
@@ -682,8 +1046,6 @@ container:?[index]
 ```
 
 A valid selector that does not identify an existing member evaluates to `false`.
-
-An invalid selector form or selector value produces a diagnostic.
 
 ### Missing Data vs. Invalid Access
 
@@ -723,46 +1085,66 @@ Comparison operators:
 ==  !=  <  <=  >  >=
 ```
 
-Compound operators are matched before their single-character prefixes.
+Compound operators, including `<<`, are matched before their single-character prefixes.
 
 ---
 
 ## Diagnostics
 
-Druim favors early, explicit diagnostics.
+Druim favors early, explicit, source-aware diagnostics.
 
-Diagnostics are required for conditions including:
+Lexer, parser, and evaluator errors use the shared diagnostic-rendering system when the failure refers to source code.
+
+A source diagnostic identifies:
+
+- The error
+- The source line
+- The relevant span
+- A caret marker
+- Help text when applicable
+
+Example:
+
+```text
+error: unterminated text literal
+--> line 3, column 11
+ |
+3 | message = "Hello World!
+ |           ^
+help: Druim expected `"` to close this text literal.
+```
+
+Canonical lexical diagnostic categories currently include:
 
 - Unexpected characters
-- Unterminated literals
-- Invalid numeric forms
-- Incomplete statements
-- Unexpected tokens before a statement terminator
-- Chained statement operators
-- Undeclared or uninitialized identifiers
-- Invalid Box indexes
-- Selector forms unsupported by the traversed collection
-- Missing or extra loop separators
-- Missing or invalid loop conditions
-- Missing loop closing delimiters
-- Use of a loop where an expression value is required
+- Unterminated text literals
+- Unterminated text interpolation
+- Unterminated single-line comments
+- Unterminated multiline comments
 
-Druim does not silently reinterpret invalid programs as missing data.
+Parser and evaluator failures use the same rendering system.
+
+Command-line failures that occur before source compilation—such as a missing argument, invalid extension, or missing path—are reported directly because no source span exists yet.
+
+Druim does not expose raw Rust debug representations as its normal user-facing error format.
 
 ---
 
 ## Development Discipline
 
-Language changes should be made in this order:
+Language changes should be made deliberately across the affected layers.
 
-1. Update tokens and lexer rules.
-2. Update parser behavior.
-3. Update the canon.
-4. Update tests.
+Depending on the feature, that may include:
 
-When runtime behavior is affected, the evaluator must also be updated to match the canon.
+1. Tokens and lexer rules
+2. AST representation
+3. Parser behavior
+4. Evaluator/runtime behavior
+5. Canon
+6. Tests
+7. User-facing documentation
 
-The canon defines intended behavior. The implementation and tests must converge on it.
+The canon defines intended behavior. The implementation, tests, and documentation must converge on it.
 
 ---
 

@@ -22,6 +22,17 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct InterpolatedText {
+    pub parts: Vec<TextPart>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TextPart {
+    Text(String),
+    Expr(Node),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub kind: NodeKind,
     pub span: Span,
@@ -32,6 +43,7 @@ pub enum NodeKind {
     // ===== Atoms =====
     Ident(String),
     Lit(Literal),
+    InterpolatedText(InterpolatedText),
 
     // ===== Collections =====
     Box(BoxLiteral),

@@ -7,6 +7,11 @@ pub enum TokenKind {
     DecLit,   // decimal literal
     TextLit,  // quoted text
     FlagLit,  // true or false
+    
+    TextStart,
+    TextEnd,
+    InterpStart,
+    InterpEnd,
 
     // ===== Keywords (types) =====
     KwNum,

@@ -335,4 +335,65 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn lexes_interpolated_text() {
+        let tokens = Lexer::new(
+            r#""Hello, :.name.:!""#
+        )
+        .tokenize()
+        .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TextStart);
+        assert_eq!(tokens[1].kind, TextLit);
+        assert_eq!(tokens[1].lexeme, "Hello, ");
+        assert_eq!(tokens[2].kind, InterpStart);
+        assert_eq!(tokens[3].kind, Ident);
+        assert_eq!(tokens[3].lexeme, "name");
+        assert_eq!(tokens[4].kind, InterpEnd);
+        assert_eq!(tokens[5].kind, TextLit);
+        assert_eq!(tokens[5].lexeme, "!");
+        assert_eq!(tokens[6].kind, TextEnd);
+        assert_eq!(tokens[7].kind, Eof);
+    }
+
+    #[test]
+    fn lexes_interpolated_expression() {
+        let tokens = Lexer::new(
+            r#""Total: :.price + tax.:.""#
+        )
+        .tokenize()
+        .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TextStart);
+        assert_eq!(tokens[1].kind, TextLit);
+        assert_eq!(tokens[1].lexeme, "Total: ");
+        assert_eq!(tokens[2].kind, InterpStart);
+        assert_eq!(tokens[3].kind, Ident);
+        assert_eq!(tokens[3].lexeme, "price");
+        assert_eq!(tokens[4].kind, Add);
+        assert_eq!(tokens[5].kind, Ident);
+        assert_eq!(tokens[5].lexeme, "tax");
+        assert_eq!(tokens[6].kind, InterpEnd);
+        assert_eq!(tokens[7].kind, TextLit);
+        assert_eq!(tokens[7].lexeme, ".");
+        assert_eq!(tokens[8].kind, TextEnd);
+        assert_eq!(tokens[9].kind, Eof);
+    }
+
+    #[test]
+    fn ordinary_text_remains_single_text_literal() {
+        let tokens = Lexer::new(
+            r#""Version 1.2 is current.""#
+        )
+        .tokenize()
+        .expect("lexing should succeed");
+
+        assert_eq!(tokens[0].kind, TextLit);
+        assert_eq!(
+            tokens[0].lexeme,
+            "Version 1.2 is current."
+        );
+        assert_eq!(tokens[1].kind, Eof);
+    }
+
 }

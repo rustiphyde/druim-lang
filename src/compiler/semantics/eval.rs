@@ -1,4 +1,9 @@
-use crate::compiler::ast::{Node, NodeKind, Program};
+use crate::compiler::ast::{
+    Node,
+    NodeKind,
+    Program,
+    TextPart,
+};
 use crate::compiler::semantics::env::{
     Env,
     EnvError,
@@ -67,6 +72,36 @@ impl Evaluator {
         match &node.kind {
             NodeKind::Lit(lit) => {
                 Ok(Value::from_literal(lit))
+            }
+
+            NodeKind::InterpolatedText(text) => {
+                let mut result = String::new();
+
+                for part in &text.parts {
+                    match part {
+                        TextPart::Text(value) => {
+                            result.push_str(value);
+                        }
+
+                        TextPart::Expr(expr) => {
+                            let value = self.eval_value(expr)?;
+
+                            let text = value.to_text().ok_or_else(|| {
+                                Diagnostic::error(
+                                    "value cannot be interpolated as text",
+                                    expr.span,
+                                )
+                                .with_help(
+                                    "Druim text interpolation currently supports num, dec, flag, text, and void values.",
+                                )
+                            })?;
+
+                            result.push_str(&text);
+                        }
+                    }
+                }
+
+                Ok(Value::Text(result))
             }
 
             NodeKind::Box(box_literal) => {
@@ -1472,6 +1507,24 @@ impl Evaluator {
                             }
                         }
                     })?;
+
+                Ok(Control::Continue)
+            }
+
+            NodeKind::Print(print) => {
+                let value = self.eval_value(&print.value)?;
+
+                let text = value.to_text().ok_or_else(|| {
+                    Diagnostic::error(
+                        "value cannot be printed as text",
+                        print.value.span,
+                    )
+                    .with_help(
+                        "Druim Print currently supports num, dec, flag, text, and void values.",
+                    )
+                })?;
+
+                println!("{text}");
 
                 Ok(Control::Continue)
             }

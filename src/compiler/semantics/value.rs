@@ -81,4 +81,32 @@ impl Value {
             Literal::Void => Value::Void,
         }
     }
+
+    pub fn to_text(&self) -> Option<String> {
+        match self {
+            Value::Num(value) => {
+                Some(value.to_string())
+            }
+
+            Value::Dec(value) => {
+                Some(value.clone())
+            }
+
+            Value::Flag(value) => {
+                Some(value.to_string())
+            }
+
+            Value::Text(value) => {
+                Some(value.clone())
+            }
+
+            Value::Void => {
+                Some("void".to_string())
+            }
+
+            Value::Box(_)
+            | Value::Bag(_)
+            | Value::Func(_) => None,
+        }
+    }
 }
