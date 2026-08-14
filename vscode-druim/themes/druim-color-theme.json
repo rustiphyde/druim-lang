@@ -1,0 +1,384 @@
+{
+  "name": "Pumpkin Swamp",
+  "type": "dark",
+
+  "colors": {
+    "editor.background": "#1D1B16",
+    "editor.foreground": "#E6E0D2",
+
+    "editorLineNumber.foreground": "#655F50",
+    "editorLineNumber.activeForeground": "#979281",
+
+    "editorCursor.foreground": "#9ACC7D",
+
+    "editor.selectionBackground": "#BC4C0D33",
+    "editor.inactiveSelectionBackground": "#BC4C0D1F",
+
+    "editorIndentGuide.background1": "#302D24",
+    "editorIndentGuide.activeBackground1": "#594328",
+
+    "editorBracketMatch.background": "#9ACC7D22",
+    "editorBracketMatch.border": "#9ACC7D",
+
+    "editorWhitespace.foreground": "#403B30",
+
+    "activityBar.background": "#17150F",
+    "activityBar.foreground": "#D8D0BE",
+    "activityBar.inactiveForeground": "#807968",
+
+    "sideBar.background": "#1A1812",
+    "sideBar.foreground": "#CFC7B5",
+
+    "sideBarSectionHeader.background": "#211E17",
+    "sideBarSectionHeader.foreground": "#BDB5A3",
+
+    "titleBar.activeBackground": "#17150F",
+    "titleBar.activeForeground": "#D8D0BE",
+    "titleBar.inactiveBackground": "#17150F",
+    "titleBar.inactiveForeground": "#777061",
+
+    "statusBar.background": "#594328",
+    "statusBar.foreground": "#F0EADB",
+    "statusBar.noFolderBackground": "#594328",
+
+    "panel.background": "#181610",
+    "panel.border": "#342F25",
+
+    "terminal.background": "#181610",
+    "terminal.foreground": "#D8D0BE",
+
+    "input.background": "#242119",
+    "input.foreground": "#E6E0D2",
+    "input.border": "#594328",
+
+    "dropdown.background": "#242119",
+    "dropdown.foreground": "#E6E0D2",
+    "dropdown.border": "#594328",
+
+    "list.activeSelectionBackground": "#59432866",
+    "list.activeSelectionForeground": "#F0EADB",
+    "list.hoverBackground": "#30291F",
+
+    "focusBorder": "#9ACC7D",
+
+    "editorBracketHighlight.foreground1": "#9ACC7D",
+    "editorBracketHighlight.foreground2": "#BC4C0D",
+    "editorBracketHighlight.foreground3": "#C4B447",
+    "editorBracketHighlight.foreground4": "#979281",
+    "editorBracketHighlight.foreground5": "#B47A32",
+    "editorBracketHighlight.foreground6": "#778F46",
+    "editorBracketHighlight.unexpectedBracket.foreground": "#C45C49",
+
+    "editorError.foreground": "#C45C49",
+    "editorWarning.foreground": "#C98A32",
+    "editorInfo.foreground": "#9ACC7D",
+    "editorHint.foreground": "#979281"
+  },
+
+  "tokenColors": [
+    {
+      "name": "Pumpkin Swamp control keywords",
+      "scope": [
+        "keyword.control.function.druim",
+        "keyword.control.return.druim"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp scope modifiers",
+      "scope": [
+        "storage.modifier.scope.druim"
+      ],
+      "settings": {
+        "foreground": "#A9C85C",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp immutable modifier",
+      "scope": [
+        "storage.modifier.immutable.druim"
+      ],
+      "settings": {
+        "foreground": "#C4B447",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp types",
+      "scope": [
+        "storage.type.druim"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp function names",
+      "scope": [
+        "entity.name.function.druim",
+        "entity.name.function.call.druim"
+      ],
+      "settings": {
+        "foreground": "#C98A47",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp variables",
+      "scope": [
+        "variable.other.readwrite.druim",
+        "variable.other.druim"
+      ],
+      "settings": {
+        "foreground": "#DDD5C4"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp strings",
+      "scope": [
+        "string.quoted.double.druim"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp interpolation expression",
+      "scope": [
+        "source.druim.embedded variable.other.readwrite.druim",
+        "meta.embedded.inline.druim variable.other.readwrite.druim"
+      ],
+      "settings": {
+        "foreground": "#5F7F4E"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp interpolation delimiters",
+      "scope": [
+        "punctuation.section.embedded.begin.druim",
+        "punctuation.section.embedded.end.druim"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp numbers",
+      "scope": [
+        "constant.numeric.integer.druim",
+        "constant.numeric.decimal.druim"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp language constants",
+      "scope": [
+        "constant.language.boolean.druim",
+        "constant.language.void.druim"
+      ],
+      "settings": {
+        "foreground": "#B47A32",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp define operators",
+      "scope": [
+        "keyword.operator.define-empty.druim",
+        "keyword.operator.define.druim"
+      ],
+      "settings": {
+        "foreground": "#979281"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp identity operators",
+      "scope": [
+        "keyword.operator.copy.druim",
+        "keyword.operator.bind.druim"
+      ],
+      "settings": {
+        "foreground": "#B49A63"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp guard operator",
+      "scope": [
+        "keyword.operator.guard.druim"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp mutate operator",
+      "scope": [
+        "keyword.operator.mutate.druim"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp print operator",
+      "scope": [
+        "keyword.operator.print.druim"
+      ],
+      "settings": {
+        "foreground": "#A9C85C",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp traversal operators",
+      "scope": [
+        "keyword.operator.get.druim",
+        "keyword.operator.has.druim"
+      ],
+      "settings": {
+        "foreground": "#8DAA52"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp logical operators",
+      "scope": [
+        "keyword.operator.logical.druim"
+      ],
+      "settings": {
+        "foreground": "#C98A47"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp comparison operators",
+      "scope": [
+        "keyword.operator.comparison.druim"
+      ],
+      "settings": {
+        "foreground": "#B49A63"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp arithmetic operators",
+      "scope": [
+        "keyword.operator.arithmetic.druim"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp block structure",
+      "scope": [
+        "keyword.control.block.druim"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp function structure",
+      "scope": [
+        "keyword.control.function.delimiter.druim"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp loop structure",
+      "scope": [
+        "keyword.control.loop.druim"
+      ],
+      "settings": {
+        "foreground": "#C98A47",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp Box structure",
+      "scope": [
+        "punctuation.definition.collection.box.druim"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp Bag structure",
+      "scope": [
+        "punctuation.definition.collection.bag.druim"
+      ],
+      "settings": {
+        "foreground": "#8DAA52"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp punctuation",
+      "scope": [
+        "punctuation.separator.comma.druim",
+        "punctuation.terminator.statement.druim"
+      ],
+      "settings": {
+        "foreground": "#756C58"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp program boundary",
+      "scope": [
+        "keyword.control.program-boundary.druim"
+      ],
+      "settings": {
+        "foreground": "#B47A32",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
+      "name": "Pumpkin Swamp comments",
+      "scope": [
+        "comment.line.druim",
+        "comment.block.druim"
+      ],
+      "settings": {
+        "foreground": "#6F7654",
+        "fontStyle": "italic"
+      }
+    }
+  ]
+}

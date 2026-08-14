@@ -1,0 +1,53 @@
+{
+  "name": "druim-language",
+  "displayName": "Druim Language Support",
+  "description": "Language support for the Druim programming language.",
+  "version": "0.1.0",
+  "publisher": "druim",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Themes"
+  ],
+  "keywords": [
+    "druim",
+    "drm",
+    "programming language",
+    "syntax highlighting"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "druim",
+        "aliases": [
+          "Druim",
+          "druim"
+        ],
+        "extensions": [
+          ".drm"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/druim.svg",
+          "dark": "./icons/druim.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "druim",
+        "scopeName": "source.druim",
+        "path": "./syntaxes/druim.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Druim",
+        "uiTheme": "vs-dark",
+        "path": "./themes/druim-color-theme.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,396 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Druim",
+  "scopeName": "source.druim",
+
+  "patterns": [
+    {
+      "include": "#program-boundary"
+    },
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#structural-delimiters"
+    },
+    {
+      "include": "#statement-operators"
+    },
+    {
+      "include": "#traversal-operators"
+    },
+    {
+      "include": "#logical-operators"
+    },
+    {
+      "include": "#comparison-operators"
+    },
+    {
+      "include": "#arithmetic-operators"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+
+  "repository": {
+    "program-boundary": {
+      "patterns": [
+        {
+          "name": "keyword.control.program-boundary.druim",
+          "match": ":-:-:"
+        }
+      ]
+    },
+
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.druim",
+          "begin": ":--",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.begin.druim"
+            }
+          },
+          "end": "--:",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.end.druim"
+            }
+          }
+        },
+        {
+          "name": "comment.line.druim",
+          "begin": ":-",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.begin.druim"
+            }
+          },
+          "end": "-:",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.end.druim"
+            }
+          }
+        }
+      ]
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.druim",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.druim"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.druim"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#interpolation"
+            }
+          ]
+        }
+      ]
+    },
+
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "meta.embedded.inline.druim",
+          "begin": ":\\.",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.begin.druim"
+            }
+          },
+          "end": "\\.:",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.end.druim"
+            }
+          },
+          "contentName": "source.druim.embedded",
+          "patterns": [
+            {
+              "include": "#keywords"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#traversal-operators"
+            },
+            {
+              "include": "#logical-operators"
+            },
+            {
+              "include": "#comparison-operators"
+            },
+            {
+              "include": "#arithmetic-operators"
+            },
+            {
+              "include": "#function-calls"
+            },
+            {
+              "include": "#identifiers"
+            }
+          ]
+        }
+      ]
+    },
+
+    "expression": {
+      "patterns": [
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#constants"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#traversal-operators"
+        },
+        {
+          "include": "#logical-operators"
+        },
+        {
+          "include": "#comparison-operators"
+        },
+        {
+          "include": "#arithmetic-operators"
+        },
+        {
+          "include": "#function-calls"
+        },
+        {
+          "include": "#identifiers"
+        }
+      ]
+    },
+
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.readwrite.druim",
+          "match": "\\b[A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+
+    "functions": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.function.druim"
+            },
+            "2": {
+              "name": "entity.name.function.druim"
+            }
+          }
+        }
+      ]
+    },
+
+    "function-calls": {
+      "patterns": [
+        {
+          "name": "entity.name.function.call.druim",
+          "match": "\\b[A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.return.druim",
+          "match": "\\bret\\b"
+        },
+        {
+          "name": "storage.modifier.scope.druim",
+          "match": "\\b(?:loc|glo)\\b"
+        },
+        {
+          "name": "storage.modifier.immutable.druim",
+          "match": "\\bstone\\b"
+        },
+        {
+          "name": "storage.type.druim",
+          "match": "\\b(?:num|dec|text|flag)\\b"
+        },
+        {
+          "name": "constant.language.void.druim",
+          "match": "\\bvoid\\b"
+        }
+      ]
+    },
+
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.druim",
+          "match": "\\b(?:true|false)\\b"
+        }
+      ]
+    },
+
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.decimal.druim",
+          "match": "(?<![A-Za-z0-9_])\\d+\\.\\d+(?![A-Za-z0-9_])"
+        },
+        {
+          "name": "constant.numeric.integer.druim",
+          "match": "(?<![A-Za-z0-9_])\\d+(?![A-Za-z0-9_\\.])"
+        }
+      ]
+    },
+
+    "structural-delimiters": {
+      "patterns": [
+        {
+          "name": "keyword.control.block.druim",
+          "match": ":\\{|\\}\\{|\\}:"
+        },
+        {
+          "name": "keyword.control.function.delimiter.druim",
+          "match": ":\\(|\\)\\(|\\):"
+        },
+        {
+          "name": "keyword.control.loop.druim",
+          "match": ":<|>\\?<|>:"
+        },
+        {
+          "name": "punctuation.definition.collection.box.druim",
+          "match": ":\\[|\\]:"
+        },
+        {
+          "name": "punctuation.definition.collection.bag.druim",
+          "match": ":\\||\\|:"
+        },
+        {
+          "name": "punctuation.separator.comma.druim",
+          "match": ","
+        },
+        {
+          "name": "punctuation.terminator.statement.druim",
+          "match": ";"
+        }
+      ]
+    },
+
+    "statement-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.define-empty.druim",
+          "match": "=;"
+        },
+        {
+          "name": "keyword.operator.copy.druim",
+          "match": ":="
+        },
+        {
+          "name": "keyword.operator.bind.druim",
+          "match": ":>"
+        },
+        {
+          "name": "keyword.operator.guard.druim",
+          "match": "\\?="
+        },
+        {
+          "name": "keyword.operator.mutate.druim",
+          "match": "<<"
+        },
+        {
+          "name": "keyword.operator.print.druim",
+          "match": "\\|>"
+        },
+        {
+          "name": "keyword.operator.define.druim",
+          "match": "="
+        }
+      ]
+    },
+
+    "traversal-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.get.druim",
+          "match": "::"
+        },
+        {
+          "name": "keyword.operator.has.druim",
+          "match": ":\\?"
+        }
+      ]
+    },
+
+    "logical-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.logical.druim",
+          "match": "&&|\\|\\||!"
+        }
+      ]
+    },
+
+    "comparison-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.druim",
+          "match": "==|!=|<=|>=|<|>"
+        }
+      ]
+    },
+
+    "arithmetic-operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.druim",
+          "match": "[+\\-*/%]"
+        }
+      ]
+    }
+  }
+}
