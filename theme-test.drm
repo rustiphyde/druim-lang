@@ -1,0 +1,70 @@
+:-:-:
+
+:- Pumpkin Swamp syntax theme specimen -:
+
+:--
+    Comments should be subdued but readable.
+    This tests the multiline comment styling.
+--:
+
+:{
+    ordinary = 42;
+    decimal_value = 12.75;
+    empty_value =;
+
+    stone fixed_value = 100;
+    loc local_value = 7;
+    glo global_value = 24;
+
+    copied := ordinary;
+    alias :> ordinary;
+
+    guarded ?= true : false;
+
+    ordinary << ordinary + 1;
+
+    truth = true;
+    falsehood = false;
+    absence = void;
+
+    arithmetic = 10 + 5 * 2 - 4 / 2 % 2;
+    comparison = ordinary >= 10 && ordinary != 50;
+    inverse = !false;
+
+    values = :[1, 2, 3, 4]:;
+
+    person = :|
+        name: "Rusty",
+        level: 42,
+        active: true
+    |:;
+
+    first_value = values::0;
+    has_name = person:?name;
+
+    greeting = "Hello :.person::name.:!";
+    calculation = "Total: :.ordinary + decimal_value.:";
+
+    |> ("Pumpkin Swamp");
+    |> ("Count: :.ordinary.:");
+
+}{
+    loc segment_value = 8;
+
+    fn calculate :(value, multiplier = 2)(
+        result = value * multiplier;
+        ret result;
+    ):
+
+    answer = calculate(12, 3);
+
+    :<
+        index = 0;
+    >?<
+        index < 4
+    >?<
+        index << index + 1;
+    >:
+}:
+
+:-:-:

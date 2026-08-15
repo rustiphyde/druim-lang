@@ -18,7 +18,7 @@
     "editorIndentGuide.activeBackground1": "#594328",
 
     "editorBracketMatch.background": "#9ACC7D22",
-    "editorBracketMatch.border": "#9ACC7D",
+    "editorBracketMatch.border": "#9ACC7D22",
 
     "editorWhitespace.foreground": "#403B30",
 
@@ -72,7 +72,9 @@
     "editorError.foreground": "#C45C49",
     "editorWarning.foreground": "#C98A32",
     "editorInfo.foreground": "#9ACC7D",
-    "editorHint.foreground": "#979281"
+    "editorHint.foreground": "#979281",
+
+    "editorLink.activeForeground": "#FF7A00"
   },
 
   "tokenColors": [

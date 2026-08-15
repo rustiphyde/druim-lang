@@ -4,6 +4,10 @@
   "description": "Language support for the Druim programming language.",
   "version": "0.1.0",
   "publisher": "druim",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:druim"
+  ],
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -47,6 +51,25 @@
         "label": "Druim",
         "uiTheme": "vs-dark",
         "path": "./themes/druim-color-theme.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "druim.toggleLineComment",
+        "title": "Druim: Toggle Line Comment"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "druim.toggleLineComment",
+        "key": "ctrl+/",
+        "when": "editorTextFocus && editorLangId == druim"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "druim",
+        "path": "./snippets/druim.json"
       }
     ]
   }
