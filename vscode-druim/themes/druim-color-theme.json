@@ -1,6 +1,65 @@
 {
   "name": "Pumpkin Swamp",
   "type": "dark",
+  "semanticHighlighting": true,
+
+  "semanticTokenColors": {
+    "namespace": "#B49A63",
+    "type": "#9ACC7D",
+    "typeParameter": "#A9C85C",
+
+    "class": {
+      "foreground": "#9ACC7D",
+      "bold": true
+    },
+
+    "enum": "#9ACC7D",
+    "interface": "#8DAA52",
+    "struct": "#9ACC7D",
+
+    "parameter": "#B49A63",
+    "variable": "#DDD5C4",
+
+    "property": "#C98A47",
+    "enumMember": "#B47A32",
+
+    "function": {
+      "foreground": "#C98A47",
+      "bold": true
+    },
+
+    "method": "#C98A47",
+
+    "macro": "#D3550D",
+
+    "keyword": {
+      "foreground": "#BC4C0D",
+      "bold": true
+    },
+
+    "comment": {
+      "foreground": "#6F7654",
+      "italic": true
+    },
+
+    "string": "#9ACC7D",
+    "number": "#C4B447",
+    "regexp": "#8DAA52",
+    "operator": "#C4B447",
+
+    "variable.readonly": "#C4B447",
+    "property.readonly": "#C4B447",
+
+    "*.declaration": {
+      "bold": true
+    },
+
+    "*.deprecated": {
+      "strikethrough": true
+    },
+
+    "*.defaultLibrary": "#A9C85C"
+  },
 
   "colors": {
     "editor.background": "#1D1B16",
