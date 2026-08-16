@@ -39,8 +39,9 @@
         active: true
     |:;
 
-    first_value = values::0;
+    first_value = values::[0];
     has_name = person:?name;
+    new_text = "Druim"::[0];
 
     greeting = "Hello :.person::name.:!";
     calculation = "Total: :.ordinary + decimal_value.:";
@@ -55,6 +56,8 @@
         result = value * multiplier;
         ret result;
     ):
+
+    
 
     answer = calculate(12, 3);
 

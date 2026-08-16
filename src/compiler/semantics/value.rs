@@ -40,6 +40,11 @@ pub enum Value {
     /// Each entry name is unique within the Bag.
     Bag(HashMap<String, Value>),
 
+    /// Druim Core function value.
+    ///
+    /// Core functions are callable operations supplied directly by Druim.
+    Core(Core),
+
     /// User-defined function value.
     ///
     /// Represents a callable function introduced by a `fn` block.
@@ -66,6 +71,28 @@ pub struct Func {
     pub body: Vec<Node>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Core {
+    Rise,
+    Fall,
+    Cut,
+    Size,
+    Fuse,
+    Cap
+}
+
+impl Core {
+    pub fn name(self) -> &'static str {
+        match self {
+            Core::Rise => "rise",
+            Core::Fall => "fall",
+            Core::Cut => "cut",
+            Core::Size => "size",
+            Core::Fuse => "fuse",
+            Core::Cap => "cap"
+        }
+    }
+}
 
 impl Value {
     /// Construct a runtime value from a literal.
@@ -106,6 +133,7 @@ impl Value {
 
             Value::Box(_)
             | Value::Bag(_)
+            | Value::Core(_)
             | Value::Func(_) => None,
         }
     }

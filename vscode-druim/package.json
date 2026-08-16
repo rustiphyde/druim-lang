@@ -1,9 +1,14 @@
 {
-  "name": "druim-language",
-  "displayName": "Druim Language Support",
+  "name": "druim-language-support",
+  "displayName": "Official Druim Language Extension",
   "description": "Language support for the Druim programming language.",
-  "version": "0.1.0",
-  "publisher": "druim",
+  "icon": "icons/druim.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rustiphyde/druim-lang.git"
+  },
+  "version": "0.1.1",
+  "publisher": "druimlang",
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:druim"

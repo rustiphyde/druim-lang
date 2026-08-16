@@ -59,7 +59,7 @@ pub fn truth_of(value: &Value) -> Truth {
             }
         }
 
-        Value::Func(_) => {
+        Value::Core(_) | Value::Func(_) => {
             panic!("Functions cannot be evaluated as a flag in Druim.");
         }
 

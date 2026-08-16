@@ -1,4 +1,5 @@
 const vscode = require("vscode");
+const druimLanguage = require("./druim-language");
 
 function getDruimScopeAt(document, offset) {
     const source = document.getText();
@@ -631,6 +632,14 @@ function buildDruimSymbolIndex(document) {
 function activate(context) {
     let applyingDruimEdit = false;
 
+    const blockStructure = druimLanguage.structures.block;
+    const loopStructure = druimLanguage.structures.loop;
+    const boxStructure = druimLanguage.structures.box;
+    const bagStructure = druimLanguage.structures.bag;
+    const functionStructure = druimLanguage.structures.function;
+    const lineCommentStructure = druimLanguage.structures.lineComment;
+    const multilineCommentStructure = druimLanguage.structures.multilineComment;
+
     const listener = vscode.workspace.onDidChangeTextDocument(async (event) => {
         if (applyingDruimEdit) {
             return;
@@ -651,6 +660,401 @@ function activate(context) {
         }
 
         const change = event.contentChanges[0];
+
+        // ==================================================
+        // COLLECTION DEMOTION
+        // ==================================================
+        //
+        // If Backspace removes the opener from an empty
+        // auto-closed Box or Bag:
+        //
+        // :[|]:  ->  :|
+        // :||:   ->  :|
+        //
+        // also remove the generated closing delimiter.
+        // ==================================================
+
+        /*
+        * VS Code treats [] as an auto-closing pair.
+        *
+        * Backspace inside:
+        *
+        * :[|]:
+        *
+        * removes both "[" and "]" itself, temporarily leaving:
+        *
+        * ::
+        *
+        * Remove the second ":" so the structure fully demotes to:
+        *
+        * :
+        */
+        if (change.rangeLength === 2) {
+            const position = change.range.start;
+            const line = event.document.lineAt(position.line);
+            const lineText = line.text;
+
+            if (
+                position.character > 0 &&
+                lineText[position.character - 1] === ":" &&
+                lineText[position.character] === ":"
+            ) {
+                const generatedColonRange = new vscode.Range(
+                    position.line,
+                    position.character,
+                    position.line,
+                    position.character + 1
+                );
+
+                applyingDruimEdit = true;
+
+                try {
+                    const applied = await editor.edit(
+                        (editBuilder) => {
+                            editBuilder.delete(
+                                generatedColonRange
+                            );
+                        },
+                        {
+                            undoStopBefore: false,
+                            undoStopAfter: false
+                        }
+                    );
+
+                    if (!applied) {
+                        return;
+                    }
+
+                    const cursor = new vscode.Position(
+                        position.line,
+                        position.character
+                    );
+
+                    editor.selection = new vscode.Selection(
+                        cursor,
+                        cursor
+                    );
+
+                    return;
+                } finally {
+                    applyingDruimEdit = false;
+                }
+            }
+        }
+
+        if (change.rangeLength === 1) {
+            const position = change.range.start;
+            const line = event.document.lineAt(position.line);
+            const lineText = line.text;
+
+            if (position.character > 0) {
+                const beforePosition =
+                    lineText[position.character - 1];
+
+                let close = null;
+
+                if (
+                    beforePosition === ":" &&
+                    lineText.startsWith(
+                        boxStructure.close,
+                        position.character
+                    )
+                ) {
+                    close = boxStructure.close;
+                } else if (
+                    beforePosition === ":" &&
+                    lineText.startsWith(
+                        bagStructure.close,
+                        position.character
+                    )
+                ) {
+                    close = bagStructure.close;
+                }
+
+                if (close) {
+                    const closeRange = new vscode.Range(
+                        position.line,
+                        position.character,
+                        position.line,
+                        position.character + close.length
+                    );
+
+                    applyingDruimEdit = true;
+
+                    try {
+                        const applied = await editor.edit(
+                            (editBuilder) => {
+                                editBuilder.delete(closeRange);
+                            },
+                            {
+                                undoStopBefore: false,
+                                undoStopAfter: false
+                            }
+                        );
+
+                        if (!applied) {
+                            return;
+                        }
+
+                        const cursor = new vscode.Position(
+                            position.line,
+                            position.character
+                        );
+
+                        editor.selection = new vscode.Selection(
+                            cursor,
+                            cursor
+                        );
+
+                        return;
+                    } finally {
+                        applyingDruimEdit = false;
+                    }
+                }
+            }
+        }
+
+        // ==================================================
+        // FUNCTION DEMOTION
+        // ==================================================
+        //
+        // Backspace from an untouched empty parameter pair:
+        //
+        // fn example :(|)(
+        //     
+        // ):
+        //
+        // VS Code removes the paired "()", temporarily leaving:
+        //
+        // fn example :(
+        //     
+        // ):
+        //
+        // Remove the remaining generated function body so the
+        // declaration returns to:
+        //
+        // fn example :
+        // ==================================================
+
+        if (
+            change.text === "" &&
+            change.rangeLength === 2
+        ) {
+            const position = change.range.start;
+            const lineNumber = position.line;
+
+            if (
+                position.character > 0 &&
+                lineNumber + 2 < event.document.lineCount
+            ) {
+                const openerLine =
+                    event.document.lineAt(lineNumber);
+
+                const bodyLine =
+                    event.document.lineAt(lineNumber + 1);
+
+                const closeLine =
+                    event.document.lineAt(lineNumber + 2);
+
+                const lineText = openerLine.text;
+
+                const isEmptyGeneratedFunction =
+                    lineText[position.character - 1] === ":" &&
+                    lineText.slice(position.character) === "(" &&
+                    bodyLine.text.trim() === "" &&
+                    closeLine.text.trim() ===
+                        functionStructure.close;
+
+                if (isEmptyGeneratedFunction) {
+                    const generatedRange =
+                        new vscode.Range(
+                            lineNumber,
+                            position.character,
+                            lineNumber + 2,
+                            closeLine.text.length
+                        );
+
+                    applyingDruimEdit = true;
+
+                    try {
+                        const applied = await editor.edit(
+                            (editBuilder) => {
+                                editBuilder.delete(
+                                    generatedRange
+                                );
+                            },
+                            {
+                                undoStopBefore: false,
+                                undoStopAfter: false
+                            }
+                        );
+
+                        if (!applied) {
+                            return;
+                        }
+
+                        const cursor =
+                            new vscode.Position(
+                                lineNumber,
+                                position.character
+                            );
+
+                        editor.selection =
+                            new vscode.Selection(
+                                cursor,
+                                cursor
+                            );
+
+                        return;
+                    } finally {
+                        applyingDruimEdit = false;
+                    }
+                }
+            }
+        }
+
+        // ==================================================
+        // LOOP DEMOTION
+        // ==================================================
+        //
+        // Backspace from the untouched first setup line:
+        //
+        // :<
+        //     |
+        // >?<
+        //
+        // >?<
+        //
+        // >:
+        //
+        // removes the generated loop and leaves the colon that
+        // originally introduced it.
+        //
+        // Detection is structural, so indentation depth does not
+        // matter.
+        // ==================================================
+
+        if (
+            change.text === "" &&
+            change.rangeLength === 1
+        ) {
+            const setupLineNumber =
+                change.range.start.line;
+
+            if (
+                setupLineNumber > 0 &&
+                setupLineNumber + 5 <
+                    event.document.lineCount
+            ) {
+                const openerLineNumber =
+                    setupLineNumber - 1;
+
+                const openerLine =
+                    event.document.lineAt(
+                        openerLineNumber
+                    );
+
+                const setupLine =
+                    event.document.lineAt(
+                        setupLineNumber
+                    );
+
+                const firstSeparatorLine =
+                    event.document.lineAt(
+                        setupLineNumber + 1
+                    );
+
+                const conditionLine =
+                    event.document.lineAt(
+                        setupLineNumber + 2
+                    );
+
+                const secondSeparatorLine =
+                    event.document.lineAt(
+                        setupLineNumber + 3
+                    );
+
+                const processLine =
+                    event.document.lineAt(
+                        setupLineNumber + 4
+                    );
+
+                const closeLine =
+                    event.document.lineAt(
+                        setupLineNumber + 5
+                    );
+
+                const openerText =
+                    openerLine.text.trimEnd();
+
+                const isEmptyGeneratedLoop =
+                    openerText.endsWith(
+                        loopStructure.open
+                    ) &&
+                    setupLine.text.trim() === "" &&
+                    firstSeparatorLine.text.trim() ===
+                        loopStructure.separators[0] &&
+                    conditionLine.text.trim() === "" &&
+                    secondSeparatorLine.text.trim() ===
+                        loopStructure.separators[1] &&
+                    processLine.text.trim() === "" &&
+                    closeLine.text.trim() ===
+                        loopStructure.close;
+
+                if (isEmptyGeneratedLoop) {
+                    /*
+                    * Leave the ":" and remove everything
+                    * beginning with "<".
+                    */
+                    const lessThanCharacter =
+                        openerText.length - 1;
+
+                    const generatedRange =
+                        new vscode.Range(
+                            openerLineNumber,
+                            lessThanCharacter,
+                            setupLineNumber + 5,
+                            closeLine.text.length
+                        );
+
+                    applyingDruimEdit = true;
+
+                    try {
+                        const applied = await editor.edit(
+                            (editBuilder) => {
+                                editBuilder.delete(
+                                    generatedRange
+                                );
+                            },
+                            {
+                                undoStopBefore: false,
+                                undoStopAfter: false
+                            }
+                        );
+
+                        if (!applied) {
+                            return;
+                        }
+
+                        const cursor =
+                            new vscode.Position(
+                                openerLineNumber,
+                                lessThanCharacter
+                            );
+
+                        editor.selection =
+                            new vscode.Selection(
+                                cursor,
+                                cursor
+                            );
+
+                        return;
+                    } finally {
+                        applyingDruimEdit = false;
+                    }
+                }
+            }
+        }
 
         // ==================================================
         // COMMENT DEMOTION
@@ -679,9 +1083,9 @@ function activate(context) {
                 const nextLine = event.document.lineAt(lineNumber + 1);
 
                 const isEmptyMultilineComment =
-                    previousLine.text.trim() === ":--" &&
+                    previousLine.text.trim() === multilineCommentStructure.open &&
                     currentLine.text.trim() === "" &&
-                    nextLine.text.trim() === "--:";
+                    nextLine.text.trim() === multilineCommentStructure.close;
 
                 if (isEmptyMultilineComment) {
                     const indentMatch = previousLine.text.match(/^\s*/);
@@ -701,7 +1105,7 @@ function activate(context) {
                             (editBuilder) => {
                                 editBuilder.replace(
                                     replaceRange,
-                                    `${indent}:-  -:`
+                                    `${indent}${lineCommentStructure.open}  ${lineCommentStructure.close}`
                                 );
                             },
                             {
@@ -773,7 +1177,7 @@ function activate(context) {
             // ----------------------------------------------
 
             if (
-                beforeCaret.endsWith(":--") &&
+                beforeCaret.endsWith(multilineCommentStructure.open) &&
                 afterCaret.startsWith("  -:")
             ) {
                 const indentMatch = lineText.match(/^\s*/);
@@ -799,7 +1203,7 @@ function activate(context) {
                                     suffixStart,
                                     suffixEnd
                                 ),
-                                `\n${indent}\t\n${indent}--:`
+                                `\n${indent}\t\n${indent}${multilineCommentStructure.close}`
                             );
                         },
                         {
@@ -841,8 +1245,8 @@ function activate(context) {
             // ----------------------------------------------
 
             if (
-                beforeCaret.endsWith(":-") &&
-                !beforeCaret.endsWith(":--")
+                beforeCaret.endsWith(lineCommentStructure.open) &&
+                !beforeCaret.endsWith(multilineCommentStructure.open)
             ) {
                 const insertPosition = new vscode.Position(
                     position.line,
@@ -856,7 +1260,7 @@ function activate(context) {
                         (editBuilder) => {
                             editBuilder.insert(
                                 insertPosition,
-                                "  -:"
+                                `  ${lineCommentStructure.close}`
                             );
                         },
                         {
@@ -915,7 +1319,8 @@ function activate(context) {
             // BLOCK CONTINUATION: }{
             // --------------------------------------------------
 
-            const delimiterStart = beforeCaret.lastIndexOf("}{");
+            const delimiterStart =
+                beforeCaret.lastIndexOf(blockStructure.continuation);
 
             if (delimiterStart !== -1) {
                 const beforeDelimiter = lineText.slice(
@@ -956,7 +1361,7 @@ function activate(context) {
                     */
                     if (beforeDelimiter.trim() !== "") {
                         replacement =
-                            `\n}{\n\t`;
+                            `${blockStructure.continuation}\n\t`;
                     } else {
                         /*
                         * If the line contains only indentation
@@ -974,7 +1379,7 @@ function activate(context) {
                             (editBuilder) => {
                                 editBuilder.replace(
                                     wholePrefixRange,
-                                    `}{\n\t`
+                                    `${blockStructure.continuation}\n\t`
                                 );
                             },
                             {
@@ -1068,7 +1473,7 @@ function activate(context) {
                     (editBuilder) => {
                         editBuilder.insert(
                             insertPosition,
-                            "\n\t\n}:"
+                            `\n\t\n${blockStructure.close}`
                         );
                     },
                     {
@@ -1154,6 +1559,9 @@ function activate(context) {
 
             const innerIndent = `${indent}\t`;
 
+            const firstSeparator = loopStructure.separators[0];
+            const secondSeparator = loopStructure.separators[1];
+
             applyingDruimEdit = true;
 
             try {
@@ -1161,7 +1569,12 @@ function activate(context) {
                     (editBuilder) => {
                         editBuilder.insert(
                             insertPosition,
-                            `\n${innerIndent}\n${indent}>?<\n${innerIndent}\n${indent}>?<\n${innerIndent}\n${indent}>:`
+                            `\n${innerIndent}\n` +
+                            `${indent}${firstSeparator}\n` +
+                            `${innerIndent}\n` +
+                            `${indent}${secondSeparator}\n` +
+                            `${innerIndent}\n` +
+                            `${indent}${loopStructure.close}`
                         );
                     },
                     {
@@ -1182,6 +1595,114 @@ function activate(context) {
                 editor.selection = new vscode.Selection(
                     setupPosition,
                     setupPosition
+                );
+
+                return;
+            } finally {
+                applyingDruimEdit = false;
+            }
+        }
+
+        // ==================================================
+        // COLLECTION ENTER EXPANSION
+        // ==================================================
+        //
+        // Empty Box and Bag structures remain inline:
+        //
+        // :[]:
+        // :||:
+        //
+        // Pressing Enter while the cursor is between the
+        // delimiters expands them into multiline form.
+        // ==================================================
+
+        if (change.text.includes("\n")) {
+            const start = change.range.start;
+
+            const newlineCount =
+                (change.text.match(/\n/g) || []).length;
+
+            if (newlineCount !== 1) {
+                return;
+            }
+
+            const openerLineNumber = start.line;
+            const closerLineNumber = start.line + 1;
+
+            if (
+                closerLineNumber >= event.document.lineCount
+            ) {
+                return;
+            }
+
+            const openerLine =
+                event.document.lineAt(openerLineNumber);
+
+            const closerLine =
+                event.document.lineAt(closerLineNumber);
+
+            const openerText = openerLine.text.trimEnd();
+            const closerText = closerLine.text.trim();
+
+            let structure = null;
+
+            if (
+                openerText.endsWith(boxStructure.open) &&
+                closerText === boxStructure.close
+            ) {
+                structure = boxStructure;
+            } else if (
+                openerText.endsWith(bagStructure.open) &&
+                closerText === bagStructure.close
+            ) {
+                structure = bagStructure;
+            }
+
+            if (!structure) {
+                return;
+            }
+
+            const indent =
+                openerLine.text.match(/^\s*/)?.[0] ?? "";
+
+            const innerIndent = `${indent}\t`;
+
+            const closerRange = new vscode.Range(
+                closerLineNumber,
+                0,
+                closerLineNumber,
+                closerLine.text.length
+            );
+
+            applyingDruimEdit = true;
+
+            try {
+                const applied = await editor.edit(
+                    (editBuilder) => {
+                        editBuilder.replace(
+                            closerRange,
+                            `${innerIndent}\n` +
+                            `${indent}${structure.close}`
+                        );
+                    },
+                    {
+                        undoStopBefore: false,
+                        undoStopAfter: false
+                    }
+                );
+
+                if (!applied) {
+                    return;
+                }
+
+                const cursor = new vscode.Position(
+                    closerLineNumber,
+                    innerIndent.length
+                );
+
+                editor.selection = new vscode.Selection(
+                    cursor,
+                    cursor
                 );
 
                 return;
@@ -1213,74 +1734,109 @@ function activate(context) {
         // ]:
         // ==================================================
 
-        if (change.text === "[]") {
+        if (
+            change.text === "[]" ||
+            change.text === "["
+        ) {
             const start = change.range.start;
 
             if (start.character === 0) {
                 return;
             }
 
-            const colonPosition = new vscode.Position(
-                start.line,
-                start.character - 1
-            );
+            const line =
+                event.document.lineAt(start.line);
 
-            const colonRange = new vscode.Range(
-                colonPosition,
-                start
-            );
+            const lineText = line.text;
 
-            // Only treat [] as a Box when the "[" is preceded by ":".
-            if (event.document.getText(colonRange) !== ":") {
+            /*
+            * The typed "[" must actually form ":["
+            * with the preceding character.
+            */
+            if (
+                lineText.slice(
+                    start.character - 1,
+                    start.character + 1
+                ) !== ":["
+            ) {
                 return;
             }
 
-            const line = event.document.lineAt(start.line);
+            /*
+            * "::[" is Get with an indexed selector,
+            * not a Box opener.
+            */
+            if (
+                start.character >= 2 &&
+                lineText.slice(
+                    start.character - 2,
+                    start.character + 1
+                ) === "::["
+            ) {
+                return;
+            }
 
-            const indentMatch = line.text.match(/^\s*/);
-            const indent = indentMatch ? indentMatch[0] : "";
-            const innerIndent = `${indent}\t`;
-
-            // Current temporary state:
-            //
-            // :[|]
-            //
-            // Replace only the auto-generated "]".
-            const generatedCloseRange = new vscode.Range(
+            const closePosition = new vscode.Position(
                 start.line,
-                start.character + 1,
-                start.line,
-                start.character + 2
+                start.character + 1
             );
 
             applyingDruimEdit = true;
 
             try {
-                const applied = await editor.edit(
-                    (editBuilder) => {
-                        editBuilder.replace(
-                            generatedCloseRange,
-                            `\n${innerIndent}\n${indent}]:`
+                let applied;
+
+                /*
+                * VS Code may already have generated "]".
+                *
+                * If so, replace it with Druim's "]:".
+                * Otherwise insert the complete closer.
+                */
+                if (
+                    lineText[start.character + 1] === "]"
+                ) {
+                    const generatedCloseRange =
+                        new vscode.Range(
+                            start.line,
+                            start.character + 1,
+                            start.line,
+                            start.character + 2
                         );
-                    },
-                    {
-                        undoStopBefore: false,
-                        undoStopAfter: false
-                    }
-                );
+
+                    applied = await editor.edit(
+                        (editBuilder) => {
+                            editBuilder.replace(
+                                generatedCloseRange,
+                                boxStructure.close
+                            );
+                        },
+                        {
+                            undoStopBefore: false,
+                            undoStopAfter: false
+                        }
+                    );
+                } else {
+                    applied = await editor.edit(
+                        (editBuilder) => {
+                            editBuilder.insert(
+                                closePosition,
+                                boxStructure.close
+                            );
+                        },
+                        {
+                            undoStopBefore: false,
+                            undoStopAfter: false
+                        }
+                    );
+                }
 
                 if (!applied) {
                     return;
                 }
 
-                const cursor = new vscode.Position(
-                    start.line + 1,
-                    innerIndent.length
-                );
-
                 editor.selection = new vscode.Selection(
-                    cursor,
-                    cursor
+                    closePosition,
+                    closePosition
                 );
 
                 return;
@@ -1314,12 +1870,6 @@ function activate(context) {
                 return;
             }
 
-            const line = event.document.lineAt(position.line);
-
-            const indentMatch = line.text.match(/^\s*/);
-            const indent = indentMatch ? indentMatch[0] : "";
-            const innerIndent = `${indent}\t`;
-
             const insertPosition = new vscode.Position(
                 position.line,
                 position.character + 1
@@ -1332,7 +1882,7 @@ function activate(context) {
                     (editBuilder) => {
                         editBuilder.insert(
                             insertPosition,
-                            `\n${innerIndent}\n${indent}|:`
+                            bagStructure.close
                         );
                     },
                     {
@@ -1345,14 +1895,9 @@ function activate(context) {
                     return;
                 }
 
-                const cursor = new vscode.Position(
-                    position.line + 1,
-                    innerIndent.length
-                );
-
                 editor.selection = new vscode.Selection(
-                    cursor,
-                    cursor
+                    insertPosition,
+                    insertPosition
                 );
 
                 return;
@@ -1415,6 +1960,10 @@ function activate(context) {
                 generatedCloseEnd
             );
 
+            const lineText = event.document.lineAt(start.line).text;
+            const indent = lineText.match(/^\s*/)?.[0] ?? "";
+            const innerIndent = `${indent}\t`;
+
             applyingDruimEdit = true;
 
             try {
@@ -1422,7 +1971,9 @@ function activate(context) {
                     (editBuilder) => {
                         editBuilder.replace(
                             generatedCloseRange,
-                            ")(\n\t\n):"
+                            `${functionStructure.separator}\n` +
+                            `${innerIndent}\n` +
+                            `${indent}${functionStructure.close}`
                         );
                     },
                     {
@@ -1784,160 +2335,71 @@ function activate(context) {
             provideCompletionItems() {
                 const items = [];
 
-                function keyword(label, detail, documentation) {
+                for (const entry of druimLanguage.completionKeywords) {
                     const item = new vscode.CompletionItem(
-                        label,
+                        entry.token,
                         vscode.CompletionItemKind.Keyword
                     );
 
-                    item.detail = detail;
-                    item.documentation = new vscode.MarkdownString(documentation);
+                    item.detail = entry.name;
+                    item.documentation = new vscode.MarkdownString(
+                        entry.description
+                    );
 
                     items.push(item);
                 }
 
-                function operator(label, insertText, detail, documentation) {
+                for (const entry of druimLanguage.literalList) {
+                    // void is already included through the type list.
+                    if (entry.token === "void") {
+                        continue;
+                    }
+
                     const item = new vscode.CompletionItem(
-                        label,
+                        entry.token,
+                        vscode.CompletionItemKind.Value
+                    );
+
+                    item.detail = entry.name;
+                    item.documentation = new vscode.MarkdownString(
+                        entry.description
+                    );
+
+                    items.push(item);
+                }
+
+                for (const entry of druimLanguage.coreFunctionList) {
+                    const item = new vscode.CompletionItem(
+                        entry.token,
+                        vscode.CompletionItemKind.Function
+                    );
+
+                    item.detail = entry.signature;
+                    item.documentation = new vscode.MarkdownString(
+                        entry.description
+                    );
+
+                    item.insertText = new vscode.SnippetString(
+                        `${entry.token}($1);`
+                    );
+
+                    items.push(item);
+                }
+
+                for (const entry of druimLanguage.completionOperators) {
+                    const item = new vscode.CompletionItem(
+                        `${entry.name}  ${entry.token}`,
                         vscode.CompletionItemKind.Operator
                     );
 
-                    item.insertText = insertText;
-                    item.detail = detail;
-                    item.documentation = new vscode.MarkdownString(documentation);
+                    item.insertText = entry.token;
+                    item.detail = entry.name;
+                    item.documentation = new vscode.MarkdownString(
+                        entry.description
+                    );
 
                     items.push(item);
                 }
-
-                // --------------------------------------------------
-                // Keywords
-                // --------------------------------------------------
-
-                keyword(
-                    "fn",
-                    "Druim function declaration",
-                    "Declares a Druim function."
-                );
-
-                keyword(
-                    "ret",
-                    "Druim return statement",
-                    "Returns a value from the current function."
-                );
-
-                // --------------------------------------------------
-                // Scope / identity modifiers
-                // --------------------------------------------------
-
-                keyword(
-                    "loc",
-                    "Local scope modifier",
-                    "Applies local lifetime/scope behavior."
-                );
-
-                keyword(
-                    "glo",
-                    "Global scope modifier",
-                    "Targets global scope."
-                );
-
-                keyword(
-                    "stone",
-                    "Immutable identity modifier",
-                    "Makes the resulting binding identity immutable."
-                );
-
-                // --------------------------------------------------
-                // Types / literals
-                // --------------------------------------------------
-
-                keyword(
-                    "num",
-                    "Druim number type",
-                    "Integer numeric type."
-                );
-
-                keyword(
-                    "dec",
-                    "Druim decimal type",
-                    "Decimal numeric type."
-                );
-
-                keyword(
-                    "flag",
-                    "Druim flag type",
-                    "Boolean flag type."
-                );
-
-                keyword(
-                    "text",
-                    "Druim text type",
-                    "Text value type."
-                );
-
-                keyword(
-                    "void",
-                    "Druim void value",
-                    "Represents the absence of a value."
-                );
-
-                keyword(
-                    "true",
-                    "Druim flag literal",
-                    "`true` flag value."
-                );
-
-                keyword(
-                    "false",
-                    "Druim flag literal",
-                    "`false` flag value."
-                );
-
-                // --------------------------------------------------
-                // Statement operators
-                // --------------------------------------------------
-
-                operator(
-                    "Define  =",
-                    "=",
-                    "Define",
-                    "Defines a new binding. `=` is definition-only; it does not mutate an existing binding."
-                );
-
-                operator(
-                    "Mutate  <<",
-                    "<<",
-                    "Mutate",
-                    "Mutates an existing binding."
-                );
-
-                operator(
-                    "Bind  :>",
-                    ":>",
-                    "Bind",
-                    "Creates a binding that shares identity with its source."
-                );
-
-                operator(
-                    "Copy  :=",
-                    ":=",
-                    "Copy",
-                    "Creates a fresh identity containing a copied value."
-                );
-
-                operator(
-                    "Guard  ?=",
-                    "?=",
-                    "Guard",
-                    "Druim guard operator."
-                );
-
-                operator(
-                    "Print  |>",
-                    "|>",
-                    "Print",
-                    "Prints one expression using `|> (expression);`."
-                );
 
                 return items;
             }
@@ -1948,146 +2410,237 @@ function activate(context) {
         { language: "druim" },
         {
             provideHover(document, position) {
-                const range = document.getWordRangeAtPosition(
-                    position,
-                    /(?:stone|loc|glo|fn|ret|num|dec|flag|text|void|true|false|<<|:>|:=|\?=|\|>|=)/
-                );
+                const line = document.lineAt(position.line).text;
 
-                if (!range) {
-                    return;
+                const tokens = [
+                    ...druimLanguage.structureByToken.keys(),
+                    ...druimLanguage.operatorByToken.keys(),
+                    ...druimLanguage.keywordByToken.keys(),
+                    ...druimLanguage.typeByToken.keys(),
+                    ...druimLanguage.literalByToken.keys(),
+                    ...druimLanguage.coreFunctionByToken.keys()
+                ]
+                    .filter((token, index, array) => array.indexOf(token) === index)
+                    .sort((a, b) => b.length - a.length);
+
+                let offset = 0;
+                let previousToken = null;
+                let indexedSelectorDepth = 0;
+
+                while (offset < line.length) {
+                    let matchedToken = null;
+
+                    // If the previous token was Get or Has, "[" is an indexed selector,
+                    // not part of the Box opener ":["
+                    if (
+                        line[offset] === "[" &&
+                        (previousToken === "::" || previousToken === ":?")
+                    ) {
+                        matchedToken = "[";
+                        indexedSelectorDepth++;
+                    }
+
+                    // If an indexed selector is open, "]" closes that selector.
+                    // This preserves:
+                    //
+                    // ]::  => ] + ::
+                    // ]:?  => ] + :?
+                    //
+                    // instead of incorrectly reading ]: as a Box closer.
+                    else if (
+                        line[offset] === "]" &&
+                        indexedSelectorDepth > 0
+                    ) {
+                        matchedToken = "]";
+                        indexedSelectorDepth--;
+                    }
+
+                    // Everywhere else, use normal longest-token-first matching.
+                    // This preserves actual Box delimiters:
+                    //
+                    // :[  => Box open
+                    // ]:  => Box close
+                    else {
+                        for (const token of tokens) {
+                            if (line.startsWith(token, offset)) {
+                                matchedToken = token;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!matchedToken) {
+                        offset++;
+                        previousToken = null;
+                        continue;
+                    }
+
+                    const start = offset;
+                    const end = start + matchedToken.length;
+
+                    if (
+                        position.character >= start &&
+                        position.character < end
+                    ) {
+                        let info =
+                            druimLanguage.getHoverDocumentation(matchedToken);
+
+                        if (!info) {
+                            const structureMatch =
+                                druimLanguage.getStructureByToken(matchedToken);
+
+                            if (structureMatch) {
+                                info = structureMatch.structure;
+                            }
+                        }
+
+                        if (!info) {
+                            return;
+                        }
+
+                        const range = new vscode.Range(
+                            position.line,
+                            start,
+                            position.line,
+                            end
+                        );
+
+                        const markdown = new vscode.MarkdownString();
+
+                        markdown.appendMarkdown(
+                            `### ${info.name}`
+                        );
+
+                        if (info.category) {
+                            markdown.appendMarkdown(
+                                ` — ${info.category}`
+                            );
+                        }
+
+                        markdown.appendMarkdown("\n\n");
+
+                        if (info.signature) {
+                            markdown.appendCodeblock(
+                                info.signature,
+                                "druim"
+                            );
+                        } else {
+                            markdown.appendCodeblock(
+                                matchedToken,
+                                "druim"
+                            );
+                        }
+
+                        if (info.description) {
+                            markdown.appendMarkdown(
+                                `${info.description}\n\n`
+                            );
+                        }
+
+                        if (
+                            info.parameters &&
+                            info.parameters.length > 0
+                        ) {
+                            markdown.appendMarkdown(
+                                `**Parameters**\n\n`
+                            );
+
+                            for (const parameter of info.parameters) {
+                                const flags = [];
+
+                                if (parameter.optional) {
+                                    flags.push("optional");
+                                }
+
+                                if (parameter.variadic) {
+                                    flags.push("variadic");
+                                }
+
+                                const suffix =
+                                    flags.length > 0
+                                        ? ` _(${flags.join(", ")})_`
+                                        : "";
+
+                                markdown.appendMarkdown(
+                                    `- \`${parameter.name}\`${suffix} — ${parameter.description}\n`
+                                );
+                            }
+
+                            markdown.appendMarkdown("\n");
+                        }
+
+                        if (info.returns) {
+                            markdown.appendMarkdown(
+                                `**Returns:** \`${info.returns.type}\`\n\n`
+                            );
+
+                            markdown.appendMarkdown(
+                                `${info.returns.description}\n\n`
+                            );
+                        }
+
+                        if (
+                            info.details &&
+                            info.details.length > 0
+                        ) {
+                            markdown.appendMarkdown(
+                                `**Behavior**\n\n`
+                            );
+
+                            for (const detail of info.details) {
+                                markdown.appendMarkdown(
+                                    `- ${detail}\n`
+                                );
+                            }
+
+                            markdown.appendMarkdown("\n");
+                        }
+
+                        if (info.example) {
+                            markdown.appendMarkdown(
+                                `**Example**\n\n`
+                            );
+
+                            markdown.appendCodeblock(
+                                info.example,
+                                "druim"
+                            );
+
+                            if (info.exampleResult) {
+                                markdown.appendMarkdown(
+                                    `Result: \`${info.exampleResult}\`\n\n`
+                                );
+                            }
+                        }
+
+                        if (
+                            info.diagnostics &&
+                            info.diagnostics.length > 0
+                        ) {
+                            markdown.appendMarkdown(
+                                `**Diagnostics**\n\n`
+                            );
+
+                            for (const diagnostic of info.diagnostics) {
+                                markdown.appendMarkdown(
+                                    `- ${diagnostic}\n`
+                                );
+                            }
+                        }
+
+                        markdown.supportHtml = false;
+
+                        return new vscode.Hover(
+                            markdown,
+                            range
+                        );
+                    }
+
+                    previousToken = matchedToken;
+                    offset = end;
                 }
 
-                const token = document.getText(range);
-
-                const docs = {
-                    stone: [
-                        "**stone**",
-                        "",
-                        "Marks the resulting binding identity as immutable."
-                    ].join("\n"),
-
-                    loc: [
-                        "**loc**",
-                        "",
-                        "Applies local lifetime/scope behavior."
-                    ].join("\n"),
-
-                    glo: [
-                        "**glo**",
-                        "",
-                        "Targets global scope."
-                    ].join("\n"),
-
-                    fn: [
-                        "**fn**",
-                        "",
-                        "Declares a Druim function."
-                    ].join("\n"),
-
-                    ret: [
-                        "**ret**",
-                        "",
-                        "Returns a value from the current function."
-                    ].join("\n"),
-
-                    num: [
-                        "**num**",
-                        "",
-                        "Integer numeric type."
-                    ].join("\n"),
-
-                    dec: [
-                        "**dec**",
-                        "",
-                        "Decimal numeric type."
-                    ].join("\n"),
-
-                    flag: [
-                        "**flag**",
-                        "",
-                        "Boolean flag type."
-                    ].join("\n"),
-
-                    text: [
-                        "**text**",
-                        "",
-                        "Text value type."
-                    ].join("\n"),
-
-                    void: [
-                        "**void**",
-                        "",
-                        "Represents the absence of a value."
-                    ].join("\n"),
-
-                    true: [
-                        "**true**",
-                        "",
-                        "Boolean flag literal."
-                    ].join("\n"),
-
-                    false: [
-                        "**false**",
-                        "",
-                        "Boolean flag literal."
-                    ].join("\n"),
-
-                    "=": [
-                        "**Define `=`**",
-                        "",
-                        "Defines a new binding.",
-                        "",
-                        "`=` is definition-only and does not mutate an existing binding."
-                    ].join("\n"),
-
-                    "<<": [
-                        "**Mutate `<<`**",
-                        "",
-                        "Mutates an existing binding."
-                    ].join("\n"),
-
-                    ":>": [
-                        "**Bind `:>`**",
-                        "",
-                        "Creates a binding that shares identity with its source."
-                    ].join("\n"),
-
-                    ":=": [
-                        "**Copy `:=`**",
-                        "",
-                        "Creates a fresh identity containing a copied value."
-                    ].join("\n"),
-
-                    "?=": [
-                        "**Guard `?=`**",
-                        "",
-                        "Druim guard operator."
-                    ].join("\n"),
-
-                    "|>": [
-                        "**Print `|>`**",
-                        "",
-                        "Prints one expression.",
-                        "",
-                        "```druim",
-                        '|> ("Hello World!");',
-                        "```"
-                    ].join("\n")
-                };
-
-                const documentation = docs[token];
-
-                if (!documentation) {
-                    return;
-                }
-
-                const markdown = new vscode.MarkdownString(documentation);
-                markdown.supportHtml = false;
-
-                return new vscode.Hover(
-                    markdown,
-                    range
-                );
+                return;
             }
         }
     );
@@ -2122,6 +2675,172 @@ function activate(context) {
 
                 const functionName = callMatch[1];
                 const argumentText = callMatch[2];
+
+                const coreFunction =
+                    druimLanguage.getCoreFunction(functionName);
+
+                if (coreFunction) {
+                    const signatureDocumentation =
+                        new vscode.MarkdownString();
+
+                    signatureDocumentation.appendMarkdown(
+                        `**${coreFunction.name} — ${coreFunction.category}**\n\n`
+                    );
+
+                    signatureDocumentation.appendMarkdown(
+                        `${coreFunction.description}\n\n`
+                    );
+
+                    if (coreFunction.returns) {
+                        signatureDocumentation.appendMarkdown(
+                            `**Returns:** \`${coreFunction.returns.type}\`  \n` +
+                            `${coreFunction.returns.description}\n\n`
+                        );
+                    }
+
+                    if (
+                        coreFunction.details &&
+                        coreFunction.details.length > 0
+                    ) {
+                        signatureDocumentation.appendMarkdown(
+                            `**Behavior**\n\n`
+                        );
+
+                        for (const detail of coreFunction.details) {
+                            signatureDocumentation.appendMarkdown(
+                                `- ${detail}\n`
+                            );
+                        }
+
+                        signatureDocumentation.appendMarkdown("\n");
+                    }
+
+                    if (coreFunction.example) {
+                        signatureDocumentation.appendMarkdown(
+                            `**Example**\n\n`
+                        );
+
+                        signatureDocumentation.appendCodeblock(
+                            coreFunction.example,
+                            "druim"
+                        );
+
+                        if (coreFunction.exampleResult) {
+                            signatureDocumentation.appendMarkdown(
+                                `Returns: \`${coreFunction.exampleResult}\`\n`
+                            );
+                        }
+                    }
+
+                    const signature = new vscode.SignatureInformation(
+                        coreFunction.signature,
+                        signatureDocumentation
+                    );
+
+                    const parameters = coreFunction.parameters;
+
+                    let parameterSearchOffset =
+                        coreFunction.signature.indexOf("(") + 1;
+
+                    signature.parameters = parameters.map(
+                        (parameter) => {
+                            let label = parameter.name;
+
+                            if (parameter.optional) {
+                                label = `[${parameter.name}]`;
+                            }
+
+                            const start = coreFunction.signature.indexOf(
+                                label,
+                                parameterSearchOffset
+                            );
+
+                            const end = start + label.length;
+
+                            parameterSearchOffset = end;
+
+                            return new vscode.ParameterInformation(
+                                [start, end],
+                                parameter.description
+                            );
+                        }
+                    );
+
+                    let activeParameter = 0;
+
+                    let callParenDepth = 0;
+                    let callBracketDepth = 0;
+                    let callInString = false;
+                    let callEscaped = false;
+
+                    for (const char of argumentText) {
+                        if (callInString) {
+                            if (callEscaped) {
+                                callEscaped = false;
+                                continue;
+                            }
+
+                            if (char === "\\") {
+                                callEscaped = true;
+                                continue;
+                            }
+
+                            if (char === "\"") {
+                                callInString = false;
+                            }
+
+                            continue;
+                        }
+
+                        if (char === "\"") {
+                            callInString = true;
+                            continue;
+                        }
+
+                        if (char === "(") {
+                            callParenDepth++;
+                            continue;
+                        }
+
+                        if (char === ")") {
+                            callParenDepth--;
+                            continue;
+                        }
+
+                        if (char === "[") {
+                            callBracketDepth++;
+                            continue;
+                        }
+
+                        if (char === "]") {
+                            callBracketDepth--;
+                            continue;
+                        }
+
+                        if (
+                            char === "," &&
+                            callParenDepth === 0 &&
+                            callBracketDepth === 0
+                        ) {
+                            activeParameter++;
+                        }
+                    }
+
+                    if (parameters.length > 0) {
+                        activeParameter = Math.min(
+                            activeParameter,
+                            parameters.length - 1
+                        );
+                    }
+
+                    const help = new vscode.SignatureHelp();
+
+                    help.signatures = [signature];
+                    help.activeSignature = 0;
+                    help.activeParameter = activeParameter;
+
+                    return help;
+                }
 
                 /*
                 * Find the matching Druim function declaration.

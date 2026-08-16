@@ -1904,25 +1904,147 @@ fn has_on_num_returns_false() {
 }
 
 #[test]
-fn get_on_text_returns_void() {
-    use crate::compiler::ast::{Define, Literal, Node, Program};
+fn get_rejects_named_selector_on_text() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Ident(
+                                "anything".to_string(),
+                            ),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "named text traversal should return a diagnostic"
+        );
+
+    assert_eq!(
+        err.message,
+        "text traversal requires an indexed selector",
+    );
+}
+
+#[test]
+fn get_returns_text_character_at_index() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::new(NodeKind::Define(Define {
-            name: "result".to_string(),
-            value: Box::new(Node::new(NodeKind::Get(
-                Box::new(Node::new(NodeKind::Lit(Literal::Text("hello".to_string())), test_span())),
-                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
-            ), test_span())),
-        }), test_span())],
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(
+                                Node::new(
+                                    NodeKind::Lit(
+                                        Literal::Num(1),
+                                    ),
+                                    test_span(),
+                                ),
+                            )),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
     };
 
     let mut evaluator = Evaluator::new();
+
     evaluator
-    .eval_program(&program)
-    .expect("program evaluation should succeed");
+        .eval_program(&program)
+        .expect("indexed text Get should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("e".to_string())),
+    );
+}
+
+#[test]
+fn get_returns_void_for_out_of_range_text_index() {
+    use crate::compiler::ast::{
+        Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(
+                                Node::new(
+                                    NodeKind::Lit(
+                                        Literal::Num(99),
+                                    ),
+                                    test_span(),
+                                ),
+                            )),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("out-of-range text Get should succeed");
 
     assert_eq!(
         evaluator.get("result"),
@@ -1931,25 +2053,141 @@ fn get_on_text_returns_void() {
 }
 
 #[test]
-fn has_on_text_returns_false() {
+fn has_rejects_named_selector_on_text() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Has(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Ident(
+                                "anything".to_string(),
+                            ),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "named text traversal should return a diagnostic"
+        );
+
+    assert_eq!(
+        err.message,
+        "text traversal requires an indexed selector",
+    );
+}
+
+#[test]
+fn has_returns_true_for_existing_text_index() {
     use crate::compiler::ast::{Define, Literal, Node, Program};
     use crate::compiler::semantics::eval::Evaluator;
     use crate::compiler::semantics::value::Value;
 
     let program = Program {
-        nodes: vec![Node::new(NodeKind::Define(Define {
-            name: "result".to_string(),
-            value: Box::new(Node::new(NodeKind::Has(
-                Box::new(Node::new(NodeKind::Lit(Literal::Text("hello".to_string())), test_span())),
-                Box::new(Node::new(NodeKind::Ident("anything".to_string()), test_span())),
-            ), test_span())),
-        }), test_span())],
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Has(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(
+                                Node::new(
+                                    NodeKind::Lit(
+                                        Literal::Num(1),
+                                    ),
+                                    test_span(),
+                                ),
+                            )),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
     };
 
     let mut evaluator = Evaluator::new();
+
     evaluator
-    .eval_program(&program)
-    .expect("program evaluation should succeed");
+        .eval_program(&program)
+        .expect("indexed text Has should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn has_returns_false_for_missing_text_index() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Has(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "hello".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(
+                                Node::new(
+                                    NodeKind::Lit(
+                                        Literal::Num(99),
+                                    ),
+                                    test_span(),
+                                ),
+                            )),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("out-of-range text Has should succeed");
 
     assert_eq!(
         evaluator.get("result"),
@@ -8958,5 +9196,1409 @@ fn evaluates_interpolated_text_value() {
         Some(Value::Text(
             "Hello World!".to_string()
         ))
+    );
+}
+
+#[test]
+fn rise_converts_text_to_uppercase() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("rise".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "druim".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("rise should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("DRUIM".to_string())),
+    );
+}
+
+#[test]
+fn fall_converts_text_to_lowercase() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fall".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "DRUIM".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("fall should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("druim".to_string())),
+    );
+}
+
+#[test]
+fn size_returns_text_character_count() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("size".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druim".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("size should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(5)),
+    );
+}
+
+#[test]
+fn cut_returns_text_from_start_to_end() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "Druim".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(4)),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("cut should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("rui".to_string())),
+    );
+}
+
+#[test]
+fn fuse_combines_text_arguments() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fuse".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "Dru".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "im".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("fuse should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("Druim".to_string())),
+    );
+}
+
+#[test]
+fn cap_capitalizes_first_character_only() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cap".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "dRUIM".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("cap should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("DRUIM".to_string())),
+    );
+}
+
+#[test]
+fn cap_empty_text_returns_empty_text() {
+    use crate::compiler::ast::{
+        Call, Define, Literal, Node, Program,
+    };
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cap".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                String::new(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("cap on empty text should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text(String::new())),
+    );
+}
+
+#[test]
+fn fuse_requires_at_least_two_arguments() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fuse".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druim".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("fuse with one argument should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `fuse` expected at least 2 arguments but received 1"
+    );
+}
+
+#[test]
+fn fuse_rejects_non_text_argument() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fuse".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "Druim".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(5)),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("fuse with non-text should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `fuse` requires text arguments"
+    );
+}
+
+#[test]
+fn cap_rejects_non_text_argument() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cap".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Num(5)),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cap with non-text should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cap` requires text"
+    );
+}
+
+#[test]
+fn cut_rejects_negative_start_index() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "Druim".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Neg(Box::new(Node::new(
+                                    NodeKind::Lit(Literal::Num(1)),
+                                    test_span(),
+                                ))),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("negative cut start should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` start index cannot be negative"
+    );
+}
+
+#[test]
+fn size_counts_unicode_characters_not_bytes() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("size".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druïm".to_string(),
+                            )),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("Unicode size should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(5)),
+    );
+}
+
+#[test]
+fn get_text_index_uses_unicode_characters_not_bytes() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "AïB".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ))),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("Unicode text Get should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("ï".to_string())),
+    );
+}
+
+#[test]
+fn rise_rejects_wrong_arity() {
+    use crate::compiler::ast::{Call, Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("rise".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("rise with wrong arity should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `rise` expected 1 argument but received 0"
+    );
+}
+
+#[test]
+fn rise_rejects_non_text() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("rise".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Num(1)),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("rise with non-text should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `rise` requires text"
+    );
+}
+
+#[test]
+fn fall_rejects_wrong_arity() {
+    use crate::compiler::ast::{Call, Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fall".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("fall with wrong arity should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `fall` expected 1 argument but received 0"
+    );
+}
+
+#[test]
+fn fall_rejects_non_text() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("fall".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Num(1)),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("fall with non-text should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `fall` requires text"
+    );
+}
+
+#[test]
+fn size_rejects_wrong_arity() {
+    use crate::compiler::ast::{Call, Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("size".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("size with wrong arity should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `size` expected 1 argument but received 0"
+    );
+}
+
+#[test]
+fn size_rejects_non_text() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("size".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Num(1)),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("size with non-text should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `size` requires text"
+    );
+}
+
+#[test]
+fn cap_rejects_wrong_arity() {
+    use crate::compiler::ast::{Call, Define, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cap".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cap with wrong arity should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cap` expected 1 argument but received 0"
+    );
+}
+
+#[test]
+fn cut_rejects_end_before_start() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "Druim".to_string(),
+                                )),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(4)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cut end before start should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` end index cannot be less than start index"
+    );
+}
+
+#[test]
+fn cut_rejects_wrong_arity() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text("Druim".to_string())),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cut with wrong arity should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` expected 2 or 3 arguments but received 1"
+    );
+}
+
+#[test]
+fn cut_rejects_non_text_first_argument() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(10)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cut with non-text first argument should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` requires text as its first argument"
+    );
+}
+
+#[test]
+fn cut_rejects_non_num_start() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("Druim".to_string())),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("1".to_string())),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cut with non-num start should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` requires a num start index"
+    );
+}
+
+#[test]
+fn cut_rejects_non_num_end() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("Druim".to_string())),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("4".to_string())),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("cut with non-num end should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` requires a num end index"
+    );
+}
+
+#[test]
+fn cut_rejects_negative_end_index() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("Druim".to_string())),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Neg(Box::new(Node::new(
+                                    NodeKind::Lit(Literal::Num(1)),
+                                    test_span(),
+                                ))),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("negative cut end should fail");
+
+    assert_eq!(
+        err.message,
+        "Core function `cut` end index cannot be negative"
+    );
+}
+
+#[test]
+fn cut_uses_unicode_character_indexes() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cut".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![
+                            Node::new(
+                                NodeKind::Lit(Literal::Text("AïBC".to_string())),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(1)),
+                                test_span(),
+                            ),
+                            Node::new(
+                                NodeKind::Lit(Literal::Num(3)),
+                                test_span(),
+                            ),
+                        ],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("Unicode cut should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("ïB".to_string())),
+    );
+}
+
+#[test]
+fn cap_handles_unicode_first_character() {
+    use crate::compiler::ast::{Call, Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+    use crate::compiler::semantics::value::Value;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Call(Call {
+                        callee: Box::new(Node::new(
+                            NodeKind::Ident("cap".to_string()),
+                            test_span(),
+                        )),
+                        args: vec![Node::new(
+                            NodeKind::Lit(Literal::Text("élan".to_string())),
+                            test_span(),
+                        )],
+                    }),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("Unicode cap should succeed");
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("Élan".to_string())),
+    );
+}
+
+#[test]
+fn text_get_rejects_non_num_index() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text("Druim".to_string())),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(Node::new(
+                                NodeKind::Lit(Literal::Text("1".to_string())),
+                                test_span(),
+                            ))),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("non-num text Get index should fail");
+
+    assert_eq!(
+        err.message,
+        "text index must evaluate to a num"
+    );
+}
+
+#[test]
+fn text_get_rejects_negative_index() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Get(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druim".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(Node::new(
+                                NodeKind::Neg(Box::new(Node::new(
+                                    NodeKind::Lit(Literal::Num(1)),
+                                    test_span(),
+                                ))),
+                                test_span(),
+                            ))),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("negative text Get index should fail");
+
+    assert_eq!(
+        err.message,
+        "text index cannot be negative"
+    );
+}
+
+#[test]
+fn text_has_rejects_negative_index() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Has(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druim".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(Node::new(
+                                NodeKind::Neg(Box::new(Node::new(
+                                    NodeKind::Lit(Literal::Num(1)),
+                                    test_span(),
+                                ))),
+                                test_span(),
+                            ))),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("negative text Has index should fail");
+
+    assert_eq!(
+        err.message,
+        "text index cannot be negative"
+    );
+}
+
+#[test]
+fn text_has_rejects_non_num_index() {
+    use crate::compiler::ast::{Define, Literal, Node, Program};
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let program = Program {
+        nodes: vec![Node::new(
+            NodeKind::Define(Define {
+                name: "result".to_string(),
+                value: Box::new(Node::new(
+                    NodeKind::Has(
+                        Box::new(Node::new(
+                            NodeKind::Lit(Literal::Text(
+                                "Druim".to_string(),
+                            )),
+                            test_span(),
+                        )),
+                        Box::new(Node::new(
+                            NodeKind::Index(Box::new(Node::new(
+                                NodeKind::Lit(Literal::Text(
+                                    "1".to_string(),
+                                )),
+                                test_span(),
+                            ))),
+                            test_span(),
+                        )),
+                    ),
+                    test_span(),
+                )),
+            }),
+            test_span(),
+        )],
+    };
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err("non-num text Has index should fail");
+
+    assert_eq!(
+        err.message,
+        "text index must evaluate to a num"
     );
 }

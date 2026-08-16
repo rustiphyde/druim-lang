@@ -14,7 +14,7 @@ use crate::compiler::semantics::env::{
     BindError,
 };
 use crate::compiler::semantics::truth::{truth_of, Truth};
-use crate::compiler::semantics::value::Value;
+use crate::compiler::semantics::value::{Core, Value};
 use crate::compiler::error::Diagnostic;
 
 pub struct Evaluator {
@@ -47,9 +47,24 @@ impl Default for Evaluator {
 
 impl Evaluator {
     pub fn new() -> Self {
-        Self {
-            env: Env::new(),
+        let mut env = Env::new();
+
+        for core in [
+            Core::Rise,
+            Core::Fall,
+            Core::Cut,
+            Core::Size,
+            Core::Fuse,
+            Core::Cap
+        ] {
+            env.define(
+                core.name().to_string(),
+                Value::Core(core),
+            )
+            .expect("Core function names must be unique");
         }
+
+        Self { env }
     }
 
     pub fn eval_program(
@@ -67,6 +82,224 @@ impl Evaluator {
     pub fn get(&self, name: &str) -> Option<Value> {
         self.env.get_value(name)
     }
+
+    fn eval_core(
+        &mut self,
+        core: Core,
+        args: &[Node],
+        call_node: &Node,
+    ) -> Result<Value, Diagnostic> {
+        let values = args
+            .iter()
+            .map(|arg| self.eval_value(arg))
+            .collect::<Result<Vec<Value>, Diagnostic>>()?;
+
+        match core {
+            Core::Rise => {
+                if values.len() != 1 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `rise` expected 1 argument but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let Value::Text(value) = &values[0] else {
+                    return Err(Diagnostic::error(
+                        "Core function `rise` requires text",
+                        args[0].span,
+                    ));
+                };
+
+                Ok(Value::Text(value.to_uppercase()))
+            }
+
+            Core::Fall => {
+                if values.len() != 1 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `fall` expected 1 argument but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let Value::Text(value) = &values[0] else {
+                    return Err(Diagnostic::error(
+                        "Core function `fall` requires text",
+                        args[0].span,
+                    ));
+                };
+
+                Ok(Value::Text(value.to_lowercase()))
+            }
+
+            Core::Size => {
+                if values.len() != 1 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `size` expected 1 argument but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let Value::Text(value) = &values[0] else {
+                    return Err(Diagnostic::error(
+                        "Core function `size` requires text",
+                        args[0].span,
+                    ));
+                };
+
+                Ok(Value::Num(
+                    value.chars().count() as i64
+                ))
+            }
+
+            Core::Cut => {
+                if values.len() != 2 && values.len() != 3 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `cut` expected 2 or 3 arguments but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let Value::Text(value) = &values[0] else {
+                    return Err(Diagnostic::error(
+                        "Core function `cut` requires text as its first argument",
+                        args[0].span,
+                    ));
+                };
+
+                let Value::Num(start) = values[1] else {
+                    return Err(Diagnostic::error(
+                        "Core function `cut` requires a num start index",
+                        args[1].span,
+                    ));
+                };
+
+                if start < 0 {
+                    return Err(Diagnostic::error(
+                        "Core function `cut` start index cannot be negative",
+                        args[1].span,
+                    ));
+                }
+
+                let character_count = value.chars().count();
+
+                let end = if values.len() == 3 {
+                    let Value::Num(end) = values[2] else {
+                        return Err(Diagnostic::error(
+                            "Core function `cut` requires a num end index",
+                            args[2].span,
+                        ));
+                    };
+
+                    if end < 0 {
+                        return Err(Diagnostic::error(
+                            "Core function `cut` end index cannot be negative",
+                            args[2].span,
+                        ));
+                    }
+
+                    end as usize
+                } else {
+                    character_count
+                };
+
+                let start = start as usize;
+
+                if end < start {
+                    return Err(Diagnostic::error(
+                        "Core function `cut` end index cannot be less than start index",
+                        call_node.span,
+                    ));
+                }
+
+                if start >= character_count {
+                    return Ok(Value::Text(String::new()));
+                }
+
+                let result = value
+                    .chars()
+                    .skip(start)
+                    .take(
+                        end.min(character_count)
+                            .saturating_sub(start),
+                    )
+                    .collect::<String>();
+
+                Ok(Value::Text(result))
+            }
+
+            Core::Fuse => {
+                if values.len() < 2 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `fuse` expected at least 2 arguments but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let mut result = String::new();
+
+                for (index, value) in values.iter().enumerate() {
+                    let Value::Text(text) = value else {
+                        return Err(Diagnostic::error(
+                            "Core function `fuse` requires text arguments",
+                            args[index].span,
+                        ));
+                    };
+
+                    result.push_str(text);
+                }
+
+                Ok(Value::Text(result))
+            }
+
+            Core::Cap => {
+                if values.len() != 1 {
+                    return Err(Diagnostic::error(
+                        format!(
+                            "Core function `cap` expected 1 argument but received {}",
+                            values.len(),
+                        ),
+                        call_node.span,
+                    ));
+                }
+
+                let Value::Text(value) = &values[0] else {
+                    return Err(Diagnostic::error(
+                        "Core function `cap` requires text",
+                        args[0].span,
+                    ));
+                };
+
+                let mut characters = value.chars();
+
+                let Some(first) = characters.next() else {
+                    return Ok(Value::Text(String::new()));
+                };
+
+                let mut result = first
+                    .to_uppercase()
+                    .collect::<String>();
+
+                result.extend(characters);
+
+                Ok(Value::Text(result))
+            }
+        }
+    }   
 
     fn eval_value(&mut self, node: &Node) -> Result<Value, Diagnostic> {
         match &node.kind {
@@ -163,6 +396,14 @@ impl Evaluator {
 
             NodeKind::Call(call) => {
                 let callee = self.eval_value(call.callee.as_ref())?;
+
+                if let Value::Core(core) = callee {
+                    return self.eval_core(
+                        core,
+                        &call.args,
+                        node,
+                    );
+                }
 
                 let Value::Func(func) = callee else {
                     return Err(Diagnostic::error(
@@ -474,6 +715,44 @@ impl Evaluator {
                 let lhs = self.eval_value(lhs)?;
 
                 match lhs {
+                    Value::Text(value) => {
+                    let NodeKind::Index(index_expr) = &selector.kind else {
+                        return Err(Diagnostic::error(
+                            "text traversal requires an indexed selector",
+                            selector.span,
+                        ));
+                    };
+
+                    let index = self.eval_value(index_expr)?;
+
+                    match index {
+                        Value::Num(index) if index >= 0 => {
+                            Ok(
+                                value
+                                    .chars()
+                                    .nth(index as usize)
+                                    .map(|character| {
+                                        Value::Text(character.to_string())
+                                    })
+                                    .unwrap_or(Value::Void),
+                            )
+                        }
+
+                        Value::Num(_) => {
+                            Err(Diagnostic::error(
+                                "text index cannot be negative",
+                                index_expr.span,
+                            ))
+                        }
+
+                        _ => {
+                            Err(Diagnostic::error(
+                                "text index must evaluate to a num",
+                                index_expr.span,
+                            ))
+                        }
+                    }
+                }
                     Value::Box(values) => {
                         let NodeKind::Index(index_expr) = &selector.kind else {
                             return Err(Diagnostic::error(
@@ -534,6 +813,38 @@ impl Evaluator {
                 let lhs = self.eval_value(lhs)?;
 
                 match lhs {
+                    Value::Text(value) => {
+                        let NodeKind::Index(index_expr) = &selector.kind else {
+                            return Err(Diagnostic::error(
+                                "text traversal requires an indexed selector",
+                                selector.span,
+                            ));
+                        };
+
+                        let index = self.eval_value(index_expr)?;
+
+                        match index {
+                            Value::Num(index) if index >= 0 => {
+                                Ok(Value::Flag(
+                                    (index as usize) < value.chars().count(),
+                                ))
+                            }
+
+                            Value::Num(_) => {
+                                Err(Diagnostic::error(
+                                    "text index cannot be negative",
+                                    index_expr.span,
+                                ))
+                            }
+
+                            _ => {
+                                Err(Diagnostic::error(
+                                    "text index must evaluate to a num",
+                                    index_expr.span,
+                                ))
+                            }
+                        }
+                    }
                     Value::Box(values) => {
                         let NodeKind::Index(index_expr) = &selector.kind else {
                             return Err(Diagnostic::error(

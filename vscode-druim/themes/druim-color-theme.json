@@ -135,6 +135,17 @@
     },
 
     {
+      "name": "Pumpkin Swamp Core functions",
+      "scope": [
+        "support.function.builtin.druim"
+      ],
+      "settings": {
+        "foreground": "#d3550d",
+        "fontStyle": "bold"
+      }
+    },
+
+    {
       "name": "Pumpkin Swamp variables",
       "scope": [
         "variable.other.readwrite.druim",

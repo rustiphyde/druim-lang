@@ -44,6 +44,9 @@
       "include": "#arithmetic-operators"
     },
     {
+      "include": "#core-functions"
+    },
+    {
       "include": "#function-calls"
     },
     {
@@ -161,6 +164,9 @@
               "include": "#arithmetic-operators"
             },
             {
+              "include": "#core-functions"
+            },
+            {
               "include": "#function-calls"
             },
             {
@@ -198,6 +204,9 @@
           "include": "#arithmetic-operators"
         },
         {
+          "include": "#core-functions"
+        },
+        {
           "include": "#function-calls"
         },
         {
@@ -227,6 +236,15 @@
               "name": "entity.name.function.druim"
             }
           }
+        }
+      ]
+    },
+
+    "core-functions": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.druim",
+          "match": "\\b(?:rise|fall|cap|cut|size|fuse)\\b(?=\\s*\\()"
         }
       ]
     },

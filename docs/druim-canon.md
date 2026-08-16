@@ -1,5 +1,15 @@
 # Druim Canon (Living Document)
 
+## Canon Revision Current
+- Revision ID: DRUIM-CANON-R012
+- Status: Current
+- Effective Date: 2026-08-15
+- Authoritative Scope: Global
+- Supersedes: DRUIM-CANON-R011
+- Notes: This revision adds Druim Core functions and the first canonical text operations. All DRUIM-CANON-R011 content is preserved unchanged below; R012 adds only the new rules stated in the R012 Additions section.
+
+---
+
 ## Canon Revision Baseline
 - Revision ID: DRUIM-CANON-R011
 - Status: Current
@@ -2921,3 +2931,453 @@ Both collection types support arbitrary nesting and together form Druim's canoni
 
 The lexer is responsible only for structure and atomicity.  
 All semantic meaning is deferred to later compilation stages.
+
+
+---
+
+# DRUIM-CANON-R012 Additions
+
+## Core Functions
+
+A **Core function** is a callable operation provided directly by Druim.
+
+Core functions use ordinary Druim function-call syntax, but they do not require a source-level definition using `fn`.
+
+```druim
+rise("druim")
+```
+
+Rules:
+
+- Core functions are provided by Druim itself.
+- Core functions are callable using the same call syntax used for functions declared with `fn`.
+- Core function names are ordinary identifiers, not lexer keywords.
+- Calling a Core function with an unsupported argument type or invalid argument count produces a diagnostic.
+- A source-defined function and a Core function are distinct by origin: a source-defined function is declared with `fn`; a Core function is supplied by Druim.
+
+The first canonical Core functions are the text operations `rise`, `fall`, `cut`, and `size`.
+
+## Text Core Functions
+
+### Rise
+
+`rise` converts a text value to uppercase text.
+
+Canonical form:
+
+```druim
+rise(text)
+```
+
+Example:
+
+```druim
+rise("druim")
+```
+
+Evaluates to:
+
+```druim
+"DRUIM"
+```
+
+Rules:
+
+- `rise` accepts exactly one argument.
+- The argument must evaluate to `text`.
+- The result is a new `text` value.
+- Characters without an uppercase form remain unchanged.
+
+### Fall
+
+`fall` converts a text value to lowercase text.
+
+Canonical form:
+
+```druim
+fall(text)
+```
+
+Example:
+
+```druim
+fall("DRUIM")
+```
+
+Evaluates to:
+
+```druim
+"druim"
+```
+
+Rules:
+
+- `fall` accepts exactly one argument.
+- The argument must evaluate to `text`.
+- The result is a new `text` value.
+- Characters without a lowercase form remain unchanged.
+
+### Cut
+
+`cut` extracts a contiguous portion of a text value.
+
+Canonical forms:
+
+```druim
+cut(text, start)
+cut(text, start, end)
+```
+
+Indexes are zero-based. The `start` index is inclusive. When present, the `end` index is exclusive.
+
+Example:
+
+```druim
+cut("Druim", 1, 4)
+```
+
+Evaluates to:
+
+```druim
+"rui"
+```
+
+When `end` is omitted, `cut` continues through the end of the text.
+
+```druim
+cut("Druim", 1)
+```
+
+Evaluates to:
+
+```druim
+"ruim"
+```
+
+Rules:
+
+- `cut` accepts either two or three arguments.
+- The first argument must evaluate to `text`.
+- `start` must evaluate to a non-negative `num`.
+- When present, `end` must evaluate to a non-negative `num`.
+- `end` may not be less than `start`.
+- Text positions are character positions, not encoded byte offsets.
+- If `start` is at or beyond the end of the text, the result is empty text.
+- If `end` extends beyond the end of the text, extraction stops at the end of the text.
+
+### Size
+
+`size` returns the number of characters in a text value.
+
+Canonical form:
+
+```druim
+size(text)
+```
+
+Example:
+
+```druim
+size("Druim")
+```
+
+Evaluates to:
+
+```druim
+5
+```
+
+Rules:
+
+- `size` accepts exactly one argument.
+- The argument must evaluate to `text`.
+- The result is a `num`.
+- `size` counts characters, not encoded bytes.
+- Empty text has size `0`.
+
+## Text Indexed Traversal
+
+Text is an indexed traversable value. It uses the existing Get (`::`) and Has (`:?`) operators with indexed selectors. No new traversal operator is introduced.
+
+### Text Get
+
+```druim
+word = "Druim";
+first = word::[0];
+```
+
+`first` evaluates to:
+
+```druim
+"D"
+```
+
+Rules:
+
+- Text indexes are zero-based.
+- A text selector must use indexed syntax: `[expression]`.
+- The index expression must evaluate to a non-negative `num`.
+- A valid existing index returns a one-character `text` value.
+- A valid index outside the text bounds evaluates to `void`.
+- A negative index produces a diagnostic.
+- A non-numeric index produces a diagnostic.
+- A named selector used against text produces a diagnostic.
+- Indexes refer to characters, not encoded byte offsets.
+
+### Text Has
+
+```druim
+word = "Druim";
+word:?[0]
+word:?[5]
+```
+
+The first Has expression evaluates to `true`. The second evaluates to `false`.
+
+Rules:
+
+- Text indexes are zero-based.
+- A text selector must use indexed syntax: `[expression]`.
+- The index expression must evaluate to a non-negative `num`.
+- Has evaluates to `true` when the indexed character exists.
+- Has evaluates to `false` when a valid index is outside the text bounds.
+- A negative index produces a diagnostic.
+- A non-numeric index produces a diagnostic.
+- A named selector used against text produces a diagnostic.
+- Indexes refer to characters, not encoded byte offsets.
+
+## Text Concatenation
+
+The existing Add operator (`+`) also concatenates two text values.
+
+```druim
+message = "Hello " + "Druim";
+```
+
+The expression evaluates to:
+
+```druim
+"Hello Druim"
+```
+
+Rules:
+
+- `text + text` produces a new `text` value containing the left text followed by the right text.
+- Text concatenation does not perform implicit conversion of non-text values.
+- Mixed text/non-text operands are invalid unless a later canon revision explicitly defines such coercion.
+- Numeric addition retains its existing meaning.
+
+## Canonical Capitalize Example
+
+The new text operations make capitalization expressible as an ordinary Druim function rather than requiring a dedicated Core function.
+
+```druim
+fn capitalize :(value)(
+    first = rise(value::[0]);
+    rest = cut(value, 1);
+
+    ret first + rest;
+):
+```
+
+For a non-empty text value such as `"druim"`, this function evaluates to `"Druim"`. Empty-text handling remains the responsibility of source-level function logic.
+
+---
+
+## Revision
+
+- Revision ID: DRUIM-CANON-R013
+- Status: Current
+- Effective Date: 2026-08-15
+- Supersedes: DRUIM-CANON-R012
+- Notes: This revision adds `fuse` as the canonical Core function for text concatenation. The R012 rule that extended Add (`+`) to concatenate text is superseded. Numeric Add retains its existing arithmetic meaning.
+
+## Core Functions
+
+The canonical Core function set now includes:
+
+- `rise`
+- `fall`
+- `cut`
+- `size`
+- `fuse`
+
+All previously established Core-function rules remain unchanged.
+
+## Fuse
+
+`fuse` combines two or more text values into one new text value.
+
+Canonical form:
+
+```druim
+fuse(text, text, ...)
+```
+
+Examples:
+
+```druim
+fuse("Dru", "im")
+```
+
+Evaluates to:
+
+```druim
+"Druim"
+```
+
+```druim
+name = "Rusty";
+message = fuse("Hello ", name, "!");
+```
+
+`message` evaluates to:
+
+```druim
+"Hello Rusty!"
+```
+
+Rules:
+
+- `fuse` accepts two or more arguments.
+- Every argument must evaluate to `text`.
+- Arguments are evaluated in source order.
+- The result is a new `text` value containing each argument's text in source order.
+- `fuse` performs no implicit conversion of non-text values.
+- Passing fewer than two arguments produces a diagnostic.
+- Passing any non-text argument produces a diagnostic.
+
+## Text Concatenation Override
+
+Text concatenation is performed by the Core function `fuse`.
+
+The R012 rule that allowed:
+
+```druim
+"Hello " + "Druim"
+```
+
+is superseded by this revision.
+
+The canonical form is:
+
+```druim
+fuse("Hello ", "Druim")
+```
+
+The Add operator (`+`) remains an arithmetic operator and is not a text-concatenation operator.
+
+No implicit text conversion is introduced by `fuse`.
+
+## Canonical Capitalize Example
+
+The canonical source-level capitalization example now uses `fuse`:
+
+```druim
+fn capitalize :(value)(
+    first = rise(value::[0]);
+    rest = cut(value, 1);
+
+    ret fuse(first, rest);
+):
+```
+
+For a non-empty text value such as `"druim"`, this function evaluates to `"Druim"`.
+
+---
+
+## Revision
+
+- Revision ID: DRUIM-CANON-R014
+- Status: Current
+- Effective Date: 2026-08-15
+- Supersedes: DRUIM-CANON-R013
+- Notes: This revision adds `cap` as the canonical Core function for capitalizing text. The R013 source-level `capitalize` example is superseded by the dedicated `cap` Core function. All other R013 rules remain unchanged.
+
+## Core Functions
+
+The canonical Core function set now includes:
+
+- `rise`
+- `fall`
+- `cut`
+- `size`
+- `fuse`
+- `cap`
+
+All previously established Core-function rules remain unchanged.
+
+## Cap
+
+`cap` capitalizes the first character of a text value.
+
+Canonical form:
+
+```druim
+cap(text)
+```
+
+Example:
+
+```druim
+cap("druim")
+```
+
+Evaluates to:
+
+```druim
+"Druim"
+```
+
+Rules:
+
+- `cap` accepts exactly one argument.
+- The argument must evaluate to `text`.
+- `cap` converts the first character of the text using the same uppercase behavior used by `rise`.
+- All remaining characters are preserved unchanged.
+- `cap` operates on characters rather than UTF-8 bytes.
+- If the input text is empty, `cap` returns empty text.
+- Passing a non-text argument produces a diagnostic.
+- Passing any number of arguments other than one produces a diagnostic.
+
+Examples:
+
+```druim
+cap("druim")
+```
+
+Evaluates to:
+
+```druim
+"Druim"
+```
+
+```druim
+cap("DRUIM")
+```
+
+Evaluates to:
+
+```druim
+"DRUIM"
+```
+
+```druim
+cap("")
+```
+
+Evaluates to:
+
+```druim
+""
+```
+
+## Capitalization Override
+
+The canonical capitalization form is now:
+
+```druim
+cap("druim")
+```
+
+The existing Core functions `rise`, `cut`, and `fuse` remain available independently and are not changed by this revision.
