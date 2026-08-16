@@ -4,7 +4,7 @@ Official Visual Studio Code language support for **Druim**, an actively develope
 
 This extension registers Druim as a language in Visual Studio Code and provides syntax highlighting, structural editing, completions, hover documentation, signature help, folding, navigation, snippets, comments, and the included Druim color theme.
 
-> **Current extension version:** `0.1.0`  
+> **Current extension version:** `0.1.2`  
 > **Language file extension:** `.drm`
 
 ## Features

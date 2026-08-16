@@ -392,6 +392,260 @@
         "foreground": "#6F7654",
         "fontStyle": "italic"
       }
+    },
+    {
+      "name": "Pumpkin Swamp generic control keywords",
+      "scope": [
+        "keyword.control",
+        "keyword.control.flow",
+        "keyword.control.conditional",
+        "keyword.control.loop",
+        "keyword.control.import",
+        "keyword.control.export",
+        "keyword.control.return",
+        "keyword.control.exception"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic storage and modifiers",
+      "scope": [
+        "storage.type",
+        "storage.modifier"
+      ],
+      "settings": {
+        "foreground": "#A9C85C"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic types",
+      "scope": [
+        "entity.name.type",
+        "entity.name.class",
+        "entity.name.interface",
+        "entity.name.enum",
+        "support.type",
+        "support.class"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic functions",
+      "scope": [
+        "entity.name.function",
+        "support.function",
+        "meta.function-call entity.name.function",
+        "variable.function"
+      ],
+      "settings": {
+        "foreground": "#C98A47",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic parameters",
+      "scope": [
+        "variable.parameter"
+      ],
+      "settings": {
+        "foreground": "#B49A63"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic variables",
+      "scope": [
+        "variable.other",
+        "variable.other.readwrite",
+        "variable.other.constant"
+      ],
+      "settings": {
+        "foreground": "#DDD5C4"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic properties",
+      "scope": [
+        "variable.other.property",
+        "variable.other.object.property",
+        "meta.object-literal.key",
+        "support.variable.property"
+      ],
+      "settings": {
+        "foreground": "#B49A63"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic strings",
+      "scope": [
+        "string",
+        "string.quoted",
+        "string.template"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic numbers",
+      "scope": [
+        "constant.numeric"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic language constants",
+      "scope": [
+        "constant.language",
+        "constant.language.boolean",
+        "constant.language.null",
+        "constant.language.undefined"
+      ],
+      "settings": {
+        "foreground": "#B47A32",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic operators",
+      "scope": [
+        "keyword.operator"
+      ],
+      "settings": {
+        "foreground": "#C4B447"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic comments",
+      "scope": [
+        "comment"
+      ],
+      "settings": {
+        "foreground": "#6F7654",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp generic punctuation",
+      "scope": [
+        "punctuation.separator",
+        "punctuation.terminator",
+        "punctuation.definition"
+      ],
+      "settings": {
+        "foreground": "#756C58"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp HTML and XML tags",
+      "scope": [
+        "entity.name.tag",
+        "meta.tag"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp HTML and XML attributes",
+      "scope": [
+        "entity.other.attribute-name"
+      ],
+      "settings": {
+        "foreground": "#C98A47"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp CSS selectors",
+      "scope": [
+        "entity.other.attribute-name.class.css",
+        "entity.other.attribute-name.id.css",
+        "entity.name.tag.css",
+        "meta.selector.css"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp CSS properties",
+      "scope": [
+        "support.type.property-name.css",
+        "support.type.property-name.scss",
+        "support.type.property-name.less"
+      ],
+      "settings": {
+        "foreground": "#C98A47"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp CSS values",
+      "scope": [
+        "support.constant.property-value.css",
+        "support.constant.property-value.scss",
+        "support.constant.property-value.less"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp JSON keys",
+      "scope": [
+        "support.type.property-name.json",
+        "string.json meta.structure.dictionary.json",
+        "meta.object-literal.key"
+      ],
+      "settings": {
+        "foreground": "#C98A47"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp markup headings",
+      "scope": [
+        "markup.heading",
+        "entity.name.section"
+      ],
+      "settings": {
+        "foreground": "#BC4C0D",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp markup bold",
+      "scope": [
+        "markup.bold"
+      ],
+      "settings": {
+        "foreground": "#C4B447",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp markup italic",
+      "scope": [
+        "markup.italic"
+      ],
+      "settings": {
+        "foreground": "#9ACC7D",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Pumpkin Swamp markup inline code",
+      "scope": [
+        "markup.inline.raw",
+        "markup.raw.inline"
+      ],
+      "settings": {
+        "foreground": "#B49A63"
+      }
     }
   ]
 }
