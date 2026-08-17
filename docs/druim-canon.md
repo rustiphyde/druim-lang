@@ -1,22 +1,12 @@
 # Druim Canon (Living Document)
 
-## Canon Revision Current
-- Revision ID: DRUIM-CANON-R012
+## Document Status
 - Status: Current
-- Effective Date: 2026-08-15
+- Effective Date: 2026-08-16
 - Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R011
-- Notes: This revision adds Druim Core functions and the first canonical text operations. All DRUIM-CANON-R011 content is preserved unchanged below; R012 adds only the new rules stated in the R012 Additions section.
+- This document is the single current source of truth for the Druim programming language. It is updated in place as language decisions change.
 
 ---
-
-## Canon Revision Baseline
-- Revision ID: DRUIM-CANON-R011
-- Status: Current
-- Effective Date: 2026-08-13
-- Authoritative Scope: Global
-- Supersedes: DRUIM-CANON-R010
-- Notes: This revision canonizes Druim command-line source execution and diagnostic behavior, resolves Print as line-oriented output that appends a newline, and records the textual conversion rules used by Print and text interpolation. All R010 canon content is preserved unchanged except for these additions and the previously unresolved Print newline rule.
 
 ## Purpose
 
@@ -44,7 +34,7 @@ This document does **not** aim to be:
 - An exhaustive language reference
 - A promise of future behavior
 
-Details that are experimental, provisional, or unresolved should be recorded explicitly as such.
+Details that are experimental, provisional, or unresolved should be recorded explicitly as such and must not be presented as current canonical behavior.
 
 ---
 
@@ -57,7 +47,7 @@ When conflicts arise between:
 - tests
 - personal recollection
 
-**This document is authoritative**, unless a newer revision explicitly supersedes it.
+**This document is authoritative.** Changes are incorporated directly into this living document as they become canonical.
 
 Code may temporarily diverge during development, but this document represents the intended direction and constraints of the language.
 
@@ -464,6 +454,110 @@ Any alphanumeric sequence that contains at least one non-digit character (such a
 
 This distinction is purely lexical and does not imply validity in all syntactic positions.
 
+## Type-Conversion Expressions
+
+Druim provides four explicit type-conversion expressions:
+
+```druim
+num(expression)
+dec(expression)
+text(expression)
+flag(expression)
+```
+
+These forms are dedicated language expressions. They are not Core functions and they do not introduce source-level type annotations or declaration casts.
+
+Each conversion accepts exactly one complete Druim expression. Conversion expressions may be nested and may appear anywhere an ordinary value expression is valid.
+
+`void` remains a literal and type concept. It is not callable.
+
+Invalid:
+
+```druim
+void(value)
+num value = 10;
+```
+
+Druim does not perform implicit coercion.
+
+Invalid:
+
+```druim
+"12" + 5
+fuse("Count: ", 12)
+```
+
+Valid:
+
+```druim
+num("12") + 5
+fuse("Count: ", text(12))
+```
+
+### Conversion Matrix
+
+| Source | `num(...)` | `dec(...)` | `text(...)` | `flag(...)` |
+|---|---|---|---|---|
+| `num` | identity | decimal value | canonical integer text | canonical truth conversion |
+| `dec` | nearest integer | identity | stored decimal text | canonical truth conversion |
+| `text` | strict numeric parse, then integer conversion | strict numeric parse | identity | canonical text truth conversion |
+| `flag` | `1` / `0` | `1.0` / `0.0` | `"true"` / `"false"` | identity |
+| `void` | diagnostic | diagnostic | `"void"` | `false` |
+| Box | diagnostic | diagnostic | diagnostic | empty `false`, non-empty `true` |
+| Bag | diagnostic | diagnostic | diagnostic | empty `false`, non-empty `true` |
+| function/Core | diagnostic | diagnostic | diagnostic | diagnostic |
+
+Same-type conversion is identity.
+
+### `num(...)`
+
+`num` converts supported values to Druim whole-number form.
+
+For `dec` input, conversion rounds to the nearest integer. Exact `.5` ties round away from zero. The decimal value is not pre-rounded to a fixed number of places before this rule is applied.
+
+```druim
+num(12.4999)   // 12
+num(12.5)      // 13
+num(-12.5)     // -13
+```
+
+A result outside the representable `num` range produces a diagnostic. Conversion does not wrap or clamp.
+
+### `dec(...)`
+
+`dec` converts supported values to Druim decimal form. Whole-number numeric text is normalized to include a decimal component. Existing `dec` values preserve their stored decimal representation.
+
+```druim
+dec("12")     // 12.0
+dec("+12.5")  // 12.5
+```
+
+### Strict Numeric Text
+
+Text-to-`num` and text-to-`dec` conversion accepts an optional leading `+` or `-`, one or more digits, and optionally one `.` followed by one or more digits. The entire text must match. No whitespace is trimmed. Exponent notation and partial parses are invalid.
+
+Valid: `12`, `+12`, `-12`, `12.5`, `+12.5`, `-12.5`.
+
+Invalid: empty text, `.5`, `12.`, leading or trailing whitespace, exponent notation, or trailing non-numeric characters.
+
+### `text(...)`
+
+`text` uses Druim's canonical textual representation:
+
+- `num` → decimal integer representation;
+- `dec` → exact stored decimal representation;
+- `flag` → `true` or `false`;
+- `text` → unchanged;
+- `void` → `void`.
+
+Box, Bag, function, and Core values do not have a canonical `text(...)` conversion and produce a diagnostic. This is the same textual representation used by Print and text interpolation.
+
+### `flag(...)`
+
+`flag` uses Druim's canonical truth-conversion rules. Text is evaluated as text and is not recursively parsed as another type. Therefore both `flag("false")` and `flag("0")` evaluate to `true` because both are non-empty text. Function and Core values produce a diagnostic.
+
+---
+
 ## Statement Structure and Boundaries
 
 Druim statements are structurally complete forms terminated by a semicolon unless their syntax includes an atomic terminator.
@@ -526,10 +620,10 @@ Each operation must be written as a separate statement.
 
 Druim has two explicit scope modifiers:
 
-- `loc` — restricts a target or localized identity to the applicable local lifetime.
-- `glo` — places a newly established target in global scope regardless of where the statement executes.
+- `loc` — commits a target or localized identity to the applicable local lifetime.
+- `glo` — commits a target or existing ordinary identity to global lifetime.
 
-`loc` and `glo` are mutually exclusive on the same statement. A statement may not request both local and global lifetime.
+`loc` and `glo` are mutually exclusive on the same statement.
 
 Invalid:
 
@@ -538,11 +632,33 @@ loc glo value = 10;
 glo loc value = 10;
 ```
 
-Scope is a property of an established binding's lifetime. Once a binding exists, later unmodified operations on that binding continue to use the binding in its established scope. The programmer does not repeat `loc` or `glo` merely to preserve an already-established lifetime.
+### Scope Commitment
+
+Every binding identity has one scope state:
+
+- **ordinary** — follows the scope in which it was created and has not been explicitly committed by `loc` or `glo`;
+- **local** — explicitly committed to local lifetime by `loc`;
+- **global** — explicitly committed to global lifetime by `glo`.
+
+The legal explicit scope transitions are:
+
+```text
+Ordinary -> Local
+Ordinary -> Global
+```
+
+The following transitions are invalid:
+
+```text
+Local -> Global
+Global -> Local
+```
+
+Once an identity is explicitly committed with `loc` or `glo`, the opposite scope modifier cannot requalify that identity. Ordinary unmodified operations continue to use the identity in its existing scope.
 
 ### Local Modifier
 
-The **loc** keyword may appear at most once and only at the beginning of a statement form that supports local scope.
+`loc` may appear at most once and only at the beginning of a statement form that supports local scope.
 
 Valid:
 
@@ -553,83 +669,28 @@ loc a := b;
 loc a :> b;
 loc a ?= b : c;
 loc a << a + 1;
+loc fn helper :()(ret 1;):
 ```
 
-Invalid:
+For target-establishing forms, `loc` creates a new local target for the lifetime established by the containing structure. A local target may not reuse a name already visible in the current or an enclosing scope. Right-hand expressions and source identifiers resolve normally.
+
+For Mutate, `loc target << expression;` may localize an ordinary visible identity for the applicable local lifetime. The right-hand side is evaluated against the currently visible identity before localization. All names sharing that identity inside the local lifetime observe the localized state. When the local lifetime ends, the outer identity is restored unchanged.
+
+An identity explicitly committed with `glo` cannot later be localized with `loc`.
 
 ```druim
-loc loc a = 12;
-a loc = 12;
-```
-
-#### Local Target Rules
-
-For target-defining forms such as Define, DefineEmpty, Copy, Bind, Guard, and local function definitions:
-
-- `loc` creates a new local target name for the lifetime established by the containing structure.
-- A local target may not reuse a name that is already visible in the current or an enclosing scope.
-- Right-hand expressions and source identifiers still resolve normally through visible enclosing scopes.
-- `loc` therefore restricts the target's lifetime without preventing the statement from reading, copying, or binding to outer values.
-
-Example:
-
-```druim
-source = 10;
+glo val = 2;
 
 :{
-    loc snapshot := source;
-    loc alias :> source;
+    loc val << val + 2; // diagnostic
 }:
 ```
-
-Both `source` references are valid because they occur on the source side. `snapshot` and `alias` are new local names.
-
-#### Localized Identity
-
-`loc` takes precedence over mutation propagation across a local-scope boundary.
-
-When `loc` is applied to an operation that would otherwise expose mutation of a visible identity beyond the local lifetime, Druim creates a localized version of that identity for the applicable local lifetime. All names that refer to that identity **inside the local lifetime** observe the localized state. The identity outside that lifetime is unchanged.
-
-This rule preserves Bind's shared-identity behavior inside the local scope without allowing localized mutation to escape that scope.
-
-Example:
-
-```druim
-source = 10;
-
-:{
-    loc alias :> source;
-    alias << alias + 5;
-
-    // alias  == 15
-    // source == 15 inside this segment
-}:
-
-// source == 10 here
-```
-
-The local Bind keeps `alias` and `source` identity-linked inside the segment, but `loc` prevents that localized identity from replacing or mutating the outer `source` identity.
-
-A localized Mutate can also localize an already-visible identity directly:
-
-```druim
-count = 10;
-
-:{
-    loc count << count + 3;
-    // count == 13 inside this segment
-}:
-
-// count == 10 here
-```
-
-Without `loc`, Mutate affects the existing visible identity normally.
 
 ### Global Modifier
 
-The **glo** keyword establishes a new target in global scope regardless of the lexical scope in which the statement executes.
+`glo` may appear at most once and only at the beginning of a statement form that supports global scope.
 
-Examples:
+For target-establishing forms, `glo` establishes the new target directly in global scope regardless of the lexical, function, loop, or block scope in which the statement executes. Right-hand expressions and source identifiers still resolve from the executing scope.
 
 ```druim
 :{
@@ -641,123 +702,50 @@ fn establish :()(
 ):
 ```
 
-After the containing block or function scope ends, `a` and `b` remain globally visible because their target names were established in global scope.
-
-`glo` applies to target-establishing forms. It does not retroactively promote an already-existing binding to global scope, and it is not used to re-state the scope of an existing global binding during Mutate.
-
-Once a global binding exists, ordinary operations that resolve that name continue to operate on the global binding automatically:
+For Mutate, `glo target << expression;` may commit an **ordinary** visible identity to global scope and apply the mutation to that same identity.
 
 ```druim
 :{
-    glo source = 10;
-    source << source + 5;
+    val = 2;
+    glo val << val + 2;
 }:
 
-// source == 15 here
+// val == 4 and remains globally visible
 ```
 
-#### Global Target and Source Resolution
+Rules for Global Mutate:
 
-`glo` changes where the **new target** is established. It does not change how right-hand expressions or source identifiers are resolved.
+- the target must already resolve to a visible identity;
+- the right-hand expression is evaluated in the current execution scope;
+- the target must be mutable;
+- the target must not already be explicitly local;
+- an ordinary target becomes explicitly global;
+- the mutation applies to that same identity rather than creating a copy;
+- the global target remains visible after the originating local lifetime ends.
 
-A statement executing in a local scope may therefore read or copy a local value while creating a distinct global target:
+An identity explicitly committed with `loc` cannot later be globalized with `glo`.
 
 ```druim
 :{
-    local_source = 10;
-    glo snapshot := local_source;
-}:
-
-// snapshot remains globally visible
-```
-
-Because Copy creates a fresh independent identity, the target's lifetime may differ from the source's lifetime.
-
-#### Established Scope Cannot Be Requalified
-
-A later target-defining statement may not reuse an already-visible name merely to change that name's scope.
-
-Invalid:
-
-```druim
-glo source = 10;
-
-:{
-    loc source = 20;
+    loc val = 2;
+    glo val << val + 2; // diagnostic
 }:
 ```
-
-Also invalid:
-
-```druim
-:{
-    loc source = 10;
-    glo source = 20;
-}:
-```
-
-Both fail because Define is attempting to establish a target name that is already visible. Scope modifiers do not turn definition into mutation and do not requalify an existing binding.
 
 ### Binding Lifetime and Bind
 
-Bind shares identity, but every alias name also has its own visibility lifetime. An alias may not be established with a lifetime that exceeds the identity it references.
-
-Canonical lifetime rule:
+Bind shares identity, but every alias name has its own visibility lifetime. An alias may not outlive the identity it references.
 
 - a local alias may refer to a global identity;
 - a lexical-scope alias may refer to an identity that outlives that alias;
 - a global alias may refer to a global identity;
-- a global alias may **not** refer to an identity whose lifetime is only local or otherwise shorter than global;
-- more generally, a Bind alias may never outlive the identity it aliases.
+- a global alias may not refer to an identity whose lifetime is shorter than global.
 
-Valid:
+Copy creates a fresh independent identity and therefore does not inherit the source identity's lifetime.
 
-```druim
-glo source = 10;
+### Scope and Mutability
 
-:{
-    alias :> source;
-}:
-```
-
-`alias` disappears with the block scope, while the global `source` identity survives.
-
-Also valid:
-
-```druim
-glo source = 10;
-
-:{
-    loc alias :> source;
-}:
-```
-
-Here `loc` creates the canonical localized-identity boundary. Inside the local lifetime, `alias` and `source` observe the localized identity. When that lifetime ends, the global `source` identity remains unchanged by localized mutations.
-
-Invalid:
-
-```druim
-:{
-    local_source = 10;
-    glo alias :> local_source;
-}:
-```
-
-A global alias would outlive `local_source`, so the Bind is invalid.
-
-This lifetime restriction applies to Bind specifically because Bind does not create an independent identity. Copy does create a fresh identity and therefore does not inherit the source's lifetime.
-
-### Scope Precedence and Existing Bindings
-
-The scope already established for a binding is honored automatically by later operations:
-
-- Mutating an established `glo` binding mutates its global identity.
-- Mutating an established `loc` binding mutates that local identity for the remainder of its local lifetime.
-- `loc Mutate` applied to a visible non-local identity creates a localized identity boundary and does not mutate the identity outside that boundary.
-- `glo` does not convert an existing local or lexical binding into a global binding.
-- `loc` and `glo` do not override the requirement that target-defining forms introduce a new target name.
-
-Scope and mutability are independent properties. A binding may be local, lexical, or global and may separately be mutable or `stone`.
+Scope commitment and Stone are independent properties. An identity may be ordinary, local, or global and may separately be mutable or `stone`. Scope modifiers never bypass immutability.
 
 ## Parser Boundary Invariant
 
@@ -857,16 +845,14 @@ Rules:
 
 ## Mutate (`<<`)
 
-The `<<` operator is called **Mutate**.
-
-Mutate changes the value held by an existing mutable binding identity.
+The `<<` operator is called **Mutate**. Mutate changes the value held by an existing mutable binding identity.
 
 ```druim
 count = 10;
 count << count + 1;
 ```
 
-After the Mutate statement, `count` is `11`.
+Afterward, `count` is `11`.
 
 ### Core Meaning
 
@@ -874,21 +860,18 @@ After the Mutate statement, `count` is `11`.
 target << expression;
 ```
 
-Means:
+Rules:
 
 - `target` must already resolve to a visible binding identity.
-- The right-hand side is evaluated as exactly one complete expression.
-- The resulting value replaces the current value of that existing identity.
-- Mutate never creates a new ordinary binding.
+- The right-hand side is exactly one complete expression.
+- The resulting value replaces the current value of that identity.
+- Ordinary Mutate never creates a new binding.
 - Mutate may not target a `stone` identity.
-
-Mutate is the only statement operator whose primary purpose is to change the value of an already-existing binding.
-
-Mutate respects the scope already established for its target. A target established with `glo` remains global when mutated; a target already established as local remains local for its existing lifetime. `glo` is not used to promote or requalify an existing Mutate target.
+- Ordinary Mutate does not change scope commitment.
 
 ### Bind Interaction
 
-Because Bind shares identity, ordinary mutation through any bound name is visible through every name that refers to that identity.
+Because Bind shares identity, ordinary mutation through any bound name is visible through every name referring to that identity.
 
 ```druim
 source = 10;
@@ -900,7 +883,7 @@ Afterward both `alias` and `source` evaluate to `15`.
 
 ### Local Mutate
 
-`loc` changes the propagation boundary of Mutate.
+`loc target << expression;` localizes an ordinary visible identity for the applicable local lifetime. The right-hand side resolves against the visible value before the localized mutation is established. If the identity participates in Bind relationships, all names referring to that identity inside the local lifetime observe the localized state. The outer identity is unchanged when that lifetime ends.
 
 ```druim
 count = 10;
@@ -913,11 +896,22 @@ count = 10;
 // count == 10 here
 ```
 
-The right-hand side resolves against the visible value before the localized mutation is established. The mutation then applies to the localized identity for the remainder of that local lifetime.
+An explicitly global identity cannot be localized by Local Mutate.
 
-If the target participates in a Bind relationship, every name referring to that identity inside the local lifetime observes the localized mutation, while the identity outside that lifetime remains unchanged.
+### Global Mutate
 
-`loc` does not bypass `stone`. A stone identity cannot be mutated even through Local Mutate.
+`glo target << expression;` globalizes an ordinary visible identity and applies the mutation to that same identity. The right-hand side resolves in the currently executing scope before the global mutation is committed.
+
+```druim
+:{
+    val = 2;
+    glo val << val + 2;
+}:
+
+// val == 4 here and remains global
+```
+
+An explicitly local identity cannot be globalized by Global Mutate.
 
 ### Lexical Rule
 
@@ -925,40 +919,33 @@ If the target participates in a Bind relationship, every name referring to that 
 
 ## Stone Bindings
 
-The `stone` keyword marks a binding identity as immutable.
+The `stone` keyword marks a binding identity as immutable. Stone belongs to the identity, not merely to an identifier spelling or to the current value.
 
-`stone` may prefix a target-defining form that creates a fresh independent binding identity. In this revision, that includes Define, DefineEmpty, Copy, and Guard.
+Stone is valid with the currently supported Define, DefineEmpty, Copy, Bind, Guard, and Mutate forms, including supported `stone loc` and `stone glo` combinations. Function declarations are not valid Stone targets.
 
-Bind is different: Bind does not create a fresh identity, so a Bind alias derives its mutability from the identity it joins rather than declaring an independent stone status.
-
-```druim
-stone source = 10;
-```
-
-Once an identity is stone, Mutate may not change it:
-
-```druim
-source << source + 10;
-```
-
-The statement above is invalid because `source` resolves to a stone identity.
-
-### Identity Semantics
-
-Stone belongs to the **binding identity**, not merely to one identifier spelling and not merely to the current value.
-
-Therefore Bind preserves stone status because Bind shares identity.
+### Basic Immutability
 
 ```druim
 stone source = 10;
-alias :> source;
+source << source + 10; // diagnostic
 ```
 
-`alias` and `source` refer to the same stone identity. Mutating through either name is invalid.
+Once an identity is stone, later mutation through any name referring to that identity is invalid.
 
-### Copy Semantics
+### Stone and Bind
 
-Copy does **not** automatically propagate stone status because Copy creates a new independent identity.
+Bind shares identity. Therefore `stone` applied to Bind stones the shared underlying identity joined by the alias.
+
+```druim
+source = 10;
+stone alias :> source;
+```
+
+Afterward both `alias` and `source` refer to the same stone identity. Mutation through either name is invalid.
+
+### Stone and Copy
+
+Copy creates a fresh independent identity and does not automatically inherit the source's Stone status.
 
 ```druim
 stone source = 10;
@@ -966,25 +953,35 @@ copy := source;
 copy << 20;
 ```
 
-This is valid. `copy` contains an independent value and is mutable; `source` remains stone and remains `10`.
-
-An immutable copy is explicit:
+This is valid. To create an immutable copy explicitly:
 
 ```druim
 stone copy := source;
 ```
 
-The copied value is placed into a new independent identity, and that new identity is stone.
+### Stone Mutate
 
-### Local Scope
+`stone target << expression;` applies the mutation first and then stones the resulting target identity.
 
-Localizing an identity does not remove its stone status. A stone identity remains immutable within every local scope and through every bound alias.
+```druim
+count = 10;
+stone count << count + 5;
+// count == 15 and is now stone
+```
 
-### Global Scope
+If the target is a bound alias, the shared underlying identity becomes stone.
 
-Global placement does not alter mutability. A `glo` binding is mutable unless its identity is also declared `stone`. A global stone identity remains immutable everywhere it is visible, including through Bind aliases.
+### Stone Local Mutate
 
-Copy still creates a fresh identity: copying from a global stone source does not make the copy global or stone unless those properties are explicitly established for the new Copy target.
+`stone loc target << expression;` localizes and mutates the identity for the applicable local lifetime, then stones only that localized identity. When the local lifetime ends, the outer identity is restored with its original value and mutability state.
+
+### Stone Global Mutate
+
+`stone glo target << expression;` performs the global scope operation and mutation first, then stones the resulting global identity. The same scope-commitment restrictions that apply to ordinary `glo Mutate` still apply.
+
+### Scope Independence
+
+Scope commitment and Stone are independent properties. `loc` and `glo` do not remove or bypass Stone immutability.
 
 ## Truth Evaluation (Flags)
 
@@ -1063,7 +1060,7 @@ The delimiter family is:
 - A target introduced with `loc` is restricted to the segment in which it is introduced.
 - A localized identity created by Local Mutate or local identity-sharing exists only for that segment.
 - At the end of the segment, localized names and localized identity state are discarded without changing the corresponding outer identity.
-- A target introduced with `glo` is established in global scope and survives the block chain.
+- A target introduced with `glo` is established in global scope and survives the block chain. An ordinary identity globalized by `glo Mutate` also survives the block chain.
 - `glo` does not change source lookup; right-hand expressions and source identifiers still resolve from the executing block context.
 - Blocks do not evaluate to a value.
 - Blocks exist only to control name visibility and lifetime.
@@ -1255,6 +1252,62 @@ The evaluator must implement scope handling with these guarantees:
 
 This behavior is stable and locked.
 
+## Core Functions
+
+A **Core function** is a callable operation provided directly by Druim. Core functions use ordinary function-call syntax but do not require a source-level definition using `fn`. Core function names are ordinary identifiers, not lexer keywords. Unsupported argument types or invalid argument counts produce diagnostics.
+
+The current Core function set is:
+
+- `rise`
+- `fall`
+- `cut`
+- `size`
+- `fuse`
+- `cap`
+
+### `rise(text)`
+
+Returns a new text value converted to uppercase. It accepts exactly one `text` argument.
+
+### `fall(text)`
+
+Returns a new text value converted to lowercase. It accepts exactly one `text` argument.
+
+### `cut(text, start[, end])`
+
+Extracts a contiguous portion of text. `start` is inclusive and `end`, when present, is exclusive. Indexes are zero-based character positions. `start` and `end` must be non-negative `num` values, and `end` may not be less than `start`. If `start` is at or beyond the end, the result is empty text. If `end` exceeds the text length, extraction stops at the end.
+
+### `size(text)`
+
+Returns the number of characters in a text value as `num`. Character count is not UTF-8 byte count.
+
+### `fuse(text, text, ...)`
+
+Combines two or more text values in source order and returns a new text value. Every argument must already be `text`; `fuse` performs no implicit conversion. Text concatenation is performed by `fuse`, not by arithmetic Add `+`.
+
+### `cap(text)`
+
+Capitalizes the first character of a text value and preserves all remaining characters unchanged. Empty text returns empty text. It accepts exactly one `text` argument.
+
+### Text Indexed Traversal
+
+Text supports indexed Get and Has using zero-based character positions.
+
+```druim
+word = "Druim";
+first = word::[0];
+exists = word:?[4];
+```
+
+- a text index must evaluate to a non-negative `num`;
+- a valid existing index returns a one-character `text` through Get;
+- an out-of-range valid index returns `void` through Get and `false` through Has;
+- negative or non-`num` indexes produce a diagnostic;
+- named selectors against text produce a diagnostic;
+- indexes refer to characters, not encoded bytes.
+
+---
+
 ## Loops
 
 A Druim loop is a structural statement with three ordered sections:
@@ -1359,10 +1412,12 @@ For a statement modified by `loc`:
 - once localized, all names that refer to that identity inside the loop observe the localized state;
 - the outer identity is unchanged when the loop exits.
 
-For a target-defining statement modified by `glo`:
+For a statement modified by `glo`:
 
-- the new target is established in global scope even though the statement executes inside the loop;
-- the global target survives loop exit;
+- a new target introduced by a target-defining form is established in global scope even though the statement executes inside the loop;
+- `glo Mutate` may commit an ordinary visible loop identity to global lifetime and apply the mutation there;
+- an identity explicitly committed with `loc` may not be changed to global scope;
+- the resulting global target or globalized identity survives loop exit;
 - source identifiers and right-hand expressions still resolve through the loop's visible scope normally;
 - Bind may establish a global alias only when the referenced identity has global lifetime;
 - Copy may establish a global target from a shorter-lived source because Copy creates a fresh independent identity.
@@ -2934,450 +2989,3 @@ All semantic meaning is deferred to later compilation stages.
 
 
 ---
-
-# DRUIM-CANON-R012 Additions
-
-## Core Functions
-
-A **Core function** is a callable operation provided directly by Druim.
-
-Core functions use ordinary Druim function-call syntax, but they do not require a source-level definition using `fn`.
-
-```druim
-rise("druim")
-```
-
-Rules:
-
-- Core functions are provided by Druim itself.
-- Core functions are callable using the same call syntax used for functions declared with `fn`.
-- Core function names are ordinary identifiers, not lexer keywords.
-- Calling a Core function with an unsupported argument type or invalid argument count produces a diagnostic.
-- A source-defined function and a Core function are distinct by origin: a source-defined function is declared with `fn`; a Core function is supplied by Druim.
-
-The first canonical Core functions are the text operations `rise`, `fall`, `cut`, and `size`.
-
-## Text Core Functions
-
-### Rise
-
-`rise` converts a text value to uppercase text.
-
-Canonical form:
-
-```druim
-rise(text)
-```
-
-Example:
-
-```druim
-rise("druim")
-```
-
-Evaluates to:
-
-```druim
-"DRUIM"
-```
-
-Rules:
-
-- `rise` accepts exactly one argument.
-- The argument must evaluate to `text`.
-- The result is a new `text` value.
-- Characters without an uppercase form remain unchanged.
-
-### Fall
-
-`fall` converts a text value to lowercase text.
-
-Canonical form:
-
-```druim
-fall(text)
-```
-
-Example:
-
-```druim
-fall("DRUIM")
-```
-
-Evaluates to:
-
-```druim
-"druim"
-```
-
-Rules:
-
-- `fall` accepts exactly one argument.
-- The argument must evaluate to `text`.
-- The result is a new `text` value.
-- Characters without a lowercase form remain unchanged.
-
-### Cut
-
-`cut` extracts a contiguous portion of a text value.
-
-Canonical forms:
-
-```druim
-cut(text, start)
-cut(text, start, end)
-```
-
-Indexes are zero-based. The `start` index is inclusive. When present, the `end` index is exclusive.
-
-Example:
-
-```druim
-cut("Druim", 1, 4)
-```
-
-Evaluates to:
-
-```druim
-"rui"
-```
-
-When `end` is omitted, `cut` continues through the end of the text.
-
-```druim
-cut("Druim", 1)
-```
-
-Evaluates to:
-
-```druim
-"ruim"
-```
-
-Rules:
-
-- `cut` accepts either two or three arguments.
-- The first argument must evaluate to `text`.
-- `start` must evaluate to a non-negative `num`.
-- When present, `end` must evaluate to a non-negative `num`.
-- `end` may not be less than `start`.
-- Text positions are character positions, not encoded byte offsets.
-- If `start` is at or beyond the end of the text, the result is empty text.
-- If `end` extends beyond the end of the text, extraction stops at the end of the text.
-
-### Size
-
-`size` returns the number of characters in a text value.
-
-Canonical form:
-
-```druim
-size(text)
-```
-
-Example:
-
-```druim
-size("Druim")
-```
-
-Evaluates to:
-
-```druim
-5
-```
-
-Rules:
-
-- `size` accepts exactly one argument.
-- The argument must evaluate to `text`.
-- The result is a `num`.
-- `size` counts characters, not encoded bytes.
-- Empty text has size `0`.
-
-## Text Indexed Traversal
-
-Text is an indexed traversable value. It uses the existing Get (`::`) and Has (`:?`) operators with indexed selectors. No new traversal operator is introduced.
-
-### Text Get
-
-```druim
-word = "Druim";
-first = word::[0];
-```
-
-`first` evaluates to:
-
-```druim
-"D"
-```
-
-Rules:
-
-- Text indexes are zero-based.
-- A text selector must use indexed syntax: `[expression]`.
-- The index expression must evaluate to a non-negative `num`.
-- A valid existing index returns a one-character `text` value.
-- A valid index outside the text bounds evaluates to `void`.
-- A negative index produces a diagnostic.
-- A non-numeric index produces a diagnostic.
-- A named selector used against text produces a diagnostic.
-- Indexes refer to characters, not encoded byte offsets.
-
-### Text Has
-
-```druim
-word = "Druim";
-word:?[0]
-word:?[5]
-```
-
-The first Has expression evaluates to `true`. The second evaluates to `false`.
-
-Rules:
-
-- Text indexes are zero-based.
-- A text selector must use indexed syntax: `[expression]`.
-- The index expression must evaluate to a non-negative `num`.
-- Has evaluates to `true` when the indexed character exists.
-- Has evaluates to `false` when a valid index is outside the text bounds.
-- A negative index produces a diagnostic.
-- A non-numeric index produces a diagnostic.
-- A named selector used against text produces a diagnostic.
-- Indexes refer to characters, not encoded byte offsets.
-
-## Text Concatenation
-
-The existing Add operator (`+`) also concatenates two text values.
-
-```druim
-message = "Hello " + "Druim";
-```
-
-The expression evaluates to:
-
-```druim
-"Hello Druim"
-```
-
-Rules:
-
-- `text + text` produces a new `text` value containing the left text followed by the right text.
-- Text concatenation does not perform implicit conversion of non-text values.
-- Mixed text/non-text operands are invalid unless a later canon revision explicitly defines such coercion.
-- Numeric addition retains its existing meaning.
-
-## Canonical Capitalize Example
-
-The new text operations make capitalization expressible as an ordinary Druim function rather than requiring a dedicated Core function.
-
-```druim
-fn capitalize :(value)(
-    first = rise(value::[0]);
-    rest = cut(value, 1);
-
-    ret first + rest;
-):
-```
-
-For a non-empty text value such as `"druim"`, this function evaluates to `"Druim"`. Empty-text handling remains the responsibility of source-level function logic.
-
----
-
-## Revision
-
-- Revision ID: DRUIM-CANON-R013
-- Status: Current
-- Effective Date: 2026-08-15
-- Supersedes: DRUIM-CANON-R012
-- Notes: This revision adds `fuse` as the canonical Core function for text concatenation. The R012 rule that extended Add (`+`) to concatenate text is superseded. Numeric Add retains its existing arithmetic meaning.
-
-## Core Functions
-
-The canonical Core function set now includes:
-
-- `rise`
-- `fall`
-- `cut`
-- `size`
-- `fuse`
-
-All previously established Core-function rules remain unchanged.
-
-## Fuse
-
-`fuse` combines two or more text values into one new text value.
-
-Canonical form:
-
-```druim
-fuse(text, text, ...)
-```
-
-Examples:
-
-```druim
-fuse("Dru", "im")
-```
-
-Evaluates to:
-
-```druim
-"Druim"
-```
-
-```druim
-name = "Rusty";
-message = fuse("Hello ", name, "!");
-```
-
-`message` evaluates to:
-
-```druim
-"Hello Rusty!"
-```
-
-Rules:
-
-- `fuse` accepts two or more arguments.
-- Every argument must evaluate to `text`.
-- Arguments are evaluated in source order.
-- The result is a new `text` value containing each argument's text in source order.
-- `fuse` performs no implicit conversion of non-text values.
-- Passing fewer than two arguments produces a diagnostic.
-- Passing any non-text argument produces a diagnostic.
-
-## Text Concatenation Override
-
-Text concatenation is performed by the Core function `fuse`.
-
-The R012 rule that allowed:
-
-```druim
-"Hello " + "Druim"
-```
-
-is superseded by this revision.
-
-The canonical form is:
-
-```druim
-fuse("Hello ", "Druim")
-```
-
-The Add operator (`+`) remains an arithmetic operator and is not a text-concatenation operator.
-
-No implicit text conversion is introduced by `fuse`.
-
-## Canonical Capitalize Example
-
-The canonical source-level capitalization example now uses `fuse`:
-
-```druim
-fn capitalize :(value)(
-    first = rise(value::[0]);
-    rest = cut(value, 1);
-
-    ret fuse(first, rest);
-):
-```
-
-For a non-empty text value such as `"druim"`, this function evaluates to `"Druim"`.
-
----
-
-## Revision
-
-- Revision ID: DRUIM-CANON-R014
-- Status: Current
-- Effective Date: 2026-08-15
-- Supersedes: DRUIM-CANON-R013
-- Notes: This revision adds `cap` as the canonical Core function for capitalizing text. The R013 source-level `capitalize` example is superseded by the dedicated `cap` Core function. All other R013 rules remain unchanged.
-
-## Core Functions
-
-The canonical Core function set now includes:
-
-- `rise`
-- `fall`
-- `cut`
-- `size`
-- `fuse`
-- `cap`
-
-All previously established Core-function rules remain unchanged.
-
-## Cap
-
-`cap` capitalizes the first character of a text value.
-
-Canonical form:
-
-```druim
-cap(text)
-```
-
-Example:
-
-```druim
-cap("druim")
-```
-
-Evaluates to:
-
-```druim
-"Druim"
-```
-
-Rules:
-
-- `cap` accepts exactly one argument.
-- The argument must evaluate to `text`.
-- `cap` converts the first character of the text using the same uppercase behavior used by `rise`.
-- All remaining characters are preserved unchanged.
-- `cap` operates on characters rather than UTF-8 bytes.
-- If the input text is empty, `cap` returns empty text.
-- Passing a non-text argument produces a diagnostic.
-- Passing any number of arguments other than one produces a diagnostic.
-
-Examples:
-
-```druim
-cap("druim")
-```
-
-Evaluates to:
-
-```druim
-"Druim"
-```
-
-```druim
-cap("DRUIM")
-```
-
-Evaluates to:
-
-```druim
-"DRUIM"
-```
-
-```druim
-cap("")
-```
-
-Evaluates to:
-
-```druim
-""
-```
-
-## Capitalization Override
-
-The canonical capitalization form is now:
-
-```druim
-cap("druim")
-```
-
-The existing Core functions `rise`, `cut`, and `fuse` remain available independently and are not changed by this revision.

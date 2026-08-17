@@ -4,10 +4,18 @@ use std::rc::Rc;
 
 use super::value::Value;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeCommitment {
+    Ordinary,
+    Local,
+    Global,
+}
+
 #[derive(Debug, Clone)]
 pub struct Slot {
     pub value: Value,
     pub stone: bool,
+    pub scope: ScopeCommitment,
 }
 
 pub type SlotRef = Rc<RefCell<Slot>>;
@@ -46,6 +54,20 @@ pub enum GlobalBindError {
     UndefinedName(String),
     LocalIdentity(String),
     AlreadyDefined(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlobalMutateError {
+    UndefinedName(String),
+    StoneBinding(String),
+    LocalIdentity(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LocalMutateError {
+    UndefinedName(String),
+    StoneBinding(String),
+    GlobalIdentity(String),
 }
 
 #[derive(Debug, Default)]
@@ -93,6 +115,7 @@ impl Env {
         let slot = Rc::new(RefCell::new(Slot {
             value,
             stone: false,
+            scope: ScopeCommitment::Ordinary,
         }));
 
         scope.names.insert(name, slot);
@@ -117,6 +140,7 @@ impl Env {
         let slot = Rc::new(RefCell::new(Slot {
             value,
             stone: false,
+            scope: ScopeCommitment::Global,
         }));
 
         scope.names.insert(name, slot);
@@ -245,6 +269,7 @@ impl Env {
         let slot = Rc::new(RefCell::new(Slot {
             value,
             stone: false,
+            scope: ScopeCommitment::Global,
         }));
 
         scope.names.insert(name, slot);
@@ -288,20 +313,51 @@ impl Env {
         &mut self,
         name: &str,
         value: Value,
-    ) -> Result<(), EnvError> {
-        let scope = self.scopes.first().expect("no global scope");
+    ) -> Result<(), GlobalMutateError> {
+        let slot = self
+            .lookup(name)
+            .ok_or_else(|| GlobalMutateError::UndefinedName(name.to_string()))?;
 
-        let slot = scope
-            .names
-            .get(name)
-            .cloned()
-            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+        {
+            let binding = slot.borrow();
 
-        if slot.borrow().stone {
-            return Err(EnvError::StoneBinding(name.to_string()));
+            if binding.stone {
+                return Err(GlobalMutateError::StoneBinding(name.to_string()));
+            }
+
+            if binding.scope == ScopeCommitment::Local {
+                return Err(GlobalMutateError::LocalIdentity(name.to_string()));
+            }
         }
 
-        slot.borrow_mut().value = value;
+        {
+            let mut binding = slot.borrow_mut();
+            binding.value = value;
+            binding.scope = ScopeCommitment::Global;
+        }
+
+        for scope in self.scopes.iter_mut().skip(1) {
+            scope.names.remove(name);
+        }
+
+        self.scopes
+            .first_mut()
+            .expect("no global scope")
+            .names
+            .insert(name.to_string(), slot);
+
+        Ok(())
+    }
+
+    pub fn mark_local(
+        &mut self,
+        name: &str,
+    ) -> Result<(), EnvError> {
+        let slot = self
+            .lookup(name)
+            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+
+        slot.borrow_mut().scope = ScopeCommitment::Local;
 
         Ok(())
     }
@@ -363,10 +419,22 @@ impl Env {
         &mut self,
         name: &str,
         value: Value,
-    ) -> Result<Vec<(String, Option<SlotRef>)>, EnvError> {
+    ) -> Result<Vec<(String, Option<SlotRef>)>, LocalMutateError> {
         let original = self
             .lookup(name)
-            .ok_or_else(|| EnvError::UndefinedName(name.to_string()))?;
+            .ok_or_else(|| LocalMutateError::UndefinedName(name.to_string()))?;
+
+        {
+            let binding = original.borrow();
+
+            if binding.stone {
+                return Err(LocalMutateError::StoneBinding(name.to_string()));
+            }
+
+            if binding.scope == ScopeCommitment::Global {
+                return Err(LocalMutateError::GlobalIdentity(name.to_string()));
+            }
+        }
 
         let mut names = Vec::new();
 
@@ -381,6 +449,7 @@ impl Env {
         let localized = Rc::new(RefCell::new(Slot {
             value,
             stone: false,
+            scope: ScopeCommitment::Local,
         }));
 
         let current = self

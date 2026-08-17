@@ -32,6 +32,959 @@ fn parse_program(src: &str) -> Program {
         .expect("failed to parse program")
 }
 
+fn eval_program(src: &str) -> Evaluator {
+    let program = parse_program(src);
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect("program evaluation should succeed");
+
+    evaluator
+}
+
+fn eval_program_err(src: &str) -> crate::compiler::error::Diagnostic {
+    let program = parse_program(src);
+    let mut evaluator = Evaluator::new();
+
+    evaluator
+        .eval_program(&program)
+        .expect_err("program evaluation should fail")
+}
+
+// ============================================================
+// R015 — Explicit Type Conversion Tests
+// ============================================================
+
+// ------------------------------------------------------------
+// num()
+// ------------------------------------------------------------
+
+#[test]
+fn num_conversion_preserves_num() {
+    let evaluator = eval_program(
+        "result = num(42);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(42)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_positive_dec_below_half_down() {
+    let evaluator = eval_program(
+        "result = num(12.4);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(12)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_positive_dec_half_away_from_zero() {
+    let evaluator = eval_program(
+        "result = num(12.5);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(13)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_positive_dec_above_half_up() {
+    let evaluator = eval_program(
+        "result = num(12.6);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(13)),
+    );
+}
+
+#[test]
+fn num_conversion_does_not_pre_round_decimal_places() {
+    let evaluator = eval_program(
+        "result = num(12.4999);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(12)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_negative_dec_below_half_toward_zero() {
+    let evaluator = eval_program(
+        "result = num(-12.4);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(-12)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_negative_dec_half_away_from_zero() {
+    let evaluator = eval_program(
+        "result = num(-12.5);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(-13)),
+    );
+}
+
+#[test]
+fn num_conversion_rounds_negative_dec_above_half_away_from_zero() {
+    let evaluator = eval_program(
+        "result = num(-12.6);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(-13)),
+    );
+}
+
+#[test]
+fn num_conversion_parses_whole_number_text() {
+    let evaluator = eval_program(
+        r#"result = num("12");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(12)),
+    );
+}
+
+#[test]
+fn num_conversion_parses_positive_signed_text() {
+    let evaluator = eval_program(
+        r#"result = num("+12");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(12)),
+    );
+}
+
+#[test]
+fn num_conversion_parses_negative_signed_text() {
+    let evaluator = eval_program(
+        r#"result = num("-12");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(-12)),
+    );
+}
+
+#[test]
+fn num_conversion_parses_decimal_text_and_rounds() {
+    let evaluator = eval_program(
+        r#"
+            low = num("12.4");
+            half = num("12.5");
+            precise = num("12.4999");
+            negative = num("-12.5");
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("low"),
+        Some(Value::Num(12)),
+    );
+
+    assert_eq!(
+        evaluator.get("half"),
+        Some(Value::Num(13)),
+    );
+
+    assert_eq!(
+        evaluator.get("precise"),
+        Some(Value::Num(12)),
+    );
+
+    assert_eq!(
+        evaluator.get("negative"),
+        Some(Value::Num(-13)),
+    );
+}
+
+#[test]
+fn num_conversion_from_text_matches_dec_then_num() {
+    let evaluator = eval_program(
+        r#"
+            direct = num("12.5");
+            through_dec = num(dec("12.5"));
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("direct"),
+        evaluator.get("through_dec"),
+    );
+
+    assert_eq!(
+        evaluator.get("direct"),
+        Some(Value::Num(13)),
+    );
+}
+
+#[test]
+fn num_conversion_maps_flags_to_zero_or_one() {
+    let evaluator = eval_program(
+        r#"
+            yes = num(true);
+            no = num(false);
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("yes"),
+        Some(Value::Num(1)),
+    );
+
+    assert_eq!(
+        evaluator.get("no"),
+        Some(Value::Num(0)),
+    );
+}
+
+#[test]
+fn num_conversion_rejects_empty_numeric_text() {
+    let err = eval_program_err(
+        r#"result = num("");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_leading_whitespace() {
+    let err = eval_program_err(
+        r#"result = num(" 42");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_trailing_whitespace() {
+    let err = eval_program_err(
+        r#"result = num("42 ");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_partial_numeric_text() {
+    let err = eval_program_err(
+        r#"result = num("42abc");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_internal_whitespace() {
+    let err = eval_program_err(
+        r#"result = num("1 2");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_out_of_range_integer_text() {
+    let err = eval_program_err(
+        r#"result = num("9223372036854775808");"#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn num_conversion_rejects_void() {
+    assert!(
+        eval_program_err("result = num(void);")
+            .message
+            .contains("num")
+    );
+}
+
+#[test]
+fn num_conversion_rejects_box() {
+    assert!(
+        eval_program_err("result = num(:[1]:);")
+            .message
+            .contains("num")
+    );
+}
+
+#[test]
+fn num_conversion_rejects_bag() {
+    assert!(
+        eval_program_err("result = num(:| value: 1 |:);")
+            .message
+            .contains("num")
+    );
+}
+
+
+// ------------------------------------------------------------
+// dec()
+// ------------------------------------------------------------
+
+#[test]
+fn dec_conversion_preserves_dec() {
+    let evaluator = eval_program(
+        "result = dec(12.5);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("12.5".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_converts_num_to_decimal() {
+    let evaluator = eval_program(
+        "result = dec(12);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("12.0".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_maps_flags_to_decimal_zero_or_one() {
+    let evaluator = eval_program(
+        r#"
+            yes = dec(true);
+            no = dec(false);
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("yes"),
+        Some(Value::Dec("1.0".to_string())),
+    );
+
+    assert_eq!(
+        evaluator.get("no"),
+        Some(Value::Dec("0.0".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_parses_whole_number_text() {
+    let evaluator = eval_program(
+        r#"result = dec("12");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("12.0".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_parses_decimal_text() {
+    let evaluator = eval_program(
+        r#"result = dec("12.5");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("12.5".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_parses_negative_decimal_text() {
+    let evaluator = eval_program(
+        r#"result = dec("-12.5");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("-12.5".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_parses_positive_signed_decimal_text() {
+    let evaluator = eval_program(
+        r#"result = dec("+12.5");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Dec("12.5".to_string())),
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_decimal_without_leading_digits() {
+    let err = eval_program_err(
+        r#"result = dec(".5");"#,
+    );
+
+    assert!(
+        err.message.contains("dec"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_decimal_without_trailing_digits() {
+    let err = eval_program_err(
+        r#"result = dec("12.");"#,
+    );
+
+    assert!(
+        err.message.contains("dec"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_multiple_decimal_points() {
+    let err = eval_program_err(
+        r#"result = dec("1.2.3");"#,
+    );
+
+    assert!(
+        err.message.contains("dec"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_whitespace() {
+    assert!(
+        eval_program_err(r#"result = dec(" 12.5");"#)
+            .message
+            .contains("dec")
+    );
+
+    assert!(
+        eval_program_err(r#"result = dec("12.5 ");"#)
+            .message
+            .contains("dec")
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_partial_numeric_text() {
+    let err = eval_program_err(
+        r#"result = dec("12abc");"#,
+    );
+
+    assert!(
+        err.message.contains("dec"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_void() {
+    assert!(
+        eval_program_err("result = dec(void);")
+            .message
+            .contains("dec")
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_box_and_bag() {
+    assert!(
+        eval_program_err("result = dec(:[]:);")
+            .message
+            .contains("dec")
+    );
+
+    assert!(
+        eval_program_err("result = dec(:||:);")
+            .message
+            .contains("dec")
+    );
+}
+
+
+// ------------------------------------------------------------
+// text()
+// ------------------------------------------------------------
+
+#[test]
+fn text_conversion_preserves_text() {
+    let evaluator = eval_program(
+        r#"result = text("Druim");"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("Druim".to_string())),
+    );
+}
+
+#[test]
+fn text_conversion_uses_canonical_num_representation() {
+    let evaluator = eval_program(
+        "result = text(42);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("42".to_string())),
+    );
+}
+
+#[test]
+fn text_conversion_uses_stored_dec_representation() {
+    let evaluator = eval_program(
+        "result = text(12.50);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("12.50".to_string())),
+    );
+}
+
+#[test]
+fn text_conversion_converts_flags() {
+    let evaluator = eval_program(
+        r#"
+            yes = text(true);
+            no = text(false);
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("yes"),
+        Some(Value::Text("true".to_string())),
+    );
+
+    assert_eq!(
+        evaluator.get("no"),
+        Some(Value::Text("false".to_string())),
+    );
+}
+
+#[test]
+fn text_conversion_converts_void() {
+    let evaluator = eval_program(
+        "result = text(void);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("void".to_string())),
+    );
+}
+
+#[test]
+fn text_conversion_rejects_box() {
+    let err = eval_program_err(
+        "result = text(:[1, 2]:);",
+    );
+
+    assert!(
+        err.message.contains("text"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn text_conversion_rejects_bag() {
+    let err = eval_program_err(
+        r#"result = text(:| name: "Druim" |:);"#,
+    );
+
+    assert!(
+        err.message.contains("text"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+
+// ------------------------------------------------------------
+// flag()
+// ------------------------------------------------------------
+
+#[test]
+fn flag_conversion_preserves_flag() {
+    let evaluator = eval_program(
+        "result = flag(true);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_uses_num_truth_conversion() {
+    let evaluator = eval_program(
+        r#"
+            zero = flag(0);
+            positive = flag(12);
+            negative = flag(-12);
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("zero"),
+        Some(Value::Flag(false)),
+    );
+
+    assert_eq!(
+        evaluator.get("positive"),
+        Some(Value::Flag(true)),
+    );
+
+    assert_eq!(
+        evaluator.get("negative"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_uses_dec_truth_conversion() {
+    let evaluator = eval_program(
+        r#"
+            zero = flag(0.0);
+            positive = flag(12.5);
+            negative = flag(-12.5);
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("zero"),
+        Some(Value::Flag(false)),
+    );
+
+    assert_eq!(
+        evaluator.get("positive"),
+        Some(Value::Flag(true)),
+    );
+
+    assert_eq!(
+        evaluator.get("negative"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_uses_text_truth_conversion() {
+    let evaluator = eval_program(
+        r#"
+            empty = flag("");
+            spaces = flag("   ");
+            word = flag("Druim");
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("empty"),
+        Some(Value::Flag(false)),
+    );
+
+    assert_eq!(
+        evaluator.get("spaces"),
+        Some(Value::Flag(false)),
+    );
+
+    assert_eq!(
+        evaluator.get("word"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_does_not_parse_text_contents() {
+    let evaluator = eval_program(
+        r#"
+            false_word = flag("false");
+            zero_text = flag("0");
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("false_word"),
+        Some(Value::Flag(true)),
+    );
+
+    assert_eq!(
+        evaluator.get("zero_text"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_converts_void_to_false() {
+    let evaluator = eval_program(
+        "result = flag(void);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn flag_conversion_converts_empty_box_to_false() {
+    let evaluator = eval_program(
+        "result = flag(:[]:);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn flag_conversion_converts_nonempty_box_to_true() {
+    let evaluator = eval_program(
+        "result = flag(:[void]:);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+#[test]
+fn flag_conversion_converts_empty_bag_to_false() {
+    let evaluator = eval_program(
+        "result = flag(:||:);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(false)),
+    );
+}
+
+#[test]
+fn flag_conversion_converts_nonempty_bag_to_true() {
+    let evaluator = eval_program(
+        "result = flag(:| value: void |:);",
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Flag(true)),
+    );
+}
+
+
+// ------------------------------------------------------------
+// Function/Core rejection
+// ------------------------------------------------------------
+
+#[test]
+fn num_conversion_rejects_function_value() {
+    let err = eval_program_err(
+        r#"
+            fn answer :()(
+                ret 42;
+            ):
+
+            result = num(answer);
+        "#,
+    );
+
+    assert!(
+        err.message.contains("num"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_function_value() {
+    let err = eval_program_err(
+        r#"
+            fn answer :()(
+                ret 42;
+            ):
+
+            result = dec(answer);
+        "#,
+    );
+
+    assert!(
+        err.message.contains("dec"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn text_conversion_rejects_function_value() {
+    let err = eval_program_err(
+        r#"
+            fn answer :()(
+                ret 42;
+            ):
+
+            result = text(answer);
+        "#,
+    );
+
+    assert!(
+        err.message.contains("text"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn flag_conversion_rejects_function_value() {
+    let err = eval_program_err(
+        r#"
+            fn answer :()(
+                ret 42;
+            ):
+
+            result = flag(answer);
+        "#,
+    );
+
+    assert!(
+        err.message.contains("flag"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn flag_conversion_rejects_core_function_value() {
+    let err = eval_program_err(
+        "result = flag(rise);",
+    );
+
+    assert!(
+        err.message.contains("flag"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+
+// ------------------------------------------------------------
+// Composition / integration
+// ------------------------------------------------------------
+
+#[test]
+fn nested_conversions_evaluate_inside_out() {
+    let evaluator = eval_program(
+        r#"result = text(num("12.5"));"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("13".to_string())),
+    );
+}
+
+#[test]
+fn num_conversion_result_can_participate_in_arithmetic() {
+    let evaluator = eval_program(
+        r#"result = num("12.5") + 7;"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Num(20)),
+    );
+}
+
+#[test]
+fn text_conversion_can_supply_core_text_argument() {
+    let evaluator = eval_program(
+        r#"result = rise(text(42));"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("42".to_string())),
+    );
+}
+
+#[test]
+fn explicit_text_conversion_allows_fuse_with_non_text_source() {
+    let evaluator = eval_program(
+        r#"result = fuse("Count: ", text(12));"#,
+    );
+
+    assert_eq!(
+        evaluator.get("result"),
+        Some(Value::Text("Count: 12".to_string())),
+    );
+}
+
+#[test]
+fn conversion_does_not_introduce_implicit_coercion() {
+    let err = eval_program_err(
+        r#"result = "12" + 5;"#,
+    );
+
+    assert_eq!(
+        err.message,
+        "addition requires two numbers",
+    );
+}
+
+#[test]
+fn fuse_still_rejects_unconverted_num() {
+    let err = eval_program_err(
+        r#"result = fuse("Count: ", 12);"#,
+    );
+
+    assert_eq!(
+        err.message,
+        "Core function `fuse` requires text arguments",
+    );
+}
+
 #[test]
 fn guard_assigns_first_truthy_branch() {
     let node = Node::new(NodeKind::Guard(Guard {
@@ -10600,5 +11553,75 @@ fn text_has_rejects_non_num_index() {
     assert_eq!(
         err.message,
         "text index must evaluate to a num"
+    );
+}
+
+#[test]
+fn global_mutate_promotes_ordinary_block_binding_to_global_scope() {
+    let evaluator = eval_program(
+        r#"
+            :{
+                val = 2;
+                glo val << val + 2;
+            }:
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("val"),
+        Some(Value::Num(4)),
+    );
+}
+
+#[test]
+fn global_mutate_rejects_explicit_local_binding() {
+    let err = eval_program_err(
+        r#"
+            :{
+                loc val = 2;
+                glo val << val + 2;
+            }:
+        "#,
+    );
+
+    assert!(
+        err.message.contains("val"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn local_mutate_rejects_explicit_global_binding() {
+    let err = eval_program_err(
+        r#"
+            glo val = 2;
+
+            :{
+                loc val << val + 2;
+            }:
+        "#,
+    );
+
+    assert!(
+        err.message.contains("val"),
+        "unexpected diagnostic: {err:?}",
+    );
+}
+
+#[test]
+fn local_mutate_can_localize_ordinary_binding() {
+    let evaluator = eval_program(
+        r#"
+            val = 2;
+
+            :{
+                loc val << val + 2;
+            }:
+        "#,
+    );
+
+    assert_eq!(
+        evaluator.get("val"),
+        Some(Value::Num(2)),
     );
 }

@@ -32,6 +32,20 @@ pub enum TextPart {
     Expr(Node),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionType {
+    Num,
+    Dec,
+    Text,
+    Flag,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Convert {
+    pub target: ConversionType,
+    pub value: Box<Node>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub kind: NodeKind,
@@ -44,6 +58,9 @@ pub enum NodeKind {
     Ident(String),
     Lit(Literal),
     InterpolatedText(InterpolatedText),
+
+    // ===== Conversions =====
+    Convert(Convert),
 
     // ===== Collections =====
     Box(BoxLiteral),

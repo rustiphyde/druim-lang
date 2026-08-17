@@ -1,8 +1,8 @@
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
 use crate::compiler::ast::{
-    TextPart, Bind, Block, Call, Copy, Define, DefineEmpty, Func, Guard, Literal, Node,
-    NodeKind, Program, Ret,
+    TextPart, Bind, Block, Call, ConversionType, Copy, Define, DefineEmpty,
+    Func, Guard, Literal, Node, NodeKind, Program, Ret,
 };
 use crate::compiler::diagnostic::render;
 use crate::compiler::error::{Diagnostic, Source};
@@ -977,6 +977,477 @@ fn guard_rejects_empty_later_branch() {
     let mut parser = Parser::new(&tokens);
 
     assert!(parser.parse_node().is_err());
+}
+
+// Type Conversion Tests
+
+#[test]
+fn parses_num_conversion() {
+    let node = parse_node(r#"value = num("12.5");"#);
+
+    match &node.kind {
+        NodeKind::Define(Define { name, value }) => {
+            assert_eq!(name, "value");
+
+            match &value.kind {
+                NodeKind::Convert(convert) => {
+                    assert_eq!(convert.target, ConversionType::Num);
+
+                    assert!(matches!(
+                        &convert.value.kind,
+                        NodeKind::Lit(Literal::Text(text))
+                            if text == "12.5"
+                    ));
+                }
+
+                other => {
+                    panic!("expected num conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_dec_conversion() {
+    let node = parse_node("value = dec(12);");
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Convert(convert) => {
+                    assert_eq!(convert.target, ConversionType::Dec);
+
+                    assert!(matches!(
+                        &convert.value.kind,
+                        NodeKind::Lit(Literal::Num(12))
+                    ));
+                }
+
+                other => {
+                    panic!("expected dec conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_text_conversion() {
+    let node = parse_node("value = text(true);");
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Convert(convert) => {
+                    assert_eq!(convert.target, ConversionType::Text);
+
+                    assert!(matches!(
+                        &convert.value.kind,
+                        NodeKind::Lit(Literal::Flag(true))
+                    ));
+                }
+
+                other => {
+                    panic!("expected text conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_flag_conversion() {
+    let node = parse_node("value = flag(:[]:);");
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Convert(convert) => {
+                    assert_eq!(convert.target, ConversionType::Flag);
+
+                    assert!(matches!(
+                        &convert.value.kind,
+                        NodeKind::Box(box_literal)
+                            if box_literal.values.is_empty()
+                    ));
+                }
+
+                other => {
+                    panic!("expected flag conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_nested_type_conversions() {
+    let node = parse_node(r#"value = text(num("12.5"));"#);
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Convert(outer) => {
+                    assert_eq!(outer.target, ConversionType::Text);
+
+                    match &outer.value.kind {
+                        NodeKind::Convert(inner) => {
+                            assert_eq!(
+                                inner.target,
+                                ConversionType::Num
+                            );
+
+                            assert!(matches!(
+                                &inner.value.kind,
+                                NodeKind::Lit(Literal::Text(text))
+                                    if text == "12.5"
+                            ));
+                        }
+
+                        other => {
+                            panic!(
+                                "expected nested num conversion, got {other:?}"
+                            );
+                        }
+                    }
+                }
+
+                other => {
+                    panic!("expected text conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_accepts_complete_expression() {
+    let node = parse_node("value = num(12 + 3);");
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Convert(convert) => {
+                    assert_eq!(convert.target, ConversionType::Num);
+
+                    assert!(matches!(
+                        &convert.value.kind,
+                        NodeKind::Add(_, _)
+                    ));
+                }
+
+                other => {
+                    panic!("expected num conversion, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_inside_mutate() {
+    let node = parse_node(r#"value << num("12.5");"#);
+
+    match &node.kind {
+        NodeKind::Mutate(mutate) => {
+            assert_eq!(mutate.name, "value");
+
+            assert!(matches!(
+                &mutate.value.kind,
+                NodeKind::Convert(convert)
+                    if convert.target == ConversionType::Num
+            ));
+        }
+
+        other => panic!("expected Mutate node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_inside_guard_branch() {
+    let node = parse_node(r#"result ?= flag("Druim");"#);
+
+    match &node.kind {
+        NodeKind::Guard(Guard { branches, .. }) => {
+            assert_eq!(branches.len(), 1);
+
+            assert!(matches!(
+                &branches[0].expr.kind,
+                NodeKind::Convert(convert)
+                    if convert.target == ConversionType::Flag
+            ));
+        }
+
+        other => panic!("expected Guard node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_as_return_value() {
+    let node = parse_node(
+        r#"fn convert :()(ret num("12.5");):"#,
+    );
+
+    match &node.kind {
+        NodeKind::Func(Func { body, .. }) => {
+            assert_eq!(body.len(), 1);
+
+            match &body[0].kind {
+                NodeKind::Ret(Ret {
+                    value: Some(value),
+                }) => {
+                    assert!(matches!(
+                        &value.kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Num
+                    ));
+                }
+
+                other => {
+                    panic!("expected return node, got {other:?}");
+                }
+            }
+        }
+
+        other => panic!("expected Func node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_as_function_argument() {
+    let src = "consume(text(42))";
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let expr = parser
+        .parse_expr()
+        .expect("conversion argument should parse");
+
+    match &expr.kind {
+        NodeKind::Call(Call { args, .. }) => {
+            assert_eq!(args.len(), 1);
+
+            assert!(matches!(
+                &args[0].kind,
+                NodeKind::Convert(convert)
+                    if convert.target == ConversionType::Text
+            ));
+        }
+
+        other => panic!("expected Call node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_inside_box() {
+    let node = parse_node(
+        r#"values = :[num("12.5"), text(42), flag("")]:;"#,
+    );
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Box(box_literal) => {
+                    assert_eq!(box_literal.values.len(), 3);
+
+                    assert!(matches!(
+                        &box_literal.values[0].kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Num
+                    ));
+
+                    assert!(matches!(
+                        &box_literal.values[1].kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Text
+                    ));
+
+                    assert!(matches!(
+                        &box_literal.values[2].kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Flag
+                    ));
+                }
+
+                other => panic!("expected Box node, got {other:?}"),
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_inside_bag() {
+    let node = parse_node(
+        r#"values = :| count: num("12.5"), label: text(42) |:;"#,
+    );
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::Bag(bag_literal) => {
+                    assert_eq!(bag_literal.entries.len(), 2);
+
+                    assert!(matches!(
+                        &bag_literal.entries[0].value.kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Num
+                    ));
+
+                    assert!(matches!(
+                        &bag_literal.entries[1].value.kind,
+                        NodeKind::Convert(convert)
+                            if convert.target == ConversionType::Text
+                    ));
+                }
+
+                other => panic!("expected Bag node, got {other:?}"),
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn conversion_parses_inside_interpolation() {
+    let node = parse_node(
+        r#"message = "Value: :.text(42).:";"#,
+    );
+
+    match &node.kind {
+        NodeKind::Define(Define { value, .. }) => {
+            match &value.kind {
+                NodeKind::InterpolatedText(text) => {
+                    assert_eq!(text.parts.len(), 2);
+
+                    assert!(matches!(
+                        &text.parts[1],
+                        TextPart::Expr(Node {
+                            kind: NodeKind::Convert(convert),
+                            ..
+                        }) if convert.target == ConversionType::Text
+                    ));
+                }
+
+                other => {
+                    panic!(
+                        "expected InterpolatedText node, got {other:?}"
+                    );
+                }
+            }
+        }
+
+        other => panic!("expected Define node, got {other:?}"),
+    }
+}
+
+#[test]
+fn num_conversion_rejects_empty_argument() {
+    let err = parse_node_err("value = num();");
+
+    assert_eq!(
+        err.message,
+        "empty type conversion"
+    );
+}
+
+#[test]
+fn dec_conversion_rejects_empty_argument() {
+    let err = parse_node_err("value = dec();");
+
+    assert_eq!(
+        err.message,
+        "empty type conversion"
+    );
+}
+
+#[test]
+fn text_conversion_rejects_empty_argument() {
+    let err = parse_node_err("value = text();");
+
+    assert_eq!(
+        err.message,
+        "empty type conversion"
+    );
+}
+
+#[test]
+fn flag_conversion_rejects_empty_argument() {
+    let err = parse_node_err("value = flag();");
+
+    assert_eq!(
+        err.message,
+        "empty type conversion"
+    );
+}
+
+#[test]
+fn conversion_rejects_multiple_arguments() {
+    let err = parse_node_err("value = num(12, 13);");
+
+    assert_eq!(
+        err.message,
+        "too many type conversion arguments"
+    );
+}
+
+#[test]
+fn conversion_rejects_extra_expression_tokens() {
+    let err = parse_node_err("value = num(12 13);");
+
+    assert_eq!(
+        err.message,
+        "invalid type conversion"
+    );
+}
+
+#[test]
+fn conversion_requires_closing_parenthesis() {
+    let err = parse_node_err("value = num(12;");
+
+    assert_eq!(
+        err.message,
+        "invalid type conversion"
+    );
+}
+
+#[test]
+fn conversion_keyword_requires_conversion_syntax() {
+    let err = parse_node_err("value = num;");
+
+    assert_eq!(
+        err.message,
+        "invalid type conversion"
+    );
+}
+
+#[test]
+fn void_cannot_be_called_as_conversion() {
+    let err = parse_node_err("value = void(12);");
+
+    assert_eq!(
+        err.message,
+        "`void` is not a conversion expression"
+    );
 }
 
 // Function Tests

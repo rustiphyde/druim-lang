@@ -1,7 +1,8 @@
 use crate::compiler::ast::{
-    InterpolatedText, TextPart, BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call, Copy, Define,
-    DefineEmpty, Func, Guard, GuardBranch, Literal, Loop, Mutate, Node, NodeKind, Param,
-    Program, Print, Ret,
+    BagEntry, BagLiteral, Bind, Block, BlockSegment, BoxLiteral, Call,
+    ConversionType, Convert, Copy, Define, DefineEmpty, Func, Guard,
+    GuardBranch, InterpolatedText, Literal, Loop, Mutate, Node, NodeKind,
+    Param, Program, Print, Ret, TextPart,
 };
 use crate::compiler::error::{Span, Diagnostic};
 use crate::compiler::token::{Token, TokenKind};
@@ -2381,10 +2382,45 @@ impl<'a> Parser<'a> {
                 ))
             }
 
-            TokenKind::KwVoid => Ok(Node::new(
-                NodeKind::Lit(Literal::Void),
-                token_span,
-            )),
+            TokenKind::KwVoid => {
+                if self.peek_kind() == TokenKind::LParen {
+                    return Err(
+                        Diagnostic::error(
+                            "`void` is not a conversion expression",
+                            Span {
+                                start: tok.pos,
+                                end: self.current_span().end,
+                            },
+                        )
+                        .with_help(
+                            "`void` is Druim's explicit absence literal and is not callable.\n\
+                            Use `void` directly.",
+                        ),
+                    );
+                }
+
+                Ok(Node::new(
+                    NodeKind::Lit(Literal::Void),
+                    token_span,
+                ))
+            }
+
+            // ─── Type conversions ──────────────────
+            TokenKind::KwNum => {
+                self.parse_conversion(tok.pos, ConversionType::Num)
+            }
+
+            TokenKind::KwDec => {
+                self.parse_conversion(tok.pos, ConversionType::Dec)
+            }
+
+            TokenKind::KwText => {
+                self.parse_conversion(tok.pos, ConversionType::Text)
+            }
+
+            TokenKind::KwFlag => {
+                self.parse_conversion(tok.pos, ConversionType::Flag)
+            }
 
             // ─── Collection literals ───────────────
             TokenKind::BoxStart => self.parse_box_literal(tok.pos),
@@ -2491,6 +2527,86 @@ impl<'a> Parser<'a> {
                 .with_help("Druim expected a value here."),
             ),
         }
+    }
+
+    fn parse_conversion(
+        &mut self,
+        start: usize,
+        target: ConversionType,
+    ) -> Result<Node, Diagnostic> {
+        if self.peek_kind() != TokenKind::LParen {
+            return Err(
+                Diagnostic::error(
+                    "invalid type conversion",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim type conversion requires one expression inside `(` and `)`.\n\
+                    Examples: `num(value)`, `dec(value)`, `text(value)`, `flag(value)`",
+                ),
+            );
+        }
+
+        self.bump(); // consume `(`
+
+        if self.peek_kind() == TokenKind::RParen {
+            return Err(
+                Diagnostic::error(
+                    "empty type conversion",
+                    self.current_span(),
+                )
+                .with_help(
+                    "Druim type conversion requires exactly one expression.\n\
+                    Examples: `num(value)`, `dec(value)`, `text(value)`, `flag(value)`",
+                ),
+            );
+        }
+
+        let value = self.parse_expr()?;
+
+        match self.peek_kind() {
+            TokenKind::RParen => {}
+
+            TokenKind::Comma => {
+                return Err(
+                    Diagnostic::error(
+                        "too many type conversion arguments",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "Druim type conversions accept exactly one expression.\n\
+                        Examples: `num(value)`, `dec(value)`, `text(value)`, `flag(value)`",
+                    ),
+                );
+            }
+
+            _ => {
+                return Err(
+                    Diagnostic::error(
+                        "invalid type conversion",
+                        self.current_span(),
+                    )
+                    .with_help(
+                        "A Druim type conversion must contain exactly one complete expression followed by `)`.",
+                    ),
+                );
+            }
+        }
+
+        let closing = self
+            .bump()
+            .expect("closing conversion parenthesis must exist");
+
+        Ok(Node::new(
+            NodeKind::Convert(Convert {
+                target,
+                value: Box::new(value),
+            }),
+            Span {
+                start,
+                end: closing.pos + closing.lexeme.len(),
+            },
+        ))
     }
 
     fn parse_interpolated_text(

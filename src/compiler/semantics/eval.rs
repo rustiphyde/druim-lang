@@ -1,4 +1,5 @@
 use crate::compiler::ast::{
+    ConversionType,
     Node,
     NodeKind,
     Program,
@@ -12,6 +13,7 @@ use crate::compiler::semantics::env::{
     DefineError,
     CopyError,
     BindError,
+    GlobalMutateError,
 };
 use crate::compiler::semantics::truth::{truth_of, Truth};
 use crate::compiler::semantics::value::{Core, Value};
@@ -37,6 +39,140 @@ fn local_name(node: &Node) -> Option<&str> {
         NodeKind::Func(func) => Some(&func.name),
         _ => None,
     }
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Num(_) => "num",
+        Value::Dec(_) => "dec",
+        Value::Flag(_) => "flag",
+        Value::Text(_) => "text",
+        Value::Void => "void",
+        Value::Box(_) => "Box",
+        Value::Bag(_) => "Bag",
+        Value::Core(_) | Value::Func(_) => "function",
+    }
+}
+
+fn valid_numeric_text(value: &str) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+
+    let unsigned = match value.as_bytes()[0] {
+        b'+' | b'-' => &value[1..],
+        _ => value,
+    };
+
+    if unsigned.is_empty() {
+        return false;
+    }
+
+    let mut parts = unsigned.split('.');
+
+    let whole = parts.next().unwrap_or("");
+    let fractional = parts.next();
+
+    if parts.next().is_some() {
+        return false;
+    }
+
+    if whole.is_empty() || !whole.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+
+    match fractional {
+        Some(fractional) => {
+            !fractional.is_empty()
+                && fractional.bytes().all(|b| b.is_ascii_digit())
+        }
+
+        None => true,
+    }
+}
+
+fn decimal_text_to_num(value: &str) -> Option<i64> {
+    if !valid_numeric_text(value) {
+        return None;
+    }
+
+    let negative = value.starts_with('-');
+
+    let unsigned = if value.starts_with('+') || value.starts_with('-') {
+        &value[1..]
+    } else {
+        value
+    };
+
+    let mut parts = unsigned.split('.');
+
+    let whole_text = parts.next()?;
+    let fractional = parts.next();
+
+    // Use i128 during conversion so i64 boundary cases can be checked
+    // without wrapping.
+    let whole = whole_text.parse::<i128>().ok()?;
+
+    let round_away = match fractional {
+        Some(fractional) => {
+            fractional
+                .as_bytes()
+                .first()
+                .is_some_and(|digit| *digit >= b'5')
+        }
+
+        None => false,
+    };
+
+    let magnitude = whole.checked_add(if round_away { 1 } else { 0 })?;
+
+    let signed = if negative {
+        magnitude.checked_neg()?
+    } else {
+        magnitude
+    };
+
+    i64::try_from(signed).ok()
+}
+
+fn numeric_text_to_dec(value: &str) -> Option<String> {
+    if !valid_numeric_text(value) {
+        return None;
+    }
+
+    let negative = value.starts_with('-');
+
+    let unsigned = if value.starts_with('+') || value.starts_with('-') {
+        &value[1..]
+    } else {
+        value
+    };
+
+    let mut parts = unsigned.split('.');
+
+    let whole = parts.next()?;
+    let fractional = parts.next();
+
+    let mut result = String::new();
+
+    if negative {
+        result.push('-');
+    }
+
+    result.push_str(whole);
+
+    match fractional {
+        Some(fractional) => {
+            result.push('.');
+            result.push_str(fractional);
+        }
+
+        None => {
+            result.push_str(".0");
+        }
+    }
+
+    Some(result)
 }
 
 impl Default for Evaluator {
@@ -335,6 +471,163 @@ impl Evaluator {
                 }
 
                 Ok(Value::Text(result))
+            }
+
+            NodeKind::Convert(convert) => {
+                let value = self.eval_value(convert.value.as_ref())?;
+
+                match convert.target {
+                    ConversionType::Num => {
+                        match value {
+                            Value::Num(value) => {
+                                Ok(Value::Num(value))
+                            }
+
+                            Value::Dec(value) => {
+                                let converted =
+                                    decimal_text_to_num(&value).ok_or_else(|| {
+                                        Diagnostic::error(
+                                            "value cannot be converted to num",
+                                            convert.value.span,
+                                        )
+                                        .with_help(
+                                            "Druim `num()` requires a representable numeric value.",
+                                        )
+                                    })?;
+
+                                Ok(Value::Num(converted))
+                            }
+
+                            Value::Text(value) => {
+                                let converted =
+                                    decimal_text_to_num(&value).ok_or_else(|| {
+                                        Diagnostic::error(
+                                            "text cannot be converted to num",
+                                            convert.value.span,
+                                        )
+                                        .with_help(
+                                            "Druim `num()` requires complete numeric text with no surrounding whitespace.",
+                                        )
+                                    })?;
+
+                                Ok(Value::Num(converted))
+                            }
+
+                            Value::Flag(value) => {
+                                Ok(Value::Num(if value { 1 } else { 0 }))
+                            }
+
+                            other => {
+                                Err(Diagnostic::error(
+                                    format!(
+                                        "{} cannot be converted to num",
+                                        value_type_name(&other),
+                                    ),
+                                    convert.value.span,
+                                ))
+                            }
+                        }
+                    }
+
+                    ConversionType::Dec => {
+                        match value {
+                            Value::Dec(value) => {
+                                Ok(Value::Dec(value))
+                            }
+
+                            Value::Num(value) => {
+                                Ok(Value::Dec(format!("{value}.0")))
+                            }
+
+                            Value::Text(value) => {
+                                let converted =
+                                    numeric_text_to_dec(&value).ok_or_else(|| {
+                                        Diagnostic::error(
+                                            "text cannot be converted to dec",
+                                            convert.value.span,
+                                        )
+                                        .with_help(
+                                            "Druim `dec()` requires complete numeric text with no surrounding whitespace.",
+                                        )
+                                    })?;
+
+                                Ok(Value::Dec(converted))
+                            }
+
+                            Value::Flag(value) => {
+                                Ok(Value::Dec(
+                                    if value {
+                                        "1.0"
+                                    } else {
+                                        "0.0"
+                                    }
+                                    .to_string(),
+                                ))
+                            }
+
+                            other => {
+                                Err(Diagnostic::error(
+                                    format!(
+                                        "{} cannot be converted to dec",
+                                        value_type_name(&other),
+                                    ),
+                                    convert.value.span,
+                                ))
+                            }
+                        }
+                    }
+
+                    ConversionType::Text => {
+                        match value {
+                            Value::Num(value) => {
+                                Ok(Value::Text(value.to_string()))
+                            }
+
+                            Value::Dec(value) => {
+                                Ok(Value::Text(value))
+                            }
+
+                            Value::Flag(value) => {
+                                Ok(Value::Text(value.to_string()))
+                            }
+
+                            Value::Text(value) => {
+                                Ok(Value::Text(value))
+                            }
+
+                            Value::Void => {
+                                Ok(Value::Text("void".to_string()))
+                            }
+
+                            other => {
+                                Err(Diagnostic::error(
+                                    format!(
+                                        "{} cannot be converted to text",
+                                        value_type_name(&other),
+                                    ),
+                                    convert.value.span,
+                                ))
+                            }
+                        }
+                    }
+
+                    ConversionType::Flag => {
+                        match value {
+                            Value::Core(_) | Value::Func(_) => {
+                                Err(Diagnostic::error(
+                                    "function cannot be converted to flag",
+                                    convert.value.span,
+                                ))
+                            }
+
+                            other => {
+                                Ok(Value::Flag(
+                                    truth_of(&other) == Truth::True,
+                                ))
+                            }
+                        }
+                    }
+                }
             }
 
             NodeKind::Box(box_literal) => {
@@ -701,11 +994,28 @@ impl Evaluator {
 
                 match evaluated {
                     Value::Num(number) => {
-                        Ok(Value::Num(-number))
+                        let negated = number.checked_neg().ok_or_else(|| {
+                            Diagnostic::error(
+                                "numeric negation is out of range",
+                                node.span,
+                            )
+                        })?;
+
+                        Ok(Value::Num(negated))
+                    }
+
+                    Value::Dec(decimal) => {
+                        let negated = if let Some(stripped) = decimal.strip_prefix('-') {
+                            stripped.to_string()
+                        } else {
+                            format!("-{decimal}")
+                        };
+
+                        Ok(Value::Dec(negated))
                     }
 
                     _ => Err(Diagnostic::error(
-                        "numeric negation requires a number",
+                        "numeric negation requires a num or dec",
                         node.span,
                     )),
                 }
@@ -1298,16 +1608,23 @@ impl Evaluator {
                             .assign_global(&mutate.name, value)
                             .map_err(|error| {
                                 match error {
-                                    EnvError::UndefinedName(name) => {
+                                    GlobalMutateError::UndefinedName(name) => {
                                         Diagnostic::error(
                                             format!("undeclared identifier `{name}`"),
                                             inner.span,
                                         )
                                     }
 
-                                    EnvError::StoneBinding(name) => {
+                                    GlobalMutateError::StoneBinding(name) => {
                                         Diagnostic::error(
                                             format!("cannot mutate stone binding `{name}`"),
+                                            inner.span,
+                                        )
+                                    }
+
+                                    GlobalMutateError::LocalIdentity(name) => {
+                                        Diagnostic::error(
+                                            format!("cannot change local binding `{name}` to global scope"),
                                             inner.span,
                                         )
                                     }
@@ -1491,17 +1808,24 @@ impl Evaluator {
                                     .assign_global(&mutate.name, value)
                                     .map_err(|error| {
                                         match error {
-                                            EnvError::UndefinedName(name) => {
+                                            GlobalMutateError::UndefinedName(name) => {
                                                 Diagnostic::error(
                                                     format!("undeclared identifier `{name}`"),
-                                                    global_inner.span,
+                                                    inner.span,
                                                 )
                                             }
 
-                                            EnvError::StoneBinding(name) => {
+                                            GlobalMutateError::StoneBinding(name) => {
                                                 Diagnostic::error(
                                                     format!("cannot mutate stone binding `{name}`"),
-                                                    global_inner.span,
+                                                    inner.span,
+                                                )
+                                            }
+
+                                            GlobalMutateError::LocalIdentity(name) => {
+                                                Diagnostic::error(
+                                                    format!("cannot change local binding `{name}` to global scope"),
+                                                    inner.span,
                                                 )
                                             }
                                         }
@@ -2306,6 +2630,7 @@ impl Evaluator {
 
                                             continue;
                                         }
+
                                         if let Some(name) = local_name(inner) {
                                             if self.env.lookup(name).is_some() {
                                                 return Err(
@@ -2324,7 +2649,29 @@ impl Evaluator {
                                             ));
                                         }
 
-                                        self.eval_node_ctrl(inner)?
+                                        let control = self.eval_node_ctrl(inner)?;
+
+                                        if let NodeKind::Define(def) = &inner.kind {
+                                            self.env
+                                                .mark_local(&def.name)
+                                                .map_err(|error| match error {
+                                                    EnvError::UndefinedName(name) => {
+                                                        Diagnostic::error(
+                                                            format!("undeclared identifier `{name}`"),
+                                                            inner.span,
+                                                        )
+                                                    }
+
+                                                    EnvError::StoneBinding(name) => {
+                                                        Diagnostic::error(
+                                                            format!("cannot modify stone binding `{name}`"),
+                                                            inner.span,
+                                                        )
+                                                    }
+                                                })?;
+                                        }
+
+                                        control
                                     }
                                     _ => self.eval_node_ctrl(segment_node)?,
                                 };
