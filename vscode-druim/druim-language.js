@@ -363,6 +363,7 @@ const operators = {
             "Box values do not currently have a canonical textual representation and cannot be printed directly.",
             "Bag values do not currently have a canonical textual representation and cannot be printed directly.",
             "Function values do not currently have a canonical textual representation and cannot be printed directly.",
+            "Core function values do not currently have a canonical textual representation and cannot be printed directly.",
             "Each Print statement emits a terminating newline.",
             "Print does not implicitly serialize collections or functions.",
             "Print does not introduce implicit type coercion beyond Druim's defined canonical textual conversion."
@@ -376,6 +377,7 @@ const operators = {
             "Printing a Box directly produces a diagnostic.",
             "Printing a Bag directly produces a diagnostic.",
             "Printing a function directly produces a diagnostic.",
+            "Printing a Core function value directly produces a diagnostic.",
             "A malformed or incomplete Print expression produces a diagnostic."
         ]
     },
@@ -894,7 +896,7 @@ const operators = {
             "The right operand is then converted using the same canonical truth conversion.",
             "The result of && is always a flag.",
             "This short-circuit behavior can prevent diagnostics or other evaluation on the right side when the left side is already false.",
-            "Function values have no canonical truth conversion."
+            "Function and Core function values have no canonical truth conversion."
         ],
         example:
             'result = "Druim" && 1;',
@@ -927,7 +929,7 @@ const operators = {
             "The right operand is then converted using the same canonical truth conversion.",
             "The result of || is always a flag.",
             "This short-circuit behavior can prevent diagnostics or other evaluation on the right side when the left side already resolves to true.",
-            "Function values have no canonical truth conversion."
+            "Function and Core function values have no canonical truth conversion."
         ],
         example:
             'result = "" || "Druim";',
@@ -968,7 +970,7 @@ const operators = {
             "!1 produces false.",
             "!\"\" produces true.",
             "!void produces true.",
-            "Function values have no canonical truth conversion."
+            "Function and Core function values have no canonical truth conversion."
         ],
         example:
             'result = !"";',
@@ -1027,7 +1029,11 @@ const keywords = {
             "`):` closes the function declaration.",
             "Parameters are valid Druim parameter forms rather than being restricted to bare identifiers.",
             "Parameters may include default values.",
-            "The function body establishes the function's lexical scope.",
+            "Parameters may be plain identifiers or may define defaults using `= expression`.",
+            "Required and defaulted parameters may appear in any order.",
+            "Parameter names must be unique within the function.",
+            "A parameter name may not collide with an already-visible binding when the function is invoked.",
+            "Calling the function creates a function-local scope in which parameters and body-local bindings exist for that invocation.",
             "Function calls use ordinary parentheses, such as `calculate(value)`."
         ],
         example:
@@ -1046,14 +1052,16 @@ const keywords = {
         token: "ret",
         name: "Return",
         category: "Control Statement",
-        signature: "ret expression;",
+        signature: "ret [expression];",
         description:
-            "Ends execution of the current function and returns the value produced by the following expression.",
+            "Ends execution of the current function and returns the evaluated expression value, or void when no expression is supplied.",
         details: [
             "Return is valid within a function body.",
-            "The expression following `ret` is evaluated before the function returns.",
-            "The resulting value becomes the result of the function call.",
-            "Code after an executed Return is not evaluated as part of that function invocation."
+            "ret expression; evaluates the expression and returns the resulting value.",
+            "ret; returns void.",
+            "A function that reaches the end of its body without executing ret also evaluates to void.",
+            "An executed ret immediately stops the remaining function body.",
+            "A ret executed inside a loop propagates through the loop and exits the enclosing function."
         ],
         example:
             "ret value * 2;",
@@ -1071,35 +1079,34 @@ const keywords = {
         category: "Scope Modifier",
         signature: "loc statement",
         description:
-            "Applies the following supported statement to the active local lifetime instead of the surrounding persistent identity or scope.",
+            "Commits a new target or ordinary visible identity to the applicable local lifetime.",
         details: [
             "loc does not create a new lexical scope by itself.",
-            "loc changes where a new target is established or how an existing visible identity is localized.",
-            "Supported local forms include Define `=`, DefineEmpty `=;`, Copy `:=`, Bind `:>`, Guard `?=`, Mutate `<<`, and function declaration.",
-            "A new local target may not reuse a name that is already visible.",
+            "A binding identity may be ordinary, explicitly local, or explicitly global.",
+            "For target-establishing forms, loc creates the new target with the applicable local lifetime.",
+            "A new loc target may not reuse a name that is already visible.",
             "Inside a block chain, a loc target belongs only to the current block segment.",
             "At a `}{` continuation, block-segment local targets are discarded before the next segment begins.",
-            "A loc target created in one block segment is therefore unavailable in later segments.",
-            "Inside a loop, loc belongs to the loop's persistent local scope and survives across loop iterations.",
-            "A loc Bind creates a local alias to an existing visible identity.",
-            "A loc Copy creates a fresh independent identity whose lifetime is local.",
-            "A loc Mutate localizes the currently visible identity before applying the mutation.",
-            "Changes made through a localized Mutate are visible only through that localized identity during its local lifetime.",
+            "Inside a loop, a loc target belongs to the loop's persistent local scope and survives across iterations.",
+            "loc supports Define `=`, DefineEmpty `=;`, Copy `:=`, Bind `:>`, Guard `?=`, Mutate `<<`, and function declaration.",
+            "With Mutate `<<`, loc localizes an ordinary visible identity for the applicable local lifetime before applying the mutation.",
+            "The right-hand side of loc Mutate is evaluated against the currently visible identity before localization.",
+            "If multiple names share the identity through Bind `:>`, those names observe the localized identity during the local lifetime.",
             "When the local lifetime ends, the outer identity is restored with its original value and mutability state.",
-            "If the localized name is already a local Bind alias, local mutation preserves the alias relationship within that local lifetime.",
-            "loc function declarations create functions whose binding follows the same local lifetime rules.",
-            "loc and glo are mutually exclusive.",
+            "An identity explicitly committed with glo cannot later be changed to local scope with loc.",
+            "loc and glo are mutually exclusive on the same statement.",
             "When combined with stone, canonical modifier order is `stone loc`."
         ],
         example:
             "value = 10;\n:{\n    loc value << value + 5;\n}:",
         exampleResult:
-            "Inside the local lifetime, value is 15. After the local lifetime ends, the outer value remains 10.",
+            "value is 15 during the local lifetime. After that lifetime ends, the outer value remains 10.",
         diagnostics: [
             "Using loc together with glo on the same statement produces a diagnostic.",
-            "Defining a new local target with a name that is already visible produces a diagnostic.",
+            "Attempting to localize an identity explicitly committed with glo produces a diagnostic.",
+            "Defining a new loc target with a name that is already visible produces a diagnostic.",
             "Placing loc in an invalid modifier position produces a diagnostic.",
-            "Using loc with a statement form that does not support local behavior produces a diagnostic."
+            "Using loc with an unsupported statement form produces a diagnostic."
         ]
     },
 
@@ -1109,32 +1116,32 @@ const keywords = {
         category: "Scope Modifier",
         signature: "glo statement",
         description:
-            "Applies global scope to the binding or identity affected by the following supported statement.",
+            "Commits a new target or ordinary visible identity to global lifetime.",
         details: [
             "glo does not create a new lexical scope by itself.",
-            "glo causes the affected binding identity to live in the program's global scope.",
-            "A globally scoped identity remains available after the function, loop, block, or block segment in which the glo statement appeared has ended.",
+            "A binding identity may be ordinary, explicitly local, or explicitly global.",
+            "For target-establishing forms, glo creates the new target directly in the program's global scope.",
+            "A glo target remains globally visible after the function, loop, block, or block segment in which it was established ends.",
+            "Right-hand expressions and source identifiers still resolve from the scope where the glo statement executes.",
             "glo supports Define `=`, DefineEmpty `=;`, Copy `:=`, Bind `:>`, Guard `?=`, Mutate `<<`, and function declaration.",
-            "With Define, DefineEmpty, Copy, Guard, or function declaration, the resulting binding is established directly in global scope.",
-            "A glo Copy creates a fresh independent identity in global scope containing the source's current value.",
-            "Because Copy creates an independent identity, its source may originate in a shorter-lived local scope.",
-            "A glo Bind establishes a global alias to the source identity.",
-            "Because Bind shares identity rather than copying a value, its source identity must be able to survive for the global lifetime.",
-            "With Mutate `<<`, glo promotes the affected target identity to global scope and applies the mutation to that identity.",
-            "A value used by the mutation expression is resolved normally before the resulting mutation is applied.",
-            "After a glo Mutate completes, the target remains globally accessible with its mutated value.",
-            "glo may therefore promote a binding that originated in a shorter-lived scope into global scope.",
-            "loc and glo are mutually exclusive.",
+            "With Mutate `<<`, glo may commit an ordinary visible identity to global scope and apply the mutation to that same identity.",
+            "The right-hand side of glo Mutate is evaluated in the current execution scope before the identity is committed globally.",
+            "glo Mutate preserves the target identity rather than creating an independent copy.",
+            "After successful glo Mutate, the target remains globally visible with its mutated value.",
+            "An identity explicitly committed with loc cannot later be changed to global scope with glo.",
+            "A glo Copy creates a fresh independent global identity and may copy from a shorter-lived source.",
+            "A glo Bind creates a global alias and therefore requires a source identity that can survive for global lifetime.",
+            "loc and glo are mutually exclusive on the same statement.",
             "When combined with stone, canonical modifier order is `stone glo`."
         ],
         example:
             ":{\n    val = 2;\n    glo val << val + 2;\n}:",
         exampleResult:
-            "val is promoted to global scope, mutated to 4, and remains available after the block ends.",
+            "val is mutated to 4, committed to global scope, and remains globally visible after the block ends.",
         diagnostics: [
             "Using glo together with loc on the same statement produces a diagnostic.",
-            "Using glo when the required target cannot be resolved produces a diagnostic.",
-            "A glo Bind whose source identity cannot legally survive at global scope produces a diagnostic.",
+            "Attempting to globalize an identity explicitly committed with loc produces a diagnostic.",
+            "A glo Bind whose source identity cannot survive for global lifetime produces a diagnostic.",
             "Placing glo in an invalid modifier position produces a diagnostic.",
             "Using glo with an unsupported statement form produces a diagnostic."
         ]
@@ -1146,34 +1153,34 @@ const keywords = {
         category: "Identity Modifier",
         signature: "stone [loc | glo] statement",
         description:
-            "Applies immutability to a Druim binding identity, either when that identity is established or immediately after a supported mutation.",
+            "Makes the binding identity affected by the following supported statement immutable.",
         details: [
             "Stone applies to binding identity rather than merely to the value currently stored in that binding.",
             "A stone identity cannot later be changed through Mutate `<<`.",
-            "Stone may be used with fresh target-defining forms such as Define `=`, DefineEmpty `=;`, Copy `:=`, and Guard `?=`.",
-            "Stone may also prefix Mutate `<<`.",
-            "With Mutate, the mutation is applied first and the resulting target identity then becomes stone.",
-            "If a stone Mutate targets a name connected through Bind `:>`, the shared underlying identity becomes stone.",
-            "Any later mutation through any name sharing that stoned identity produces a diagnostic.",
-            "A Copy created with stone receives a fresh independent immutable identity.",
-            "Copying from an existing stone identity does not automatically make the new copy stone unless the Copy itself is prefixed with stone.",
-            "Stone may be combined with loc or glo when the underlying statement form supports that scope behavior.",
-            "When combined with a scope modifier, canonical modifier order places stone first, such as `stone loc` or `stone glo`.",
-            "With `stone loc` Mutate, the visible identity is localized, mutated, and made stone only for that local lifetime.",
-            "When the applicable local lifetime ends, the outer identity is restored unchanged and retains its original mutability state.",
-            "Stone does not create a new scope by itself.",
-            "Function declarations are not made stone through this modifier."
+            "Stone supports Define `=`, DefineEmpty `=;`, Copy `:=`, Bind `:>`, Guard `?=`, and Mutate `<<`.",
+            "Function declarations cannot be modified with stone.",
+            "With Bind `:>`, stone applies to the shared underlying identity.",
+            "Every name referring to a stone bound identity observes the same immutable identity.",
+            "With Copy `:=`, stone applies only to the fresh copied identity and does not change the source identity.",
+            "With Mutate `<<`, the mutation is applied first and the resulting target identity then becomes stone.",
+            "If stone Mutate targets a bound alias, the shared underlying identity becomes stone.",
+            "stone loc Mutate localizes and mutates the identity, then stones only that localized identity for the applicable local lifetime.",
+            "When a stone loc Mutate lifetime ends, the outer identity is restored with its original value and mutability state.",
+            "stone glo Mutate performs the global scope operation and mutation first, then stones the resulting global identity.",
+            "stone does not bypass loc or glo scope-commitment restrictions.",
+            "stone may be combined with loc or glo.",
+            "When combined with a scope modifier, canonical modifier order places stone first."
         ],
         example:
-            "count = 10;\nstone count << count + 5;\ncount << count + 1;",
+            "count = 10;\nstone count << count + 5;",
         exampleResult:
-            "The first mutation changes count to 15 and then makes its identity stone. The later mutation produces a diagnostic.",
+            "count becomes 15 and its identity is then stone.",
         diagnostics: [
             "Attempting to mutate an identity that is already stone produces a diagnostic.",
-            "After a successful stone Mutate, any later mutation of that identity produces a diagnostic.",
-            "If multiple names share a stoned identity through Bind, mutation through any of those names produces a diagnostic.",
+            "After a successful stone Mutate, later mutation through any name sharing that identity produces a diagnostic.",
+            "Using stone with a function declaration produces a diagnostic.",
             "Placing stone after loc or glo violates canonical modifier order.",
-            "Using stone with a statement form that does not support the modifier produces a diagnostic."
+            "Using stone with an unsupported statement form produces a diagnostic."
         ]
     }
 };
@@ -1253,7 +1260,7 @@ const types = {
             "Empty or whitespace-only text converts to false; other text converts to true.",
             "void converts to false.",
             "An empty Box or Bag converts to false; a nonempty Box or Bag converts to true.",
-            "Function values do not have a canonical flag conversion.",
+            "Function and Core function values do not have a canonical flag conversion.",
             "flag() is a type-conversion expression; the bare token flag is the type concept."
         ],
         example:
@@ -1261,7 +1268,7 @@ const types = {
         exampleResult:
             "active contains the flag value true.",
         diagnostics: [
-            "Function values cannot be converted to flag.",
+            "Function and Core function values do not have a canonical flag conversion.",
             "Druim does not implicitly parse text such as \"false\" or \"0\" into flag values."
         ]
     },
@@ -1281,7 +1288,7 @@ const types = {
             "Any other text value converts to true.",
             "The canonical text representation of a text value is the text itself.",
             "text() converts supported values using the same canonical textual representation used by Print and interpolation.",
-            "text() does not serialize Boxes, Bags, or functions.",
+            "text() does not serialize Boxes, Bags, functions, or Core function values.",
             "text() is a type-conversion expression; the bare token text is the type concept.",
             "Text concatenation uses the Core function fuse(); `+` remains arithmetic-only."
         ],
@@ -1372,7 +1379,7 @@ const conversionExpressions = {
             "void cannot be converted to num.",
             "Box values cannot be converted to num.",
             "Bag values cannot be converted to num.",
-            "Function values cannot be converted to num.",
+            "Function and Core function values cannot be converted to num.",
             "Malformed numeric text produces a diagnostic.",
             "An out-of-range numeric conversion produces a diagnostic."
         ]
@@ -1417,7 +1424,7 @@ const conversionExpressions = {
             "void cannot be converted to dec.",
             "Box values cannot be converted to dec.",
             "Bag values cannot be converted to dec.",
-            "Function values cannot be converted to dec.",
+            "Function and Core function values cannot be converted to dec.",
             "Malformed numeric text produces a diagnostic.",
             "An unrepresentable numeric conversion produces a diagnostic."
         ]
@@ -1461,7 +1468,7 @@ const conversionExpressions = {
         diagnostics: [
             "Box values cannot be converted to text.",
             "Bag values cannot be converted to text.",
-            "Function values cannot be converted to text."
+            "Function and Core function values cannot be converted to text.",
         ]
     },
 
@@ -1502,7 +1509,7 @@ const conversionExpressions = {
         exampleResult:
             "true",
         diagnostics: [
-            "Function values cannot be converted to flag."
+            "Function and Core function values cannot be converted to flag."
         ]
     }
 };

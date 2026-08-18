@@ -2651,24 +2651,108 @@ impl Evaluator {
 
                                         let control = self.eval_node_ctrl(inner)?;
 
-                                        if let NodeKind::Define(def) = &inner.kind {
-                                            self.env
-                                                .mark_local(&def.name)
-                                                .map_err(|error| match error {
-                                                    EnvError::UndefinedName(name) => {
-                                                        Diagnostic::error(
-                                                            format!("undeclared identifier `{name}`"),
-                                                            inner.span,
-                                                        )
-                                                    }
+                                        match &inner.kind {
+                                            NodeKind::Define(def) => {
+                                                self.env
+                                                    .mark_local(&def.name)
+                                                    .map_err(|error| match error {
+                                                        EnvError::UndefinedName(name) => {
+                                                            Diagnostic::error(
+                                                                format!("undeclared identifier `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
 
-                                                    EnvError::StoneBinding(name) => {
-                                                        Diagnostic::error(
-                                                            format!("cannot modify stone binding `{name}`"),
-                                                            inner.span,
-                                                        )
-                                                    }
-                                                })?;
+                                                        EnvError::StoneBinding(name) => {
+                                                            Diagnostic::error(
+                                                                format!("cannot modify stone binding `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+                                                    })?;
+                                            }
+
+                                            NodeKind::DefineEmpty(def) => {
+                                                self.env
+                                                    .mark_local(&def.name)
+                                                    .map_err(|error| match error {
+                                                        EnvError::UndefinedName(name) => {
+                                                            Diagnostic::error(
+                                                                format!("undeclared identifier `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+
+                                                        EnvError::StoneBinding(name) => {
+                                                            Diagnostic::error(
+                                                                format!("cannot modify stone binding `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+                                                    })?;
+                                            }
+
+                                            NodeKind::Copy(copy) => {
+                                                self.env
+                                                    .mark_local(&copy.name)
+                                                    .map_err(|error| match error {
+                                                        EnvError::UndefinedName(name) => {
+                                                            Diagnostic::error(
+                                                                format!("undeclared identifier `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+
+                                                        EnvError::StoneBinding(name) => {
+                                                            Diagnostic::error(
+                                                                format!("cannot modify stone binding `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+                                                    })?;
+                                            }
+
+                                            NodeKind::Guard(guard) => {
+                                                self.env
+                                                    .mark_local(&guard.target)
+                                                    .map_err(|error| match error {
+                                                        EnvError::UndefinedName(name) => {
+                                                            Diagnostic::error(
+                                                                format!("undeclared identifier `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+
+                                                        EnvError::StoneBinding(name) => {
+                                                            Diagnostic::error(
+                                                                format!("cannot modify stone binding `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+                                                    })?;
+                                            }
+
+                                            NodeKind::Func(func) => {
+                                                self.env
+                                                    .mark_local(&func.name)
+                                                    .map_err(|error| match error {
+                                                        EnvError::UndefinedName(name) => {
+                                                            Diagnostic::error(
+                                                                format!("undeclared identifier `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+
+                                                        EnvError::StoneBinding(name) => {
+                                                            Diagnostic::error(
+                                                                format!("cannot modify stone binding `{name}`"),
+                                                                inner.span,
+                                                            )
+                                                        }
+                                                    })?;
+                                            }
+
+                                            _ => {}
                                         }
 
                                         control

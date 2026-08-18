@@ -396,4 +396,86 @@ mod tests {
         assert_eq!(tokens[1].kind, Eof);
     }
 
+    #[test]
+    fn rejects_single_line_comment_inside_function_parameters() {
+        let err = Lexer::new(
+            "fn test :(value, :- comment -: other)(ret value;):"
+        )
+        .tokenize()
+        .expect_err(
+            "comment inside function parameters should fail"
+        );
+
+        assert!(matches!(
+            err,
+            LexError::CommentInFunctionSyntax { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_multiline_comment_inside_function_parameters() {
+        let err = Lexer::new(
+            r#"
+    fn test :(
+        value,
+        :--
+            comment
+        --:
+        other
+    )(
+        ret value;
+    ):
+    "#
+        )
+        .tokenize()
+        .expect_err(
+            "comment inside function parameters should fail"
+        );
+
+        assert!(matches!(
+            err,
+            LexError::CommentInFunctionSyntax { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_single_line_comment_inside_function_arguments() {
+        let err = Lexer::new(
+            "test(value, :- comment -: other)"
+        )
+        .tokenize()
+        .expect_err(
+            "comment inside function arguments should fail"
+        );
+
+        assert!(matches!(
+            err,
+            LexError::CommentInFunctionSyntax { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_multiline_comment_inside_function_arguments() {
+        let err = Lexer::new(
+            r#"
+    test(
+        value,
+        :--
+            comment
+        --:
+        other
+    )
+    "#
+        )
+        .tokenize()
+        .expect_err(
+            "comment inside function arguments should fail"
+        );
+
+        assert!(matches!(
+            err,
+            LexError::CommentInFunctionSyntax { .. }
+        ));
+    }
+
 }

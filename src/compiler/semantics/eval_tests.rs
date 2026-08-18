@@ -9984,6 +9984,43 @@ fn local_function_exists_only_inside_block() {
 }
 
 #[test]
+fn global_bind_rejects_local_function_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            loc fn answer :()(ret 42;):
+            glo alias :> answer;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "global bind must reject a local function identity"
+        );
+
+    assert_eq!(
+        err.message,
+        "cannot create global bind to local identity `answer`"
+    );
+}
+
+#[test]
 fn function_rejects_existing_visible_binding() {
     use crate::compiler::lexer::Lexer;
     use crate::compiler::parser::Parser;
@@ -11623,5 +11660,118 @@ fn local_mutate_can_localize_ordinary_binding() {
     assert_eq!(
         evaluator.get("val"),
         Some(Value::Num(2)),
+    );
+}
+
+#[test]
+fn global_bind_rejects_local_define_empty_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            loc value =;
+            glo alias :> value;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "global bind must reject a local DefineEmpty identity"
+        );
+
+    assert_eq!(
+        err.message,
+        "cannot create global bind to local identity `value`"
+    );
+}
+
+#[test]
+fn global_bind_rejects_local_copy_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        source = 10;
+
+        :{
+            loc copy := source;
+            glo alias :> copy;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "global bind must reject a local Copy identity"
+        );
+
+    assert_eq!(
+        err.message,
+        "cannot create global bind to local identity `copy`"
+    );
+}
+
+#[test]
+fn global_bind_rejects_local_guard_identity() {
+    use crate::compiler::lexer::Lexer;
+    use crate::compiler::parser::Parser;
+    use crate::compiler::semantics::eval::Evaluator;
+
+    let src = r#"
+        :{
+            loc value ?= true : false;
+            glo alias :> value;
+        }:
+    "#;
+
+    let tokens = Lexer::new(src)
+        .tokenize()
+        .expect("lexing should succeed");
+
+    let mut parser = Parser::new(&tokens);
+
+    let program = parser
+        .parse_program()
+        .expect("parsing should succeed");
+
+    let mut evaluator = Evaluator::new();
+
+    let err = evaluator
+        .eval_program(&program)
+        .expect_err(
+            "global bind must reject a local Guard identity"
+        );
+
+    assert_eq!(
+        err.message,
+        "cannot create global bind to local identity `value`"
     );
 }

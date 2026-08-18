@@ -7,6 +7,7 @@ pub enum LexError {
     UnterminatedInterpolation { pos: usize },
     UnterminatedSingleComment { pos: usize },
     UnterminatedMultiComment { pos: usize },
+    CommentInFunctionSyntax { pos: usize },
 }
 
 pub struct Lexer<'a> {
@@ -21,6 +22,9 @@ impl<'a> Lexer<'a> {
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, LexError> {
         let mut tokens = Vec::new();
+
+        let mut in_function_parameters = false;
+        let mut call_paren_depth = 0usize;
 
         while !self.eof() {
             self.skip_whitespace();
@@ -142,14 +146,37 @@ impl<'a> Lexer<'a> {
             // ===== Comments =====
             //
             // Comments are consumed by the lexer and never emitted as tokens.
+            //
+            // Comments are forbidden inside:
+            // - function parameter lists `:( ... )(`
+            // - function call argument lists `( ... )`
+            //
             // Longest form must be checked first because `:--` begins with `:-`.
 
-            if self.match_str(":--") {
+            if self.src[self.pos..].starts_with(":--") {
+                if in_function_parameters || call_paren_depth > 0 {
+                    return Err(
+                        LexError::CommentInFunctionSyntax {
+                            pos: start,
+                        },
+                    );
+                }
+
+                self.pos += 3;
                 self.skip_comment("--:", start, true)?;
                 continue;
             }
 
-            if self.match_str(":-") {
+            if self.src[self.pos..].starts_with(":-") {
+                if in_function_parameters || call_paren_depth > 0 {
+                    return Err(
+                        LexError::CommentInFunctionSyntax {
+                            pos: start,
+                        },
+                    );
+                }
+
+                self.pos += 2;
                 self.skip_comment("-:", start, false)?;
                 continue;
             }
@@ -212,15 +239,36 @@ impl<'a> Lexer<'a> {
             }
 
             if self.match_str(":(") {
-                tokens.push(tok(TokenKind::FuncStart, ":(", start));
+                in_function_parameters = true;
+
+                tokens.push(tok(
+                    TokenKind::FuncStart,
+                    ":(",
+                    start,
+                ));
+
                 continue;
             }
+
             if self.match_str("):") {
-                tokens.push(tok(TokenKind::FuncEnd, "):", start));
+                tokens.push(tok(
+                    TokenKind::FuncEnd,
+                    "):",
+                    start,
+                ));
+
                 continue;
             }
+
             if self.match_str(")(") {
-                tokens.push(tok(TokenKind::FuncChain, ")(", start));
+                in_function_parameters = false;
+
+                tokens.push(tok(
+                    TokenKind::FuncChain,
+                    ")(",
+                    start,
+                ));
+
                 continue;
             }
 
@@ -315,6 +363,24 @@ impl<'a> Lexer<'a> {
                     });
                 }
             };
+
+            if kind == TokenKind::LParen {
+                let starts_call =
+                    call_paren_depth > 0
+                        || tokens
+                            .last()
+                            .is_some_and(
+                                |token| token.kind == TokenKind::Ident
+                            );
+
+                if starts_call {
+                    call_paren_depth += 1;
+                }
+            } else if kind == TokenKind::RParen
+                && call_paren_depth > 0
+            {
+                call_paren_depth -= 1;
+            }
 
             self.bump_char();
             tokens.push(Token {
@@ -619,6 +685,12 @@ fn offset_lex_error(
 
         LexError::UnterminatedMultiComment { pos } => {
             LexError::UnterminatedMultiComment {
+                pos: pos + offset,
+            }
+        }
+
+        LexError::CommentInFunctionSyntax { pos } => {
+            LexError::CommentInFunctionSyntax {
                 pos: pos + offset,
             }
         }

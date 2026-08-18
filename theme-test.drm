@@ -57,7 +57,12 @@
         ret result;
     ):
 
-    
+    :{
+        value = 2;
+        glo value << 4;
+    }:
+
+    |> (value);
 
     answer = calculate(12, 3);
 
@@ -68,6 +73,8 @@
     >?<
         index << index + 1;
     >:
+
+    
 }:
 
 :-:-:

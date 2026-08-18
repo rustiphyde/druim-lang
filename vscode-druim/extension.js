@@ -1,6 +1,118 @@
 const vscode = require("vscode");
 const druimLanguage = require("./druim-language");
 
+function getDruimLexicalContextAt(
+    document,
+    offset
+) {
+    const source = document.getText();
+
+    let context = "code";
+    let escaped = false;
+
+    for (let i = 0; i < offset; i++) {
+        if (context === "single-comment") {
+            if (source.startsWith("-:", i)) {
+                context = "code";
+                i++;
+            }
+
+            continue;
+        }
+
+        if (context === "multiline-comment") {
+            if (source.startsWith("--:", i)) {
+                context = "code";
+                i += 2;
+            }
+
+            continue;
+        }
+
+        if (context === "text") {
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (source[i] === "\\") {
+                escaped = true;
+                continue;
+            }
+
+            if (source.startsWith(":.", i)) {
+                context = "interpolation";
+                i++;
+                continue;
+            }
+
+            if (source[i] === "\"") {
+                context = "code";
+            }
+
+            continue;
+        }
+
+        if (context === "interpolation") {
+            if (source.startsWith(".:", i)) {
+                context = "text";
+                i++;
+                continue;
+            }
+
+            if (source[i] === "\"") {
+                context = "text";
+                continue;
+            }
+
+            continue;
+        }
+
+        /*
+         * Code context.
+         *
+         * Longest-match ordering matters here because
+         * :-- begins with :-.
+         */
+        if (source.startsWith(":--", i)) {
+            context = "multiline-comment";
+            i += 2;
+            continue;
+        }
+
+        if (source.startsWith(":-", i)) {
+            context = "single-comment";
+            i++;
+            continue;
+        }
+
+        if (source[i] === "\"") {
+            context = "text";
+        }
+    }
+
+    return context;
+}
+
+function isDruimCodeContext(
+    document,
+    position
+) {
+    const offset =
+        document.offsetAt(position);
+
+    const context =
+        getDruimLexicalContextAt(
+            document,
+            offset
+        );
+
+    return (
+        context === "code" ||
+        context === "interpolation"
+    );
+}
+
 function getDruimScopeAt(document, offset) {
     const source = document.getText();
 
@@ -14,14 +126,108 @@ function getDruimScopeAt(document, offset) {
     let blockScope = null;
     let blockSegmentStart = null;
 
+    let context = "code";
+    let escaped = false;
+
     for (let i = 0; i < offset; i++) {
         /*
-         * Block chain.
+         * --------------------------------------------------
+         * LEXICAL STATE
+         * --------------------------------------------------
+         */
+
+        if (context === "single-comment") {
+            if (source.startsWith("-:", i)) {
+                context = "code";
+                i++;
+            }
+
+            continue;
+        }
+
+        if (context === "multiline-comment") {
+            if (source.startsWith("--:", i)) {
+                context = "code";
+                i += 2;
+            }
+
+            continue;
+        }
+
+        if (context === "text") {
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (source[i] === "\\") {
+                escaped = true;
+                continue;
+            }
+
+            if (source.startsWith(":.", i)) {
+                context = "interpolation";
+                i++;
+                continue;
+            }
+
+            if (source[i] === "\"") {
+                context = "code";
+            }
+
+            continue;
+        }
+
+        if (context === "interpolation") {
+            if (source.startsWith(".:", i)) {
+                context = "text";
+                i++;
+                continue;
+            }
+
+            /*
+             * Interpolation is executable Druim code,
+             * so scope delimiters below are allowed to
+             * be processed normally.
+             */
+        }
+
+        /*
+         * Comment and text openers are recognized in
+         * executable code, including interpolation.
+         */
+
+        if (source.startsWith(":--", i)) {
+            context = "multiline-comment";
+            i += 2;
+            continue;
+        }
+
+        if (source.startsWith(":-", i)) {
+            context = "single-comment";
+            i++;
+            continue;
+        }
+
+        if (
+            context === "code" &&
+            source[i] === "\""
+        ) {
+            context = "text";
+            escaped = false;
+            continue;
+        }
+
+        /*
+         * --------------------------------------------------
+         * BLOCK SCOPE
+         * --------------------------------------------------
          *
          * :{ creates one lexical scope.
-         * }{ changes segment but keeps that same lexical scope.
+         * }{ changes segment but keeps that same scope.
          * }: closes the block scope.
          */
+
         if (
             source.startsWith(":{", i) &&
             (i === 0 || source[i - 1] === "\n")
@@ -58,12 +264,16 @@ function getDruimScopeAt(document, offset) {
             const scope = stack
                 .slice()
                 .reverse()
-                .find((item) => item.type === "block");
+                .find(
+                    (item) =>
+                        item.type === "block"
+                );
 
             if (scope) {
                 scope.end = i + 2;
 
-                const index = stack.lastIndexOf(scope);
+                const index =
+                    stack.lastIndexOf(scope);
 
                 if (index !== -1) {
                     stack.splice(index, 1);
@@ -78,11 +288,11 @@ function getDruimScopeAt(document, offset) {
         }
 
         /*
-         * Loop scope.
-         *
-         * One scope persists through setup, condition,
-         * and process.
+         * --------------------------------------------------
+         * LOOP SCOPE
+         * --------------------------------------------------
          */
+
         if (source.startsWith(":<", i)) {
             stack.push({
                 type: "loop",
@@ -98,12 +308,16 @@ function getDruimScopeAt(document, offset) {
             const scope = stack
                 .slice()
                 .reverse()
-                .find((item) => item.type === "loop");
+                .find(
+                    (item) =>
+                        item.type === "loop"
+                );
 
             if (scope) {
                 scope.end = i + 2;
 
-                const index = stack.lastIndexOf(scope);
+                const index =
+                    stack.lastIndexOf(scope);
 
                 if (index !== -1) {
                     stack.splice(index, 1);
@@ -115,11 +329,14 @@ function getDruimScopeAt(document, offset) {
         }
 
         /*
-         * Function body.
+         * --------------------------------------------------
+         * FUNCTION SCOPE
+         * --------------------------------------------------
          *
          * )( begins the function body.
          * ): closes it.
          */
+
         if (source.startsWith(")(", i)) {
             stack.push({
                 type: "function",
@@ -135,12 +352,16 @@ function getDruimScopeAt(document, offset) {
             const scope = stack
                 .slice()
                 .reverse()
-                .find((item) => item.type === "function");
+                .find(
+                    (item) =>
+                        item.type === "function"
+                );
 
             if (scope) {
                 scope.end = i + 2;
 
-                const index = stack.lastIndexOf(scope);
+                const index =
+                    stack.lastIndexOf(scope);
 
                 if (index !== -1) {
                     stack.splice(index, 1);
@@ -180,10 +401,10 @@ function getDruimScopeAt(document, offset) {
         global: globalScope,
 
         /*
-        * Outermost → innermost.
-        *
-        * Global is always the root scope.
-        */
+         * Outermost → innermost.
+         *
+         * Global is always the root scope.
+         */
         chain: [
             globalScope,
             ...stack
@@ -195,6 +416,43 @@ function sameDruimScope(left, right) {
     return (
         left.type === right.type &&
         left.start === right.start
+    );
+}
+
+function isDruimFunctionVisible(
+    document,
+    symbol,
+    useOffset
+) {
+    const useScope = getDruimScopeAt(
+        document,
+        useOffset
+    );
+
+    if (symbol.scope === "glo") {
+        return true;
+    }
+
+    if (
+        symbol.ownerScope.type ===
+        "block-segment"
+    ) {
+        return (
+            useScope.local.type ===
+                "block-segment" &&
+            sameDruimScope(
+                symbol.ownerScope,
+                useScope.local
+            )
+        );
+    }
+
+    return useScope.chain.some(
+        (scope) =>
+            sameDruimScope(
+                symbol.ownerScope,
+                scope
+            )
     );
 }
 
@@ -320,195 +578,226 @@ function buildDruimSymbolIndex(document) {
      * Druim parameters may contain defaults.
      */
     const functionPattern =
-        /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s+:\(([^)]*)\)\(/g;
+        /^[ \t]*(?:(loc|glo)\s+)?fn\s+((?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+)\s+:\(([\s\S]*?)\)\(/gm;
 
     let match;
 
     while ((match = functionPattern.exec(source)) !== null) {
-        const functionName = match[1];
-        const parameterText = match[2];
+        const matchPosition =
+            document.positionAt(match.index);
 
-        const nameOffset =
-            match.index + match[0].indexOf(functionName);
-
-        const namePosition =
-            document.positionAt(nameOffset);
-
-        const nameRange = new vscode.Range(
-            namePosition,
-            namePosition.translate(
-                0,
-                functionName.length
+        if (
+            !isDruimCodeContext(
+                document,
+                matchPosition
             )
-        );
-
-        const parameterForms = [];
-
-        let current = "";
-        let parenDepth = 0;
-        let bracketDepth = 0;
-        let inString = false;
-        let escaped = false;
-
-        for (const char of parameterText) {
-            if (inString) {
-                current += char;
-
-                if (escaped) {
-                    escaped = false;
-                    continue;
-                }
-
-                if (char === "\\") {
-                    escaped = true;
-                    continue;
-                }
-
-                if (char === "\"") {
-                    inString = false;
-                }
-
-                continue;
-            }
-
-            if (char === "\"") {
-                inString = true;
-                current += char;
-                continue;
-            }
-
-            if (char === "(") {
-                parenDepth++;
-                current += char;
-                continue;
-            }
-
-            if (char === ")") {
-                parenDepth--;
-                current += char;
-                continue;
-            }
-
-            if (char === "[") {
-                bracketDepth++;
-                current += char;
-                continue;
-            }
-
-            if (char === "]") {
-                bracketDepth--;
-                current += char;
-                continue;
-            }
-
-            if (
-                char === "," &&
-                parenDepth === 0 &&
-                bracketDepth === 0
-            ) {
-                if (current.trim() !== "") {
-                    parameterForms.push(
-                        current.trim()
-                    );
-                }
-
-                current = "";
-                continue;
-            }
-
-            current += char;
+        ) {
+            continue;
         }
 
-        if (current.trim() !== "") {
-            parameterForms.push(
-                current.trim()
-            );
-        }
-
-        /*
-        * Index parameter declarations themselves.
-        *
-        * Valid canonical forms:
-        *
-        * value
-        * multiplier = 2
-        */
-        const parameterBlockOffset =
-            match.index + match[0].indexOf(":(") + 2;
-
-        let parameterSearchOffset = 0;
-
-        for (const parameterForm of parameterForms) {
-            const parameterMatch = parameterForm.match(
-                /^([A-Za-z_][A-Za-z0-9_]*)/
-            );
-
-            if (!parameterMatch) {
-                continue;
-            }
-
-            const parameterName = parameterMatch[1];
-
-            const relativeOffset = parameterText.indexOf(
-                parameterForm,
-                parameterSearchOffset
-            );
-
-            if (relativeOffset === -1) {
-                continue;
-            }
+        const scope = match[1] || "Normal";
+            const functionName = match[2];
+            const parameterText = match[3];
 
             const nameOffset =
-                parameterBlockOffset + relativeOffset;
+                match.index + match[0].indexOf(functionName);
 
             const namePosition =
                 document.positionAt(nameOffset);
 
-            const parameterRange = new vscode.Range(
+            const nameRange = new vscode.Range(
                 namePosition,
                 namePosition.translate(
                     0,
-                    parameterName.length
+                    functionName.length
                 )
             );
 
-            /*
-            * The function scope begins at the body delimiter `)(`.
-            *
-            * getDruimScopeAt() sees the function scope once we move
-            * just beyond that delimiter.
-            */
-            const bodyDelimiterOffset =
-                match.index +
-                match[0].lastIndexOf(")(");
+            const parameterForms = [];
 
-            const functionScopeInfo = getDruimScopeAt(
+            let current = "";
+            let parenDepth = 0;
+            let bracketDepth = 0;
+            let inString = false;
+            let escaped = false;
+
+            for (const char of parameterText) {
+                if (inString) {
+                    current += char;
+
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (char === "\\") {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (char === "\"") {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (char === "\"") {
+                    inString = true;
+                    current += char;
+                    continue;
+                }
+
+                if (char === "(") {
+                    parenDepth++;
+                    current += char;
+                    continue;
+                }
+
+                if (char === ")") {
+                    parenDepth--;
+                    current += char;
+                    continue;
+                }
+
+                if (char === "[") {
+                    bracketDepth++;
+                    current += char;
+                    continue;
+                }
+
+                if (char === "]") {
+                    bracketDepth--;
+                    current += char;
+                    continue;
+                }
+
+                if (
+                    char === "," &&
+                    parenDepth === 0 &&
+                    bracketDepth === 0
+                ) {
+                    if (current.trim() !== "") {
+                        parameterForms.push(
+                            current.trim()
+                        );
+                    }
+
+                    current = "";
+                    continue;
+                }
+
+                current += char;
+            }
+
+            if (current.trim() !== "") {
+                parameterForms.push(
+                    current.trim()
+                );
+            }
+
+            /*
+            * Index parameter declarations themselves.
+            *
+            * Valid canonical forms:
+            *
+            * value
+            * multiplier = 2
+            */
+            const parameterBlockOffset =
+                match.index + match[0].indexOf(":(") + 2;
+
+            let parameterSearchOffset = 0;
+
+            for (const parameterForm of parameterForms) {
+                const parameterMatch = parameterForm.match(
+                    /^((?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+)/
+                );
+
+                if (!parameterMatch) {
+                    continue;
+                }
+
+                const parameterName = parameterMatch[1];
+
+                const relativeOffset = parameterText.indexOf(
+                    parameterForm,
+                    parameterSearchOffset
+                );
+
+                if (relativeOffset === -1) {
+                    continue;
+                }
+
+                const nameOffset =
+                    parameterBlockOffset + relativeOffset;
+
+                const namePosition =
+                    document.positionAt(nameOffset);
+
+                const parameterRange = new vscode.Range(
+                    namePosition,
+                    namePosition.translate(
+                        0,
+                        parameterName.length
+                    )
+                );
+
+                /*
+                * The function scope begins at the body delimiter `)(`.
+                *
+                * getDruimScopeAt() sees the function scope once we move
+                * just beyond that delimiter.
+                */
+                const bodyDelimiterOffset =
+                    match.index +
+                    match[0].lastIndexOf(")(");
+
+                const functionScopeInfo = getDruimScopeAt(
+                    document,
+                    bodyDelimiterOffset + 2
+                );
+
+                parameters.push({
+                    name: parameterName,
+                    kind: "parameter",
+                    range: parameterRange,
+                    offset: nameOffset,
+                    ownerScope: functionScopeInfo.ordinary,
+                    functionName
+                });
+
+                parameterSearchOffset =
+                    relativeOffset + parameterForm.length;
+            }        
+
+            const scopeInfo = getDruimScopeAt(
                 document,
-                bodyDelimiterOffset + 2
+                nameOffset
             );
 
-            parameters.push({
-                name: parameterName,
-                kind: "parameter",
-                range: parameterRange,
-                offset: nameOffset,
-                ownerScope: functionScopeInfo.ordinary,
-                functionName
-            });
+            let ownerScope;
 
-            parameterSearchOffset =
-                relativeOffset + parameterForm.length;
-        }        
-
-        functions.set(
-            functionName,
-            {
-                name: functionName,
-                range: nameRange,
-                parameters: parameterForms
+            if (scope === "glo") {
+                ownerScope = scopeInfo.global;
+            } else if (scope === "loc") {
+                ownerScope = scopeInfo.local;
+            } else {
+                ownerScope = scopeInfo.ordinary;
             }
-        );
-    }
+
+            functions.set(
+                functionName,
+                {
+                    name: functionName,
+                    range: nameRange,
+                    parameters: parameterForms,
+                    scope,
+                    ownerScope,
+                    offset: nameOffset
+                }
+            );
+        }
 
     /*
     * Collect target-defining binding statements.
@@ -533,13 +822,25 @@ function buildDruimSymbolIndex(document) {
     * not establish a new binding.
     */
     const bindingPattern =
-        /^[ \t]*(?:(stone)\s+)?(?:(loc|glo)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(=;|:=|:>|\?=|=(?!=))/gm;
+        /^[ \t]*(?:(stone)\s+)?(?:(loc|glo)\s+)?((?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+)\s*(=;|:=|:>|\?=|=(?!=))/gm;
 
     let bindingMatch;
 
     while (
         (bindingMatch = bindingPattern.exec(source)) !== null
     ) {
+        const matchPosition =
+            document.positionAt(bindingMatch.index);
+
+        if (
+            !isDruimCodeContext(
+                document,
+                matchPosition
+            )
+        ) {
+            continue;
+        }
+
         const stone = bindingMatch[1] === "stone";
         const scope = bindingMatch[2] || "normal";
         const name = bindingMatch[3];
@@ -622,6 +923,127 @@ function buildDruimSymbolIndex(document) {
         });
     }
 
+    /*
+    * Collect explicit scope transitions performed through Mutate.
+    *
+    * loc target << expression;
+    * glo target << expression;
+    * stone loc target << expression;
+    * stone glo target << expression;
+    *
+    * Mutate does not create a new identity declaration, so these
+    * entries retain the original declaration range while recording
+    * the scope commitment that becomes active at the mutation point.
+    */
+    const scopedMutatePattern =
+        /^[ \t]*(?:(stone)\s+)?(loc|glo)\s+((?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+)\s*<</gm;
+
+    let scopedMutateMatch;
+
+    while (
+        (scopedMutateMatch =
+            scopedMutatePattern.exec(source)) !== null
+    ) {
+        const matchPosition =
+            document.positionAt(
+                scopedMutateMatch.index
+            );
+
+        if (
+            !isDruimCodeContext(
+                document,
+                matchPosition
+            )
+        ) {
+            continue;
+        }
+
+        const stone =
+            scopedMutateMatch[1] === "stone";
+
+        const scope =
+            scopedMutateMatch[2];
+
+        const name =
+            scopedMutateMatch[3];
+
+        const nameOffsetWithinMatch =
+            scopedMutateMatch[0].lastIndexOf(name);
+
+        const nameOffset =
+            scopedMutateMatch.index +
+            nameOffsetWithinMatch;
+
+        /*
+        * Resolve the identity as it exists immediately before
+        * this scope-modified mutation.
+        */
+        const current = resolveDruimBinding(
+            document,
+            {
+                functions,
+                bindings,
+                parameters
+            },
+            name,
+            nameOffset
+        );
+
+        if (!current) {
+            continue;
+        }
+
+        /*
+        * Explicit loc -> glo and glo -> loc transitions are
+        * invalid and therefore must not be indexed as successful
+        * scope transitions.
+        */
+        if (
+            scope === "glo" &&
+            current.scope === "loc"
+        ) {
+            continue;
+        }
+
+        if (
+            scope === "loc" &&
+            current.scope === "glo"
+        ) {
+            continue;
+        }
+
+        const scopeInfo = getDruimScopeAt(
+            document,
+            nameOffset
+        );
+
+        const ownerScope =
+            scope === "glo"
+                ? scopeInfo.global
+                : scopeInfo.local;
+
+        bindings.push({
+            name,
+            kind: "scope-mutate",
+            operator: "<<",
+            stone,
+            scope,
+            ownerScope,
+
+            /*
+            * Go To Definition should still lead to the identity's
+            * original declaration rather than to the Mutate token.
+            */
+            range: current.range,
+
+            /*
+            * The new scope commitment becomes visible only after
+            * this Mutate is reached in source order.
+            */
+            offset: nameOffset
+        });
+    }    
+
     return {
         functions,
         bindings,
@@ -689,8 +1111,15 @@ function activate(context) {
         *
         * :
         */
-        if (change.rangeLength === 2) {
+        if (
+            change.rangeLength === 2 &&
+            isDruimCodeContext(
+                event.document,
+                change.range.start
+            )
+        ) {
             const position = change.range.start;
+
             const line = event.document.lineAt(position.line);
             const lineText = line.text;
 
@@ -742,8 +1171,15 @@ function activate(context) {
             }
         }
 
-        if (change.rangeLength === 1) {
+        if (
+            change.rangeLength === 1 &&
+            isDruimCodeContext(
+                event.document,
+                change.range.start
+            )
+        ) {
             const position = change.range.start;
+
             const line = event.document.lineAt(position.line);
             const lineText = line.text;
 
@@ -838,9 +1274,14 @@ function activate(context) {
 
         if (
             change.text === "" &&
-            change.rangeLength === 2
+            change.rangeLength === 2 &&
+            isDruimCodeContext(
+                event.document,
+                change.range.start
+            )
         ) {
             const position = change.range.start;
+
             const lineNumber = position.line;
 
             if (
@@ -936,7 +1377,11 @@ function activate(context) {
 
         if (
             change.text === "" &&
-            change.rangeLength === 1
+            change.rangeLength === 1 &&
+            isDruimCodeContext(
+                event.document,
+                change.range.start
+            )
         ) {
             const setupLineNumber =
                 change.range.start.line;
@@ -1052,6 +1497,93 @@ function activate(context) {
                     } finally {
                         applyingDruimEdit = false;
                     }
+                }
+            }
+        }
+
+        // ==================================================
+        // SINGLE-LINE COMMENT DEMOTION
+        // ==================================================
+        //
+        // Backspace from:
+        //
+        // :-|  -:
+        //
+        // removes the typed "-" and temporarily leaves:
+        //
+        // :|  -:
+        //
+        // Remove the generated closer too, leaving:
+        //
+        // :|
+        // ==================================================
+
+        if (
+            change.text === "" &&
+            change.rangeLength === 1
+        ) {
+            const position =
+                change.range.start;
+
+            const line =
+                event.document.lineAt(
+                    position.line
+                );
+
+            const lineText =
+                line.text;
+
+            if (
+                position.character > 0 &&
+                lineText[position.character - 1] === ":" &&
+                lineText.slice(
+                    position.character,
+                    position.character + 4
+                ) === "  -:"
+            ) {
+                const generatedCloseRange =
+                    new vscode.Range(
+                        position.line,
+                        position.character,
+                        position.line,
+                        position.character + 4
+                    );
+
+                applyingDruimEdit = true;
+
+                try {
+                    const applied =
+                        await editor.edit(
+                            (editBuilder) => {
+                                editBuilder.delete(
+                                    generatedCloseRange
+                                );
+                            },
+                            {
+                                undoStopBefore: false,
+                                undoStopAfter: false
+                            }
+                        );
+
+                    if (!applied) {
+                        return;
+                    }
+
+                    const cursor =
+                        new vscode.Position(
+                            position.line,
+                            position.character
+                        );
+
+                    editor.selection =
+                        new vscode.Selection(
+                            cursor,
+                            cursor
+                        );
+
+                    return;
+                } finally {
+                    applyingDruimEdit = false;
                 }
             }
         }
@@ -1307,7 +1839,19 @@ function activate(context) {
         // and begins the next segment at indentation level 1.
         // ==================================================
 
-        if (change.text === "{") {
+        if (
+            change.text.includes("{") &&
+            isDruimCodeContext(
+                event.document,
+                new vscode.Position(
+                    change.range.start.line,
+                    Math.max(
+                        0,
+                        change.range.start.character - 1
+                    )
+                )
+            )
+        ) {
             const position = change.range.start;
             const line = event.document.lineAt(position.line);
             const lineText = line.text;
@@ -1526,7 +2070,19 @@ function activate(context) {
         // process
         // ==================================================
 
-        if (change.text === "<") {
+        if (
+            change.text === "<" &&
+            isDruimCodeContext(
+                event.document,
+                new vscode.Position(
+                    change.range.start.line,
+                    Math.max(
+                        0,
+                        change.range.start.character - 1
+                    )
+                )
+            )
+        ) {
             const position = change.range.start;
 
             if (position.character === 0) {
@@ -1616,7 +2172,13 @@ function activate(context) {
         // delimiters expands them into multiline form.
         // ==================================================
 
-        if (change.text.includes("\n")) {
+        if (
+            change.text.includes("\n") &&
+            isDruimCodeContext(
+                event.document,
+                change.range.start
+            )
+        ) {
             const start = change.range.start;
 
             const newlineCount =
@@ -1735,8 +2297,20 @@ function activate(context) {
         // ==================================================
 
         if (
-            change.text === "[]" ||
-            change.text === "["
+            (
+                change.text === "[]" ||
+                change.text === "["
+            ) &&
+            isDruimCodeContext(
+                event.document,
+                new vscode.Position(
+                    change.range.start.line,
+                    Math.max(
+                        0,
+                        change.range.start.character - 1
+                    )
+                )
+            )
         ) {
             const start = change.range.start;
 
@@ -1849,7 +2423,19 @@ function activate(context) {
         // BAG STRUCTURE
         // ==================================================
 
-        if (change.text === "|") {
+        if (
+            change.text === "|" &&
+            isDruimCodeContext(
+                event.document,
+                new vscode.Position(
+                    change.range.start.line,
+                    Math.max(
+                        0,
+                        change.range.start.character - 1
+                    )
+                )
+            )
+        ) {
             const position = change.range.start;
 
             if (position.character === 0) {
@@ -1922,7 +2508,19 @@ function activate(context) {
         // structural form.
         // ==================================================
 
-        if (change.text === "()") {
+        if (
+            change.text === "()" &&
+            isDruimCodeContext(
+                event.document,
+                new vscode.Position(
+                    change.range.start.line,
+                    Math.max(
+                        0,
+                        change.range.start.character - 1
+                    )
+                )
+            )
+        ) {
             const start = change.range.start;
 
             if (start.character === 0) {
@@ -2024,6 +2622,42 @@ function activate(context) {
                 for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
                     const text = document.lineAt(lineNumber).text;
 
+                    function tokenInCode(token) {
+                        let searchFrom = 0;
+
+                        while (searchFrom < text.length) {
+                            const index =
+                                text.indexOf(
+                                    token,
+                                    searchFrom
+                                );
+
+                            if (index === -1) {
+                                return false;
+                            }
+
+                            const position =
+                                new vscode.Position(
+                                    lineNumber,
+                                    index
+                                );
+
+                            if (
+                                isDruimCodeContext(
+                                    document,
+                                    position
+                                )
+                            ) {
+                                return true;
+                            }
+
+                            searchFrom =
+                                index + token.length;
+                        }
+
+                        return false;
+                    }
+
                     // --------------------------------------------------
                     // BLOCKS
                     //
@@ -2032,18 +2666,24 @@ function activate(context) {
                     // }:   closes the final segment
                     // --------------------------------------------------
 
-                    if (text.includes(":{")) {
+                    if (tokenInCode(":{")) {
                         blockSegmentStart = lineNumber;
                     }
 
-                    if (text.includes("}{") && blockSegmentStart !== null) {
+                    if (
+                        tokenInCode("}{") &&
+                        blockSegmentStart !== null
+                    ) {
                         addRange(blockSegmentStart, lineNumber);
 
                         // This same }{ becomes the opener for the next segment.
                         blockSegmentStart = lineNumber;
                     }
 
-                    if (text.includes("}:") && blockSegmentStart !== null) {
+                    if (
+                        tokenInCode("}:") &&
+                        blockSegmentStart !== null
+                    ) {
                         addRange(blockSegmentStart, lineNumber);
 
                         blockSegmentStart = null;
@@ -2057,18 +2697,24 @@ function activate(context) {
                     // >:    closes final segment
                     // --------------------------------------------------
 
-                    if (text.includes(":<")) {
+                    if (tokenInCode(":<")) {
                         loopSegmentStart = lineNumber;
                     }
 
-                    if (text.includes(">?<") && loopSegmentStart !== null) {
+                    if (
+                        tokenInCode(">?<") &&
+                        loopSegmentStart !== null
+                    ) {
                         addRange(loopSegmentStart, lineNumber);
 
                         // This same >?< becomes the opener for the next segment.
                         loopSegmentStart = lineNumber;
                     }
 
-                    if (text.includes(">:") && loopSegmentStart !== null) {
+                    if (
+                        tokenInCode(">:") &&
+                        loopSegmentStart !== null
+                    ) {
                         addRange(loopSegmentStart, lineNumber);
 
                         loopSegmentStart = null;
@@ -2078,7 +2724,7 @@ function activate(context) {
                     // MULTILINE COMMENTS
                     // --------------------------------------------------
 
-                    if (text.includes(":--")) {
+                   if (tokenInCode(":--")) {
                         stack.push({
                             type: "comment",
                             line: lineNumber,
@@ -2090,7 +2736,7 @@ function activate(context) {
                     // BOXES
                     // --------------------------------------------------
 
-                    if (text.includes(":[")) {
+                    if (tokenInCode(":[")) {
                         stack.push({
                             type: "box",
                             line: lineNumber
@@ -2101,7 +2747,7 @@ function activate(context) {
                     // BAGS
                     // --------------------------------------------------
 
-                    if (text.includes(":|")) {
+                    if (tokenInCode(":|")) {
                         stack.push({
                             type: "bag",
                             line: lineNumber
@@ -2112,8 +2758,19 @@ function activate(context) {
                     // FUNCTIONS
                     // --------------------------------------------------
 
+                    const functionMatch = text.match(
+                        /\bfn\s+(?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+\s+:\(.*\)\(\s*$/
+                    );
+
                     if (
-                        /\bfn\s+[A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*\s+:\(.*\)\(\s*$/.test(text)
+                        functionMatch &&
+                        isDruimCodeContext(
+                            document,
+                            new vscode.Position(
+                                lineNumber,
+                                functionMatch.index
+                            )
+                        )
                     ) {
                         stack.push({
                             type: "function",
@@ -2145,10 +2802,14 @@ function activate(context) {
                     ];
 
                     for (const closing of closingStructures) {
-                        if (!text.includes(closing.close)) {
+                        const hasClosingToken =
+                            closing.type === "comment"
+                                ? text.includes(closing.close)
+                                : tokenInCode(closing.close);
+
+                        if (!hasClosingToken) {
                             continue;
                         }
-
                         for (let i = stack.length - 1; i >= 0; i--) {
                             if (stack[i].type !== closing.type) {
                                 continue;
@@ -2332,10 +2993,48 @@ function activate(context) {
     const completionProvider = vscode.languages.registerCompletionItemProvider(
         { language: "druim" },
         {
-            provideCompletionItems() {
+            provideCompletionItems(
+                document,
+                position
+            ) {
+
+                if (
+                    !isDruimCodeContext(
+                        document,
+                        position
+                    )
+                ) {
+                    return [];
+                }
+
                 const items = [];
 
                 for (const entry of druimLanguage.completionKeywords) {
+                    const conversion =
+                        druimLanguage.getConversionExpression(
+                            entry.token
+                        );
+
+                    if (conversion) {
+                        const item = new vscode.CompletionItem(
+                            entry.token,
+                            vscode.CompletionItemKind.Function
+                        );
+
+                        item.detail = conversion.signature;
+                        item.documentation = new vscode.MarkdownString(
+                            conversion.description
+                        );
+
+                        item.insertText = new vscode.SnippetString(
+                            `${entry.token}($1)`
+                        );
+
+                        items.push(item);
+
+                        continue;
+                    }
+
                     const item = new vscode.CompletionItem(
                         entry.token,
                         vscode.CompletionItemKind.Keyword
@@ -2380,7 +3079,7 @@ function activate(context) {
                     );
 
                     item.insertText = new vscode.SnippetString(
-                        `${entry.token}($1);`
+                        `${entry.token}($1)`
                     );
 
                     items.push(item);
@@ -2412,6 +3111,15 @@ function activate(context) {
             provideHover(document, position) {
                 const line = document.lineAt(position.line).text;
 
+                if (
+                    !isDruimCodeContext(
+                        document,
+                        position
+                    )
+                ) {
+                    return;
+                }
+
                 const tokens = [
                     ...druimLanguage.structureByToken.keys(),
                     ...druimLanguage.operatorByToken.keys(),
@@ -2427,7 +3135,52 @@ function activate(context) {
                 let previousToken = null;
                 let indexedSelectorDepth = 0;
 
+                function tokenMatchesAt(token, start) {
+                    if (!line.startsWith(token, start)) {
+                        return false;
+                    }
+
+                    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+                        const before =
+                            start > 0
+                                ? line[start - 1]
+                                : "";
+
+                        const after =
+                            start + token.length < line.length
+                                ? line[start + token.length]
+                                : "";
+
+                        if (
+                            /[A-Za-z0-9_]/.test(before) ||
+                            /[A-Za-z0-9_]/.test(after)
+                        ) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
                 while (offset < line.length) {
+                    const scanPosition =
+                        new vscode.Position(
+                            position.line,
+                            offset
+                        );
+
+                    if (
+                        !isDruimCodeContext(
+                            document,
+                            scanPosition
+                        )
+                    ) {
+                        offset++;
+                        previousToken = null;
+                        indexedSelectorDepth = 0;
+                        continue;
+                    }
+
                     let matchedToken = null;
 
                     // If the previous token was Get or Has, "[" is an indexed selector,
@@ -2462,7 +3215,7 @@ function activate(context) {
                     // ]:  => Box close
                     else {
                         for (const token of tokens) {
-                            if (line.startsWith(token, offset)) {
+                            if (tokenMatchesAt(token, offset)) {
                                 matchedToken = token;
                                 break;
                             }
@@ -2482,8 +3235,37 @@ function activate(context) {
                         position.character >= start &&
                         position.character < end
                     ) {
-                        let info =
-                            druimLanguage.getHoverDocumentation(matchedToken);
+                        let info = null;
+
+                        if (
+                            matchedToken === "num" ||
+                            matchedToken === "dec" ||
+                            matchedToken === "text" ||
+                            matchedToken === "flag"
+                        ) {
+                            const afterToken = line.slice(end);
+                            const nextNonWhitespace = afterToken.match(/^\s*(.)/);
+
+                            if (
+                                nextNonWhitespace &&
+                                nextNonWhitespace[1] === "("
+                            ) {
+                                info =
+                                    druimLanguage.getConversionExpression(
+                                        matchedToken
+                                    );
+                            } else {
+                                info =
+                                    druimLanguage.getType(
+                                        matchedToken
+                                    );
+                            }
+                        } else {
+                            info =
+                                druimLanguage.getHoverDocumentation(
+                                    matchedToken
+                                );
+                        }
 
                         if (!info) {
                             const structureMatch =
@@ -2640,7 +3422,186 @@ function activate(context) {
                     offset = end;
                 }
 
-                return;
+                const wordRange = document.getWordRangeAtPosition(
+                    position,
+                    /(?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+/
+                );
+
+                if (!wordRange) {
+                    return;
+                }
+
+                const identifier =
+                    document.getText(wordRange);
+
+                const index =
+                    buildDruimSymbolIndex(document);
+
+                const useOffset =
+                    document.offsetAt(wordRange.start);
+
+                const afterWord =
+                    line.slice(wordRange.end.character);
+
+                if (/^\s*\(/.test(afterWord)) {
+                    const functionSymbol =
+                        index.functions.get(identifier);
+
+                    if (functionSymbol) {
+                        if (
+                            isDruimFunctionVisible(
+                                document,
+                                functionSymbol,
+                                useOffset
+                            )
+                        ) {
+                            const markdown =
+                                new vscode.MarkdownString();
+
+                            markdown.appendMarkdown(
+                                `### ${functionSymbol.name} — Function\n\n`
+                            );
+
+                            markdown.appendCodeblock(
+                                `${functionSymbol.name}(${functionSymbol.parameters.join(", ")})`,
+                                "druim"
+                            );
+
+                            const scopeLabel = {
+                                normal: "Ordinary",
+                                loc: "Local",
+                                glo: "Global"
+                            }[functionSymbol.scope] ?? functionSymbol.scope;
+
+                            markdown.appendMarkdown(
+                                `**Scope:** ${scopeLabel}\n\n`
+                            );
+
+                            if (functionSymbol.parameters.length === 0) {
+                                markdown.appendMarkdown(
+                                    "**Parameters:** none\n\n"
+                                );
+                            } else {
+                                markdown.appendMarkdown(
+                                    "**Parameters**\n\n"
+                                );
+
+                                for (
+                                    const parameter of functionSymbol.parameters
+                                ) {
+                                    markdown.appendMarkdown(
+                                        `- \`${parameter}\`\n`
+                                    );
+                                }
+
+                                markdown.appendMarkdown("\n");
+                            }
+
+                            return new vscode.Hover(
+                                markdown,
+                                wordRange
+                            );
+                        }
+                    }
+                }    
+
+                const scopeInfo =
+                    getDruimScopeAt(
+                        document,
+                        useOffset
+                    );
+
+                const effectiveScopedMutate =
+                    index.bindings
+                        .filter((binding) => {
+                            if (
+                                binding.kind !== "scope-mutate" ||
+                                binding.name !== identifier ||
+                                binding.offset > useOffset
+                            ) {
+                                return false;
+                            }
+
+                            if (binding.scope === "glo") {
+                                return true;
+                            }
+
+                            if (binding.scope === "loc") {
+                                return sameDruimScope(
+                                    binding.ownerScope,
+                                    scopeInfo.local
+                                );
+                            }
+
+                            return false;
+                        })
+                        .sort(
+                            (a, b) =>
+                                b.offset - a.offset
+                        )[0];
+
+                const binding =
+                    effectiveScopedMutate ??
+                    resolveDruimBinding(
+                        document,
+                        index,
+                        identifier,
+                        useOffset
+                    );
+
+                if (!binding) {
+                    return;
+                }
+
+                const markdown =
+                    new vscode.MarkdownString();
+
+                markdown.appendMarkdown(
+                    `### ${binding.name} — Binding\n\n`
+                );
+
+                markdown.appendCodeblock(
+                    binding.name,
+                    "druim"
+                );
+
+                const kindLabel = {
+                    define: "Define",
+                    "define-empty": "DefineEmpty",
+                    copy: "Copy",
+                    bind: "Bind",
+                    guard: "Guard",
+                    "scope-mutate": "Mutate"
+                }[binding.kind] ?? binding.kind;
+
+                markdown.appendMarkdown(
+                    `**Kind:** ${kindLabel}\n\n`
+                );
+
+                const scopeLabel = {
+                    normal: "Ordinary",
+                    loc: "Local",
+                    glo: "Global"
+                }[binding.scope] ?? binding.scope;
+
+                markdown.appendMarkdown(
+                    `**Scope:** ${scopeLabel}\n\n`
+                );
+
+                if (binding.stone) {
+                    markdown.appendMarkdown(
+                        `**Stone:** yes\n\n`
+                    );
+                } else {
+                    markdown.appendMarkdown(
+                        `**Stone:** no\n\n`
+                    );
+                }
+
+                return new vscode.Hover(
+                    markdown,
+                    wordRange
+                );
             }
         }
     );
@@ -2649,12 +3610,14 @@ function activate(context) {
         { language: "druim" },
         {
             provideSignatureHelp(document, position) {
-                const textBeforeCursor = document.getText(
-                    new vscode.Range(
-                        new vscode.Position(0, 0),
+                if (
+                    !isDruimCodeContext(
+                        document,
                         position
                     )
-                );
+                ) {
+                    return null;
+                }
 
                 /*
                 * Find the function call currently being written.
@@ -2665,16 +3628,261 @@ function activate(context) {
                 * calculate(value,
                 * calculate(value, multiplier
                 */
-                const callMatch = textBeforeCursor.match(
-                    /([A-Za-z_][A-Za-z0-9_]*)\(([^()]*)$/
-                );
+                function findActiveCall(
+                    document,
+                    position
+                ) {
+                    const source =
+                        document.getText();
 
-                if (!callMatch) {
+                    const endOffset =
+                        document.offsetAt(position);
+
+                    let parenDepth = 0;
+                    let bracketDepth = 0;
+
+                    for (
+                        let i = endOffset - 1;
+                        i >= 0;
+                        i--
+                    ) {
+                        const context =
+                            getDruimLexicalContextAt(
+                                document,
+                                i
+                            );
+
+                        if (
+                            context !== "code" &&
+                            context !== "interpolation"
+                        ) {
+                            continue;
+                        }
+
+                        const char = source[i];
+
+                        if (char === "]") {
+                            bracketDepth++;
+                            continue;
+                        }
+
+                        if (char === "[") {
+                            if (bracketDepth > 0) {
+                                bracketDepth--;
+                            }
+
+                            continue;
+                        }
+
+                        if (bracketDepth > 0) {
+                            continue;
+                        }
+
+                        if (char === ")") {
+                            parenDepth++;
+                            continue;
+                        }
+
+                        if (char === "(") {
+                            if (parenDepth > 0) {
+                                parenDepth--;
+                                continue;
+                            }
+
+                            let end = i;
+                            let start = end - 1;
+
+                            while (
+                                start >= 0 &&
+                                /[A-Za-z0-9_]/.test(source[start])
+                            ) {
+                                const nameContext =
+                                    getDruimLexicalContextAt(
+                                        document,
+                                        start
+                                    );
+
+                                if (
+                                    nameContext !== "code" &&
+                                    nameContext !== "interpolation"
+                                ) {
+                                    break;
+                                }
+
+                                start--;
+                            }
+
+                            start++;
+
+                            const functionName =
+                                source.slice(start, end);
+
+                            if (
+                                !functionName ||
+                                !/^(?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+$/.test(
+                                    functionName
+                                )
+                            ) {
+                                continue;
+                            }
+
+                            return {
+                                functionName,
+                                openParenOffset: i
+                            };
+                        }
+                    }
+
                     return null;
                 }
 
-                const functionName = callMatch[1];
-                const argumentText = callMatch[2];
+                function countActiveParameter(
+                    document,
+                    openParenOffset,
+                    endOffset
+                ) {
+                    const source =
+                        document.getText();
+
+                    let activeParameter = 0;
+                    let parenDepth = 0;
+                    let bracketDepth = 0;
+
+                    for (
+                        let i = openParenOffset + 1;
+                        i < endOffset;
+                        i++
+                    ) {
+                        const context =
+                            getDruimLexicalContextAt(
+                                document,
+                                i
+                            );
+
+                        if (
+                            context !== "code" &&
+                            context !== "interpolation"
+                        ) {
+                            continue;
+                        }
+
+                        const char = source[i];
+
+                        if (char === "[") {
+                            bracketDepth++;
+                            continue;
+                        }
+
+                        if (char === "]") {
+                            if (bracketDepth > 0) {
+                                bracketDepth--;
+                            }
+
+                            continue;
+                        }
+
+                        if (bracketDepth > 0) {
+                            continue;
+                        }
+
+                        if (char === "(") {
+                            parenDepth++;
+                            continue;
+                        }
+
+                        if (char === ")") {
+                            if (parenDepth > 0) {
+                                parenDepth--;
+                            }
+
+                            continue;
+                        }
+
+                        if (parenDepth > 0) {
+                            continue;
+                        }
+
+                        if (char === ",") {
+                            activeParameter++;
+                        }
+                    }
+
+                    return activeParameter;
+                }                
+
+                const activeCall = findActiveCall(
+                    document,
+                    position
+                );
+
+                if (!activeCall) {
+                    return null;
+                }
+
+                const functionName =
+                    activeCall.functionName;
+
+                const conversionExpression =
+                    druimLanguage.getConversionExpression(functionName);
+
+                if (conversionExpression) {
+                    const signatureDocumentation =
+                        new vscode.MarkdownString();
+
+                    signatureDocumentation.appendMarkdown(
+                        `**${conversionExpression.name} — ${conversionExpression.category}**\n\n`
+                    );
+
+                    signatureDocumentation.appendMarkdown(
+                        `${conversionExpression.description}\n\n`
+                    );
+
+                    if (conversionExpression.returns) {
+                        signatureDocumentation.appendMarkdown(
+                            `**Returns:** \`${conversionExpression.returns.type}\`  \n` +
+                            `${conversionExpression.returns.description}\n\n`
+                        );
+                    }
+
+                    if (
+                        conversionExpression.details &&
+                        conversionExpression.details.length > 0
+                    ) {
+                        signatureDocumentation.appendMarkdown(
+                            `**Behavior**\n\n`
+                        );
+
+                        for (const detail of conversionExpression.details) {
+                            signatureDocumentation.appendMarkdown(
+                                `- ${detail}\n`
+                            );
+                        }
+
+                        signatureDocumentation.appendMarkdown("\n");
+                    }
+
+                    const signature = new vscode.SignatureInformation(
+                        conversionExpression.signature,
+                        signatureDocumentation
+                    );
+
+                    signature.parameters =
+                        conversionExpression.parameters.map(
+                            (parameter) =>
+                                new vscode.ParameterInformation(
+                                    parameter.name,
+                                    parameter.description
+                                )
+                        );
+
+                    const help = new vscode.SignatureHelp();
+
+                    help.signatures = [signature];
+                    help.activeSignature = 0;
+                    help.activeParameter = 0;
+
+                    return help;
+                }
 
                 const coreFunction =
                     druimLanguage.getCoreFunction(functionName);
@@ -2766,65 +3974,12 @@ function activate(context) {
                         }
                     );
 
-                    let activeParameter = 0;
-
-                    let callParenDepth = 0;
-                    let callBracketDepth = 0;
-                    let callInString = false;
-                    let callEscaped = false;
-
-                    for (const char of argumentText) {
-                        if (callInString) {
-                            if (callEscaped) {
-                                callEscaped = false;
-                                continue;
-                            }
-
-                            if (char === "\\") {
-                                callEscaped = true;
-                                continue;
-                            }
-
-                            if (char === "\"") {
-                                callInString = false;
-                            }
-
-                            continue;
-                        }
-
-                        if (char === "\"") {
-                            callInString = true;
-                            continue;
-                        }
-
-                        if (char === "(") {
-                            callParenDepth++;
-                            continue;
-                        }
-
-                        if (char === ")") {
-                            callParenDepth--;
-                            continue;
-                        }
-
-                        if (char === "[") {
-                            callBracketDepth++;
-                            continue;
-                        }
-
-                        if (char === "]") {
-                            callBracketDepth--;
-                            continue;
-                        }
-
-                        if (
-                            char === "," &&
-                            callParenDepth === 0 &&
-                            callBracketDepth === 0
-                        ) {
-                            activeParameter++;
-                        }
-                    }
+                    let activeParameter =
+                        countActiveParameter(
+                            document,
+                            activeCall.openParenOffset,
+                            document.offsetAt(position)
+                        );
 
                     if (parameters.length > 0) {
                         activeParameter = Math.min(
@@ -2863,6 +4018,19 @@ function activate(context) {
                     return null;
                 }
 
+                const callOffset =
+                    document.offsetAt(position);
+
+                if (
+                    !isDruimFunctionVisible(
+                        document,
+                        symbol,
+                        callOffset
+                    )
+                ) {
+                    return null;
+                }
+
                 const parameters = symbol.parameters;
 
                 /*
@@ -2895,67 +4063,12 @@ function activate(context) {
                         )
                 );
 
-                /*
-                * Determine which argument is currently active.
-                */
-                let activeParameter = 0;
-                let callParenDepth = 0;
-                let callBracketDepth = 0;
-                let callInString = false;
-                let callEscaped = false;
-
-                for (const char of argumentText) {
-                    if (callInString) {
-                        if (callEscaped) {
-                            callEscaped = false;
-                            continue;
-                        }
-
-                        if (char === "\\") {
-                            callEscaped = true;
-                            continue;
-                        }
-
-                        if (char === "\"") {
-                            callInString = false;
-                        }
-
-                        continue;
-                    }
-
-                    if (char === "\"") {
-                        callInString = true;
-                        continue;
-                    }
-
-                    if (char === "(") {
-                        callParenDepth++;
-                        continue;
-                    }
-
-                    if (char === ")") {
-                        callParenDepth--;
-                        continue;
-                    }
-
-                    if (char === "[") {
-                        callBracketDepth++;
-                        continue;
-                    }
-
-                    if (char === "]") {
-                        callBracketDepth--;
-                        continue;
-                    }
-
-                    if (
-                        char === "," &&
-                        callParenDepth === 0 &&
-                        callBracketDepth === 0
-                    ) {
-                        activeParameter++;
-                    }
-                }
+                let activeParameter =
+                    countActiveParameter(
+                        document,
+                        activeCall.openParenOffset,
+                        document.offsetAt(position)
+                    );
 
                 if (parameters.length > 0) {
                     activeParameter = Math.min(
@@ -2981,12 +4094,21 @@ function activate(context) {
         { language: "druim" },
         {
             provideDefinition(document, position) {
+
+                if (
+                    !isDruimCodeContext(
+                        document,
+                        position
+                    )
+                ) {
+                    return null;
+                }
                 /*
                 * Get the identifier under the cursor.
                 */
                 const wordRange = document.getWordRangeAtPosition(
                     position,
-                    /[A-Za-z_][A-Za-z0-9_]*/
+                    /(?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+/
                 );
 
                 if (!wordRange) {
@@ -3006,11 +4128,25 @@ function activate(context) {
                 * calculate(...)
                 */
                 if (/^\s*\(/.test(afterWord)) {
-                    const functionSymbol = index.functions.get(
-                        identifier
-                    );
+                    const functionSymbol =
+                        index.functions.get(identifier);
 
                     if (!functionSymbol) {
+                        return null;
+                    }
+
+                    const useOffset =
+                        document.offsetAt(
+                            wordRange.start
+                        );
+
+                    if (
+                        !isDruimFunctionVisible(
+                            document,
+                            functionSymbol,
+                            useOffset
+                        )
+                    ) {
                         return null;
                     }
 
@@ -3019,7 +4155,6 @@ function activate(context) {
                         functionSymbol.range
                     );
                 }
-
                 /*
                 * Ordinary binding reference.
                 */

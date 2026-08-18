@@ -187,6 +187,19 @@ fn render_lex_error(
                 "Druim expected `--:` to close this multiline comment.",
             )
         }
+
+        LexError::CommentInFunctionSyntax { pos } => {
+            Diagnostic::error(
+                "comment not allowed inside function parameters or arguments",
+                Span {
+                    start: pos,
+                    end: pos + 2,
+                },
+            )
+            .with_help(
+                "Move the comment outside the function parameter or argument list.",
+            )
+        }
     };
 
     render(&diagnostic, source)

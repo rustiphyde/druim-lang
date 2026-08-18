@@ -1187,6 +1187,7 @@ glo loc fn helper :()(ret 1;):
 - A parameter may include a default value using the Define form.
 - Parameter defaults use `=` and must contain exactly one complete expression without a semi-colon.
 - Required and defaulted parameters may appear in any order within a function parameter list.
+- Comments are not permitted anywhere inside a function parameter list. From the opening `:(` through the parameter-closing `)(`, neither single-line (`:- ... -:`) nor        multiline (`:-- ... --:`) comment syntax is valid.
 - Function parameter names must be unique within the same parameter list. Duplicate parameter names are invalid.
 - Copy, Bind, Guard, and DefineEmpty are not valid parameter-default forms unless a later canon revision explicitly permits them.
 - The body contains a sequence of valid statements, including loops.
@@ -1196,6 +1197,24 @@ Example with a default parameter:
 ```druim
 fn my_func :(w, x = 12)(ret w * x;):
 ```
+
+Comments are invalid inside the parameter list:
+
+```druim
+fn my_func :(w, :- comment -: x)(
+    ret w * x;
+):
+
+fn my_func :(
+    w,
+    :--
+        comment
+    --:
+    x
+)(
+    ret w * x;
+):
+
 ### Function Calls
 
 A function call applies a callable expression to zero or more argument expressions.
@@ -1205,12 +1224,26 @@ my_function()
 my_function(value)
 my_function(a + b, other_function(x))
 ```
+Comments are invalid inside the argument list:
+
+```druim
+my_function(value, :- comment -: other)
+
+my_function(
+    value,
+    :--
+        comment
+    --:
+    other
+)
+```
 
 #### Rules
 
 - A function call consists of a callable expression followed by `(` and `)`.
 - Arguments are separated by commas.
 - Each argument must contain exactly one complete expression.
+- Comments are not permitted anywhere inside a function call argument list. From the opening `(` through its matching `)`, neither single-line (`:- ... -:`) nor multiline (`:-- ... --:`) comment syntax is valid.
 - A function call may contain zero or more arguments.
 - Arguments are evaluated in source order.
 - A trailing comma is not permitted.
