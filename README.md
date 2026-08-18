@@ -31,26 +31,30 @@ When the README, implementation, tests, comments, or prior discussion conflict w
 
 Druim is under active development.
 
-The current canonical revision, **DRUIM-CANON-R011**, defines stable language rules for:
+The current Druim Canon defines stable language rules for:
 
 - Source-file boundaries and `.drm` execution
 - Single-line and multiline comments
+- Comment restrictions inside function parameters and call arguments
 - Lexical structure and longest-match rules
 - Definition, mutation, copying, binding, and guarded selection
-- Local, global, and stone binding behavior
+- Ordinary, local, global, and stone binding behavior
+- Scope commitment through `loc Mutate` and `glo Mutate`
 - Block and block-segment lifetime
 - Function definitions, calls, defaults, returns, and scope modifiers
 - Loop structure, persistent loop scope, nesting, and return propagation
 - Truth evaluation
+- Explicit type conversion expressions
 - Text interpolation
 - Print output
+- Core functions
 - Box and Bag collections
 - Named and indexed traversal
 - Missing-member behavior
 - Invalid-selector diagnostics
 - Command-line execution and source-aware diagnostics
 
-Runtime semantics explicitly defined by the canon are authoritative. Type-system rules, standard-library design, and undocumented behavior are still evolving.
+Runtime semantics explicitly defined by the canon are authoritative. Additional type-system rules, library design, and undocumented behavior are still evolving.
 
 Any behavior not defined by the canon should be treated as unsupported unless explicitly introduced by a later revision.
 
@@ -267,6 +271,18 @@ Because the file boundary and comments share prefixes, longest-match rules requi
 3. `:-`
 
 in the appropriate lexical context.
+
+### Comment Placement Restrictions
+
+Comments are not permitted anywhere inside a function parameter list.
+
+From the opening `:(` through the parameter-closing `)(`, neither single-line nor multiline comment syntax is valid.
+
+Comments are also not permitted anywhere inside a function call argument list.
+
+From the opening `(` through its matching `)`, neither single-line nor multiline comment syntax is valid.
+
+These restrictions are enforced lexically.
 
 ---
 
@@ -604,10 +620,7 @@ count = 10;
 
 :{
     loc count << count + 3;
-    // count == 13 here
 }:
-
-// count == 10 here
 ```
 
 The visible identity is localized for the applicable local lifetime, and mutation does not escape that boundary.
@@ -633,7 +646,25 @@ The target survives the local structure.
 }:
 ```
 
-`glo` does not promote or requalify an already-existing binding.
+For an ordinary existing identity, `glo Mutate` commits that identity to global scope.
+
+```druim
+value = 2;
+
+:{
+    glo value << value + 2;
+}:
+```
+
+After the mutation, `value` is globally committed and contains `4`.
+
+Scope commitment is directional:
+
+- Ordinary → Local through `loc Mutate`
+- Ordinary → Global through `glo Mutate`
+- Local → Global is invalid
+- Global → Local is invalid
+- Reapplying the same scope commitment is valid unless another rule prevents the mutation
 
 ---
 
@@ -701,6 +732,72 @@ Truth conversion is explicitly defined by type.
 | Non-empty Bag | `true` |
 
 Only values with canonical truth-conversion rules may participate in truth evaluation.
+
+---
+
+## Explicit Type Conversion Expressions
+
+Druim provides four dedicated conversion expressions:
+
+```druim
+num(expression)
+dec(expression)
+text(expression)
+flag(expression)
+```
+
+These are language-level conversion expressions, not Core functions.
+
+`void(...)` is invalid.
+
+Druim does not perform implicit coercion. Conversion must be explicit.
+
+Converting a value to its existing type returns that value unchanged.
+
+### `num(expression)`
+
+`num(...)` converts a supported value to `num`.
+
+When converting from `dec`, Druim rounds to the nearest integer. Exact `.5` ties round away from zero.
+
+Numeric text conversion is strict:
+
+- An optional sign is allowed
+- At least one digit is required
+- A decimal point, when present, must be followed by at least one digit
+- Surrounding whitespace is not trimmed
+- Exponent notation is not accepted
+- Partial parsing is not accepted
+
+### `dec(expression)`
+
+`dec(...)` converts a supported value to `dec`.
+
+Text conversion follows the same strict numeric-text rules.
+
+### `text(expression)`
+
+`text(...)` converts a supported value using Druim's canonical textual representation.
+
+`void` converts to:
+
+```text
+void
+```
+
+Box, Bag, function, and Core-function values are not serialized by `text(...)`.
+
+### `flag(expression)`
+
+`flag(...)` applies Druim's canonical truth conversion.
+
+`void` converts to `false`.
+
+Boxes and Bags may be converted to `flag` according to whether they are empty or non-empty.
+
+Function and Core-function values cannot be converted to `flag`.
+
+`void` cannot be converted to `num` or `dec`.
 
 ---
 
@@ -784,12 +881,16 @@ fn scale :(value, factor = 2)(
 
 Required and defaulted parameters may appear in any order.
 
+Comments are not permitted inside the parameter list. The restriction begins at `:(` and ends at the parameter-closing `)(`.
+
 Function calls use parentheses and comma-separated expressions:
 
 ```druim
 scale(12)
 scale(12, 4)
 ```
+
+Comments are not permitted inside a function call argument list. The restriction begins at the call's opening `(` and ends at its matching `)`.
 
 If a function completes without `ret`, it returns `void`.
 
@@ -883,6 +984,27 @@ count = 0;
 `loc Mutate` localizes an outer identity into the loop scope instead of mutating the outer identity.
 
 A `ret` inside a loop propagates to the enclosing function after the loop scope is removed.
+
+---
+
+## Core Functions
+
+Core functions are callable operations supplied directly by Druim.
+
+They use normal function-call syntax but are distinct from source-defined functions and from type conversion expressions.
+
+The current canonical text Core functions are:
+
+- `rise(text)` — converts text to uppercase
+- `fall(text)` — converts text to lowercase
+- `cut(text, start, [end])` — returns a character-based substring
+- `size(text)` — returns the character count
+- `fuse(text, text, ...)` — concatenates two or more text values
+- `cap(text)` — uppercases the first character and preserves the remainder
+
+Core functions perform no implicit coercion.
+
+Text concatenation uses `fuse`; arithmetic `+` remains arithmetic-only.
 
 ---
 
@@ -1121,6 +1243,7 @@ Canonical lexical diagnostic categories currently include:
 - Unterminated text interpolation
 - Unterminated single-line comments
 - Unterminated multiline comments
+- Comments used inside function parameter or argument lists
 
 Parser and evaluator failures use the same rendering system.
 

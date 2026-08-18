@@ -2,9 +2,9 @@
 
 Official Visual Studio Code language support for **Druim**, an actively developed programming language built around explicit structure, deterministic parsing, clear token boundaries, and intentional state semantics.
 
-This extension registers Druim as a language in Visual Studio Code and provides syntax highlighting, structural editing, completions, hover documentation, signature help, folding, navigation, snippets, comments, and the included Druim color theme.
+This extension registers Druim as a language in Visual Studio Code and provides syntax highlighting, structural editing, completions, hover documentation, signature help, folding, navigation, snippets, comments, explicit conversion-expression support, and the included Druim color theme.
 
-> **Current extension version:** `0.1.2`  
+> **Current extension version:** `0.1.4`  
 > **Language file extension:** `.drm`
 
 ## Features
@@ -35,6 +35,7 @@ Druim syntax highlighting covers the language's major lexical and structural for
 - Scope and identity modifiers
 - Types
 - Literals
+- Explicit conversion expressions
 - Core functions
 - Statement operators
 - Traversal operators
@@ -176,6 +177,8 @@ Multiline comment:
 
 The extension supports automatic comment construction and demotion between empty multiline and single-line forms.
 
+Comments are not permitted inside function parameter lists or function call argument lists. The extension prevents comment construction in those regions, including through the standard comment command.
+
 The standard VS Code comment shortcut is supported:
 
 ```text
@@ -195,6 +198,7 @@ Completion items are provided for:
 - Druim keywords
 - Types
 - Flag literals
+- Explicit conversion expressions
 - Core functions
 - Statement operators
 - Traversal operators
@@ -208,7 +212,7 @@ Core functions insert a normal call form with the cursor inside the argument lis
 
 Hovering Druim syntax displays contextual documentation.
 
-Richer hover documentation is currently available for Core functions and traversal syntax, including relevant information such as:
+Richer hover documentation is currently available for conversion expressions, Core functions, traversal syntax, user-defined functions, parameters, and bindings, including relevant information such as:
 
 - Signature
 - Description
@@ -222,6 +226,7 @@ Richer hover documentation is currently available for Core functions and travers
 
 Signature help is available while writing:
 
+- Druim conversion expressions
 - Druim Core function calls
 - User-defined Druim function calls
 
@@ -402,6 +407,63 @@ Druim currently defines these type keywords:
 | `text` | Text value type |
 | `void` | Absence of a value |
 
+## Explicit Type Conversion Expressions
+
+Druim provides four dedicated conversion expressions:
+
+```druim
+num(expression)
+dec(expression)
+text(expression)
+flag(expression)
+```
+
+These are language-level conversion expressions, not Core functions.
+
+`void(...)` is invalid.
+
+Druim does not perform implicit coercion. Conversion is explicit, and converting a value to its existing type returns the value unchanged.
+
+### `num(expression)`
+
+Converts a supported value to `num`.
+
+When converting a `dec`, Druim rounds to the nearest integer. Exact `.5` ties round away from zero.
+
+Numeric text must be strict: an optional sign, at least one digit, and no surrounding whitespace, exponent notation, or partial parsing.
+
+### `dec(expression)`
+
+Converts a supported value to `dec`.
+
+Decimal text must be strict: an optional sign, at least one digit, and an optional decimal point followed by at least one digit.
+
+### `text(expression)`
+
+Converts a supported value to its canonical Druim text representation.
+
+`void` converts to:
+
+```text
+void
+```
+
+### `flag(expression)`
+
+Converts a supported value to its canonical truth value.
+
+`void` converts to:
+
+```druim
+false
+```
+
+Boxes and Bags may be converted to `flag`.
+
+Function values and Core functions are rejected as conversion inputs.
+
+`void` cannot be converted to `num` or `dec`.
+
 ## Flag Literals
 
 ```druim
@@ -555,6 +617,8 @@ fn double :(value)(
 
 Parameters are parameter forms, not restricted to bare identifiers; parameter defaults are supported by the language model.
 
+Comments are not permitted anywhere inside a function parameter list. From the opening `:(` through the parameter-closing `)(`, neither single-line (`:- ... -:`) nor multiline (`:-- ... --:`) comment syntax is valid.
+
 ### Return
 
 Use:
@@ -564,6 +628,16 @@ ret expression;
 ```
 
 inside a function.
+
+## Function Calls
+
+A function call uses:
+
+```druim
+name(arguments)
+```
+
+Comments are not permitted anywhere inside a function call argument list. From the opening `(` through its matching `)`, neither single-line (`:- ... -:`) nor multiline (`:-- ... --:`) comment syntax is valid.
 
 ## Boxes
 
@@ -856,6 +930,8 @@ Ctrl+/
 ```
 
 The command understands Druim's explicit comment delimiters rather than applying JavaScript/C-style comments.
+
+The command does nothing when the selection begins or ends inside a function parameter list or function call argument list, because comments are invalid in those regions.
 
 ---
 
