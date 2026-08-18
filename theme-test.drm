@@ -74,7 +74,24 @@
         index << index + 1;
     >:
 
+    fn test :(
+        value = num("12"),
+        other
+    )(
+        |> (value);
+    ):
     
+    test()
+}:
+
+:{
+    fn first :(value)(
+        ret value;
+    ):
+
+    first(1);
+}{
+    first(2);
 }:
 
 :-:-:

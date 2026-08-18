@@ -113,6 +113,181 @@ function isDruimCodeContext(
     );
 }
 
+function isDruimFunctionListContext(
+    document,
+    position
+) {
+    const source = document.getText();
+    const offset = document.offsetAt(position);
+
+    let context = "code";
+    let escaped = false;
+
+    let inFunctionParameters = false;
+    let callParenDepth = 0;
+
+    for (let i = 0; i < offset; i++) {
+        if (context === "single-comment") {
+            if (source.startsWith("-:", i)) {
+                context = "code";
+                i++;
+            }
+
+            continue;
+        }
+
+        if (context === "multiline-comment") {
+            if (source.startsWith("--:", i)) {
+                context = "code";
+                i += 2;
+            }
+
+            continue;
+        }
+
+        if (context === "text") {
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (source[i] === "\\") {
+                escaped = true;
+                continue;
+            }
+
+            if (source.startsWith(":.", i)) {
+                context = "interpolation";
+                i++;
+                continue;
+            }
+
+            if (source[i] === "\"") {
+                context = "code";
+            }
+
+            continue;
+        }
+
+        if (context === "interpolation") {
+            if (source.startsWith(".:", i)) {
+                context = "text";
+                i++;
+                continue;
+            }
+        }
+
+        if (source.startsWith(":--", i)) {
+            context = "multiline-comment";
+            i += 2;
+            continue;
+        }
+
+        if (source.startsWith(":-", i)) {
+            context = "single-comment";
+            i++;
+            continue;
+        }
+
+        if (
+            context === "code" &&
+            source[i] === "\""
+        ) {
+            context = "text";
+            escaped = false;
+            continue;
+        }
+
+        /*
+         * Function parameter list:
+         *
+         * fn name :( ... )(
+         */
+        if (source.startsWith(":(", i)) {
+            inFunctionParameters = true;
+            i++;
+            continue;
+        }
+
+        if (
+            inFunctionParameters &&
+            source.startsWith(")(", i)
+        ) {
+            inFunctionParameters = false;
+            i++;
+            continue;
+        }
+
+        /*
+         * Function call argument list.
+         *
+         * Once a call begins, nested parentheses remain
+         * part of that argument list until the matching
+         * call parenthesis closes.
+         */
+        if (
+            !inFunctionParameters &&
+            source[i] === "("
+        ) {
+            if (callParenDepth > 0) {
+                callParenDepth++;
+                continue;
+            }
+
+            let previous = i - 1;
+
+            while (
+                previous >= 0 &&
+                /\s/.test(source[previous])
+            ) {
+                previous--;
+            }
+
+            let nameStart = previous;
+
+            while (
+                nameStart >= 0 &&
+                /[A-Za-z0-9_]/.test(
+                    source[nameStart]
+                )
+            ) {
+                nameStart--;
+            }
+
+            nameStart++;
+
+            const callee =
+                source.slice(
+                    nameStart,
+                    previous + 1
+                );
+
+            if (
+                /^(?=[A-Za-z0-9_]*[A-Za-z_])[A-Za-z0-9_]+$/.test(
+                    callee
+                )
+            ) {
+                callParenDepth = 1;
+            }
+
+            continue;
+        }
+
+        if (
+            !inFunctionParameters &&
+            source[i] === ")" &&
+            callParenDepth > 0
+        ) {
+            callParenDepth--;
+        }
+    }
+
+    return (
+        inFunctionParameters ||
+        callParenDepth > 0
+    );
+}
+
 function getDruimScopeAt(document, offset) {
     const source = document.getText();
 
@@ -1675,6 +1850,85 @@ function activate(context) {
         if (change.text === "-") {
             const position = change.range.start;
 
+            if (
+                isDruimFunctionListContext(
+                    event.document,
+                    position
+                )
+            ) {
+                const line =
+                    event.document.lineAt(
+                        position.line
+                    );
+
+                const lineText = line.text;
+
+                /*
+                * If this "-" completed a forbidden comment
+                * opener inside parameters or arguments:
+                *
+                * :-
+                *
+                * remove the "-" immediately so the source
+                * returns to:
+                *
+                * :
+                */
+                if (
+                    position.character > 0 &&
+                    lineText[
+                        position.character - 1
+                    ] === ":"
+                ) {
+                    const typedHyphenRange =
+                        new vscode.Range(
+                            position.line,
+                            position.character,
+                            position.line,
+                            position.character + 1
+                        );
+
+                    applyingDruimEdit = true;
+
+                    try {
+                        const applied =
+                            await editor.edit(
+                                (editBuilder) => {
+                                    editBuilder.delete(
+                                        typedHyphenRange
+                                    );
+                                },
+                                {
+                                    undoStopBefore: false,
+                                    undoStopAfter: false
+                                }
+                            );
+
+                        if (!applied) {
+                            return;
+                        }
+
+                        const cursor =
+                            new vscode.Position(
+                                position.line,
+                                position.character
+                            );
+
+                        editor.selection =
+                            new vscode.Selection(
+                                cursor,
+                                cursor
+                            );
+
+                        return;
+                    } finally {
+                        applyingDruimEdit = false;
+                    }
+                }
+
+                return;
+            }
+
             const line = event.document.lineAt(position.line);
             const lineText = line.text;
 
@@ -2844,6 +3098,19 @@ function activate(context) {
 
             const document = editor.document;
             const selection = editor.selection;
+
+            if (
+            isDruimFunctionListContext(
+                document,
+                selection.start
+            ) ||
+            isDruimFunctionListContext(
+                document,
+                selection.end
+            )
+        ) {
+            return;
+        }
 
             let startLine = selection.start.line;
             let endLine = selection.end.line;
